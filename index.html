@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBA Props Scanner</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f1f4f9;color:#172033;font-family:Arial,sans-serif}
+header{background:#172554;color:white;padding:25px}
+main{max-width:1100px;margin:25px auto;padding:0 15px}
+h1{margin:0}
+.sub{color:#cbd5e1;margin-top:8px}
+.card{background:white;padding:20px;border-radius:12px;margin-bottom:18px;box-shadow:0 2px 8px #0000000c}
+input,select,button{padding:11px;border:1px solid #ccd3df;border-radius:7px;font-size:14px}
+input{width:100%;margin:7px 0}
+button{background:#172554;color:white;border:0;cursor:pointer;margin:5px 5px 5px 0}
+button:hover{background:#0f766e}
+.actions{display:flex;flex-wrap:wrap;gap:5px}
+.status{padding:10px;background:#fff7df;border-radius:7px;margin-top:12px;font-size:13px}
+table{width:100%;border-collapse:collapse;margin-top:15px;font-size:13px}
+th,td{padding:11px;text-align:left;border-bottom:1px solid #e5e9f0}
+th{background:#f5f7fb}
+.tablewrap{overflow-x:auto}
+small{color:#64748b}
+@media(max-width:600px){header{padding:18px}main{margin:15px auto}.card{padding:14px}}
+</style>
+</head>
+<body>
+
+<header>
+<h1>🏀 NBA Props Scanner</h1>
+<div class="sub">Análise estatística pré-jogo · Pontos · Assistências · Rebotes · Arremessos</div>
+</header>
+
+<main>
+
+<section class="card">
+<h2>Conexão com a API</h2>
+<label>Endereço do servidor</label>
+<input id="api" value="https://nba-props-scanner.onrender.com">
+<button onclick="testar()">Testar conexão</button>
+<div id="status" class="status">Aguardando conexão com o servidor.</div>
+</section>
+
+<section class="card">
+<h2>Agenda de jogos</h2>
+<label>Data dos jogos</label>
+<input type="date" id="data">
+<button onclick="carregarJogos()">Buscar jogos</button>
+<div id="jogos"></div>
+</section>
+
+<section class="card">
+<h2>Radar de jogadores</h2>
+<p><small>Selecione o mercado para buscar jogadores com base nas estatísticas recentes.</small></p>
+
+<div class="actions">
+<button onclick="buscar('points')">Pontos</button>
+<button onclick="buscar('assists')">Assistências</button>
+<button onclick="buscar('rebounds')">Rebotes</button>
+<button onclick="buscar('threes')">Tentativas de 3 pontos</button>
+<button onclick="buscar('attempts')">Tentativas totais</button>
+</div>
+
+<div id="resultado"></div>
+</section>
+
+<section class="card">
+<h2>Como interpretar</h2>
+<p>O scanner organiza candidatos com base nas médias recentes e nos minutos em quadra.</p>
+<p><b>Importante:</b> os resultados são uma triagem estatística, não recomendações garantidas de apostas.</p>
+<p>Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.</p>
+</section>
+
+</main>
+
+<script>
+const api=document.getElementById('api');
+const status=document.getElementById('status');
+const data=document.getElementById('data');
+
+api.value=localStorage.getItem('nbaPropsApiBase') || 'https://nba-props-scanner.onrender.com';
+
+function endereco(){
+ return api.value.trim().replace(/\/$/,'');
+}
+
+api.addEventListener('change',()=>{
+ localStorage.setItem('nbaPropsApiBase',endereco());
+});
+
+data.value=new Date().toLocaleDateString('en-CA');
+
+async function requisicao(caminho){
+ const resposta=await fetch(endereco()+caminho);
+ if(!resposta.ok) throw new Error('Erro HTTP '+resposta.status);
+ return await resposta.json();
+}
+
+async function testar(){
+ status.innerText='Testando conexão...';
+ try{
+  const r=await requisicao('/health');
+  status.innerText='✅ Conectado! Servidor: '+r.service;
+ }catch(e){
+  status.innerText='❌ Não foi possível conectar: '+e.message;
+ }
+}
+
+async function carregarJogos(){
+ const box=document.getElementById('jogos');
+ box.innerHTML='Carregando jogos...';
+ try{
+  const r=await requisicao('/games?date='+data.value);
+  if(!r.games || !r.games.length){
+   box.innerHTML='<p>Nenhum jogo encontrado para esta data.</p>';
+   return;
+  }
+  let html='<div class="tablewrap"><table><tr><th>Visitante</th><th>Mandante</th><th>Status</th></tr>';
+  r.games.forEach(j=>{
+   html+='<tr><td>'+j.away.abbr+' - '+j.away.name+'</td><td>'+j.home.abbr+' - '+j.home.name+'</td><td>'+j.status+'</td></tr>';
+  });
+  box.innerHTML=html+'</table></div>';
+ }catch(e){
+  box.innerHTML='Erro ao buscar jogos: '+e.message;
+ }
+}
+
+async function buscar(mercado){
+ const box=document.getElementById('resultado');
+ box.innerHTML='Analisando jogadores...';
+ try{
+  const r=await requisicao('/candidates?date='+data.value+'&market='+mercado+'&limit=20');
+  let html='<h3>'+r.market_label+' - '+r.date+'</h3>';
+  html+='<p><small>'+ (r.method_note || 'Triagem estatística exploratória.')+'</small></p>';
+  if(!r.candidates || !r.candidates.length){
+   box.innerHTML=html+'<p>Nenhum candidato retornado.</p>';
+   return;
+  }
+  html+='<div class="tablewrap"><table><tr><th>Jogador</th><th>Equipe</th><th>L5</th><th>L10</th><th>L20</th><th>Minutos L5</th><th>Pontuação</th></tr>';
+  r.candidates.forEach(p=>{
+   html+='<tr><td>'+p.player+'</td><td>'+p.team+'</td><td>'+p.last5_avg+'</td><td>'+p.last10_avg+'</td><td>'+p.last20_avg+'</td><td>'+p.minutes_last5_avg+'</td><td>'+p.triage_score+'</td></tr>';
+  });
+  html+='</table></div>';
+  box.innerHTML=html;
+ }catch(e){
+  box.innerHTML='Erro ao buscar candidatos: '+e.message;
+ }
+}
+</script>
+
+</body>
+</html>
