@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, date
 from functools import lru_cache
 from time import sleep
@@ -11,10 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from nba_api.stats.endpoints import LeagueGameLog
 
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("nba_props_scanner")
+
 app = FastAPI(
     title="NBA Props Scanner",
     description="API para triagem estatística de mercados NBA.",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 app.add_middleware(
@@ -25,35 +29,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 MARKETS = {
-    "points": {
-        "column": "PTS",
-        "label": "Pontos"
-    },
-    "assists": {
-        "column": "AST",
-        "label": "Assistências"
-    },
-    "rebounds": {
-        "column": "REB",
-        "label": "Rebotes"
-    },
-    "threes": {
-        "column": "FG3A",
-        "label": "Tentativas de 3 pontos"
-    },
-    "attempts": {
-        "column": "FGA",
-        "label": "Tentativas totais de arremesso"
-    }
+    "points": {"column": "PTS", "label": "Pontos"},
+    "assists": {"column": "AST", "label": "Assistências"},
+    "rebounds": {"column": "REB", "label": "Rebotes"},
+    "threes": {"column": "FG3A", "label": "Tentativas de 3 pontos"},
+    "attempts": {"column": "FGA", "label": "Tentativas totais de arremesso"}
 }
 
 
 def season_for(selected_date: date) -> str:
-    """
-    Identifica a temporada NBA correspondente à data.
-    """
     if selected_date.month >= 10:
         start_year = selected_date.year
     else:
@@ -63,9 +48,6 @@ def season_for(selected_date: date) -> str:
 
 
 def parse_minutes(value) -> float:
-    """
-    Converte minutos no formato MM:SS ou numérico.
-    """
     if pd.isna(value):
         return 0.0
 
@@ -86,10 +68,6 @@ def parse_minutes(value) -> float:
 
 
 def fetch_espn_games(selected_date: str) -> dict:
-    """
-    Consulta a agenda da NBA na ESPN.
-    """
-
     date_compact = selected_date.replace("-", "")
 
     url = (
@@ -101,9 +79,7 @@ def fetch_espn_games(selected_date: str) -> dict:
         response = requests.get(
             url,
             params={"dates": date_compact},
-            headers={
-                "User-Agent": "Mozilla/5.0 NBA Props Scanner"
-            },
+            headers={"User-Agent": "Mozilla/5.0 NBA Props Scanner"},
             timeout=(8, 20)
         )
 
@@ -111,6 +87,7 @@ def fetch_espn_games(selected_date: str) -> dict:
         data = response.json()
 
     except requests.RequestException as error:
+        logger.exception("Falha ao consultar agenda da ESPN")
         raise HTTPException(
             status_code=503,
             detail=f"Não foi possível consultar a agenda da ESPN: {error}"
@@ -131,7 +108,6 @@ def fetch_espn_games(selected_date: str) -> dict:
             continue
 
         competitors = competitions[0].get("competitors", [])
-
         home = None
         away = None
 
@@ -145,7 +121,6 @@ def fetch_espn_games(selected_date: str) -> dict:
 
             if competitor.get("homeAway") == "home":
                 home = team_data
-
             elif competitor.get("homeAway") == "away":
                 away = team_data
 
@@ -176,40 +151,68 @@ def fetch_espn_games(selected_date: str) -> dict:
 @lru_cache(maxsize=8)
 def get_player_logs(season: str) -> pd.DataFrame:
     """
-    Busca estatísticas dos jogadores na NBA Stats.
-    Mantém em cache as consultas realizadas com sucesso.
+    Consulta os registros da NBA Stats.
+    Duas tentativas, com timeout de 12 segundos cada.
+    Somente resultados bem-sucedidos ficam em cache.
     """
 
     last_error = None
 
-    for attempt in range(1, 4):
+    logger.info("Iniciando consulta NBA Stats para temporada %s", season)
+
+    for attempt in range(1, 3):
         try:
+            logger.info(
+                "Tentativa %s de 2 para temporada %s",
+                attempt,
+                season
+            )
+
             endpoint = LeagueGameLog(
                 season=season,
                 season_type_all_star="Regular Season",
                 player_or_team_abbreviation="P",
-                timeout=25
+                timeout=12
             )
 
             frames = endpoint.get_data_frames()
 
             if not frames or frames[0].empty:
-                raise ValueError("A NBA Stats não retornou estatísticas.")
+                raise ValueError("A NBA Stats retornou dados vazios.")
 
-            return frames[0].copy()
+            result = frames[0].copy()
+
+            logger.info(
+                "NBA Stats respondeu. Temporada: %s. Registros: %s",
+                season,
+                len(result)
+            )
+
+            return result
 
         except Exception as error:
             last_error = error
 
-            if attempt < 3:
-                sleep(2 * attempt)
+            logger.warning(
+                "Falha na tentativa %s de 2 da NBA Stats: %s",
+                attempt,
+                error
+            )
+
+            if attempt < 2:
+                sleep(2)
+
+    logger.error(
+        "Consulta NBA Stats encerrada sem sucesso. Temporada: %s",
+        season
+    )
 
     raise HTTPException(
         status_code=503,
         detail=(
-            "Não foi possível obter as estatísticas na NBA Stats "
-            "após 3 tentativas. A fonte pode estar lenta ou "
-            f"bloqueando a conexão. Detalhe: {last_error}"
+            "A NBA Stats não respondeu após duas tentativas. "
+            "A fonte pode estar indisponível ou bloqueando a conexão. "
+            f"Detalhe: {last_error}"
         )
     )
 
@@ -219,7 +222,7 @@ def health():
     return {
         "status": "ok",
         "service": "NBA Props Scanner",
-        "version": "2.0.0"
+        "version": "2.1.0"
     }
 
 
@@ -230,10 +233,6 @@ def games(
         alias="date"
     )
 ):
-    """
-    Retorna os jogos da data selecionada usando a ESPN.
-    """
-
     if not selected_date:
         selected_date = date.today().isoformat()
 
@@ -242,7 +241,6 @@ def games(
             selected_date,
             "%Y-%m-%d"
         ).date()
-
     except ValueError:
         raise HTTPException(
             status_code=400,
@@ -252,32 +250,20 @@ def games(
     return fetch_espn_games(parsed_date.isoformat())
 
 
-@app.get("/candidates")
-def candidates(
-    selected_date: str = Query(alias="date"),
-    market: str = Query(default="points"),
-    limit: int = Query(default=20, ge=1, le=100)
+@app.get("/stats-check")
+def stats_check(
+    selected_date: str = Query(alias="date")
 ):
     """
-    Gera uma lista exploratória de candidatos por mercado,
-    considerando médias recentes e minutos.
+    Diagnóstico simples da conexão estatística.
+    Não gera candidatos; verifica se a fonte respondeu.
     """
-
-    if market not in MARKETS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Mercado inválido. Utilize: "
-                + ", ".join(MARKETS.keys())
-            )
-        )
 
     try:
         target_date = datetime.strptime(
             selected_date,
             "%Y-%m-%d"
         ).date()
-
     except ValueError:
         raise HTTPException(
             status_code=400,
@@ -285,6 +271,52 @@ def candidates(
         )
 
     season = season_for(target_date)
+
+    logger.info("Solicitado diagnóstico estatístico: %s", season)
+
+    df = get_player_logs(season)
+
+    return {
+        "status": "ok",
+        "source": "NBA Stats",
+        "season": season,
+        "records": len(df),
+        "players": int(df["PLAYER_NAME"].nunique())
+        if "PLAYER_NAME" in df.columns else None,
+        "checked_at": datetime.now().isoformat()
+    }
+
+
+@app.get("/candidates")
+def candidates(
+    selected_date: str = Query(alias="date"),
+    market: str = Query(default="points"),
+    limit: int = Query(default=20, ge=1, le=100)
+):
+    if market not in MARKETS:
+        raise HTTPException(
+            status_code=400,
+            detail="Mercado inválido. Utilize: " + ", ".join(MARKETS.keys())
+        )
+
+    try:
+        target_date = datetime.strptime(
+            selected_date,
+            "%Y-%m-%d"
+        ).date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize o formato AAAA-MM-DD."
+        )
+
+    season = season_for(target_date)
+
+    logger.info(
+        "Consulta de candidatos. Data: %s. Mercado: %s",
+        selected_date,
+        market
+    )
 
     df = get_player_logs(season).copy()
 
@@ -301,8 +333,7 @@ def candidates(
     ]
 
     missing = [
-        column
-        for column in required_columns
+        column for column in required_columns
         if column not in df.columns
     ]
 
@@ -350,7 +381,6 @@ def candidates(
     candidates_list = []
 
     for player, group in df.groupby("PLAYER_NAME"):
-
         group = group.sort_values(
             "GAME_DATE",
             ascending=False
@@ -365,7 +395,6 @@ def candidates(
 
         minutes_last5 = last5["MINUTES"].mean()
 
-        # Evita priorizar jogadores com pouca utilização recente.
         if minutes_last5 < 24:
             continue
 
@@ -377,7 +406,6 @@ def candidates(
             last5[stat_column] >= avg5
         ).mean()
 
-        # Pontuação de triagem, não probabilidade de acerto.
         score = (
             avg5 * 0.50
             + avg10 * 0.30
@@ -386,11 +414,9 @@ def candidates(
 
         score = score * (0.80 + consistency * 0.20)
 
-        team = group.iloc[0]["TEAM_ABBREVIATION"]
-
         candidates_list.append({
             "player": player,
-            "team": team,
+            "team": group.iloc[0]["TEAM_ABBREVIATION"],
             "last5_avg": round(float(avg5), 2),
             "last10_avg": round(float(avg10), 2),
             "last20_avg": round(float(avg20), 2),
@@ -408,6 +434,12 @@ def candidates(
 
     candidates_list = candidates_list[:limit]
 
+    logger.info(
+        "Consulta concluída. Mercado: %s. Candidatos: %s",
+        market,
+        len(candidates_list)
+    )
+
     return {
         "date": selected_date,
         "market": market,
@@ -416,11 +448,10 @@ def candidates(
         "source": "NBA Stats",
         "updated_at": datetime.now().isoformat(),
         "method_note": (
-            "Triagem estatística baseada nas médias dos últimos "
-            "5, 10 e 20 jogos, com filtro de média mínima de "
-            "24 minutos nos últimos 5 jogos. A pontuação não "
-            "representa probabilidade de acerto nem valor esperado. "
-            "Não considera linha da casa, odds, lesões, escalações "
+            "Triagem baseada nas médias dos últimos 5, 10 e 20 jogos, "
+            "com filtro de média mínima de 24 minutos nos últimos 5 jogos. "
+            "A pontuação não representa probabilidade de acerto nem valor "
+            "esperado. Não considera linha da casa, odds, lesões, escalações "
             "ou confronto defensivo."
         ),
         "candidates": candidates_list
