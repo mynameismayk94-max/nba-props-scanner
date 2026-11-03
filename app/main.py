@@ -482,6 +482,7 @@ def games(
     return fetch_espn_games(selected_date)
 
 
+
 @app.get("/stats-check")
 def stats_check(
     selected_date: str = Query(alias="date")
@@ -506,38 +507,53 @@ def stats_check(
             detail="Nenhum jogador encontrado nos elencos consultados."
         )
 
-    sample_player = players[0]
     year = season_year(target_date)
 
-    try:
-        sample_logs = get_athlete_logs(
-            sample_player["id"],
-            year
-        )
-    except Exception as error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Falha ao consultar histórico ESPN: {error}"
-        )
+    sample_player = None
+    previous_games = []
+    players_checked = 0
+    players_with_errors = 0
 
-    previous_games = [
-        game for game in sample_logs
-        if game["date"] < selected_date
-    ]
+    # Testa até 60 jogadores, ignorando quem ainda não tem jogos.
+    for player in players[:60]:
+        players_checked += 1
+
+        try:
+            sample_logs = get_athlete_logs(
+                player["id"],
+                year
+            )
+
+            player_games = [
+                game for game in sample_logs
+                if game["date"] < selected_date
+            ]
+
+            if player_games:
+                sample_player = player
+                previous_games = player_games
+                break
+
+        except Exception:
+            players_with_errors += 1
+            continue
 
     return {
-        "status": "ok" if previous_games else "warning",
+        "status": "ok" if sample_player else "warning",
         "source": "ESPN",
         "season": season_for(target_date),
         "season_year": year,
         "teams_found": data["teams_found"],
         "players_found": len(players),
-        "sample_player": sample_player["player"],
-        "sample_player_id": sample_player["id"],
+        "players_checked": players_checked,
+        "players_with_errors": players_with_errors,
+        "sample_player": sample_player["player"] if sample_player else None,
+        "sample_player_id": sample_player["id"] if sample_player else None,
         "sample_games": len(previous_games),
         "sample_game": previous_games[0] if previous_games else None,
         "checked_at": datetime.now().isoformat()
     }
+
 
 
 @app.get("/candidates")
