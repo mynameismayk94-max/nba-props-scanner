@@ -64,7 +64,7 @@ def season_for(selected_date: date) -> str:
 
 def season_year(selected_date: date) -> int:
     return (
-        selected_date.year
+        selected_date.year + 1
         if selected_date.month >= 10
         else selected_date.year
     )
