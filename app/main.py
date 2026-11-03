@@ -79,7 +79,15 @@ def request_json(url: str, params=None) -> dict:
             timeout=(8, 25)
         )
         response.raise_for_status()
-        return response.json()
+                result = response.json()
+
+        print("DEBUG URL:", response.url)
+        print("DEBUG STATUS:", response.status_code)
+        print("DEBUG TIPO JSON:", type(result).__name__)
+        print("DEBUG CHAVES JSON:", list(result.keys())[:30] if isinstance(result, dict) else "Não é objeto")
+        print("DEBUG RESPOSTA:", str(result)[:1000])
+
+        return result
     except requests.RequestException as error:
         logger.warning("Falha na consulta ESPN: %s", error)
         raise
