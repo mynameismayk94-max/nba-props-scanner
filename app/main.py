@@ -257,6 +257,12 @@ def get_athlete_logs(athlete_id: str, year: int) -> tuple:
 
     season_label = f"{year - 1}-{str(year)[-2:]} Regular Season"
 
+    print("DEBUG SEASON LABEL:", season_label)
+print("DEBUG CATEGORIES:", [
+    category.get("displayName")
+    for category in data.get("categories", [])
+])
+
     season_category = None
 
     for category in data.get("categories", []):
