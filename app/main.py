@@ -1,13 +1,11 @@
 
 import logging
-import re
 from datetime import datetime, date
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import requests
-
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,12 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nba_props_scanner")
 
-VERSION = "3.0.0"
-
 app = FastAPI(
     title="NBA Props Scanner",
-    description="API de triagem estatística NBA com dados ESPN.",
-    version=VERSION
+    description="API de triagem estatística NBA via ESPN.",
+    version="3.1.0"
 )
 
 app.add_middleware(
@@ -31,90 +27,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ESPN_HEADERS = {
-    "User-Agent": "Mozilla/5.0 NBA Props Scanner"
-}
+HEADERS = {"User-Agent": "Mozilla/5.0 NBA Props Scanner"}
 
-ESPN_SCOREBOARD = (
+SCOREBOARD_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/"
     "basketball/nba/scoreboard"
 )
 
-ESPN_ROSTER = (
+ROSTER_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/"
     "basketball/nba/teams/{team}/roster"
 )
 
-ESPN_GAMELOG = (
+GAMELOG_URL = (
     "https://site.web.api.espn.com/apis/common/v3/sports/"
-    "basketball/nba/athletes/{athlete_id}/gamelog"
+    "basketball/nba/athletes/{athlete}/gamelog"
 )
 
 MARKETS = {
-    "points": {
-        "label": "Pontos",
-        "index": 13
-    },
-    "assists": {
-        "label": "Assistências",
-        "index": 8
-    },
-    "rebounds": {
-        "label": "Rebotes",
-        "index": 7
-    },
-    "threes": {
-        "label": "Tentativas de 3 pontos",
-        "index": 3,
-        "attempts": True
-    },
-    "attempts": {
-        "label": "Tentativas totais de arremesso",
-        "index": 1,
-        "attempts": True
-    }
+    "points": {"index": 13, "label": "Pontos"},
+    "assists": {"index": 8, "label": "Assistências"},
+    "rebounds": {"index": 7, "label": "Rebotes"},
+    "threes": {"index": 3, "label": "Tentativas de 3 pontos"},
+    "attempts": {"index": 1, "label": "Tentativas totais"}
 }
 
 
 def season_for(selected_date: date) -> str:
-    if selected_date.month >= 10:
-        start_year = selected_date.year
-    else:
-        start_year = selected_date.year - 1
-
+    start_year = (
+        selected_date.year
+        if selected_date.month >= 10
+        else selected_date.year - 1
+    )
     return f"{start_year}-{str(start_year + 1)[-2:]}"
 
 
-def espn_season_year(season: str) -> int:
-    return int(season.split("-")[0]) + 1
+def season_year(selected_date: date) -> int:
+    return (
+        selected_date.year
+        if selected_date.month >= 10
+        else selected_date.year
+    )
+
+
+def request_json(url: str, params=None) -> dict:
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            headers=HEADERS,
+            timeout=(8, 25)
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as error:
+        logger.warning("Falha na consulta ESPN: %s", error)
+        raise
+    except ValueError as error:
+        logger.warning("JSON inválido recebido da ESPN: %s", error)
+        raise
 
 
 def parse_number(value) -> float:
     try:
-        if value is None:
-            return 0.0
-
         return float(str(value).strip())
-
     except (ValueError, TypeError):
         return 0.0
-
-
-def parse_attempts(value) -> float:
-    """
-    ESPN apresenta arremessos no formato:
-    14-24 = 14 convertidos em 24 tentativas.
-    """
-
-    if not value:
-        return 0.0
-
-    parts = str(value).split("-")
-
-    if len(parts) != 2:
-        return 0.0
-
-    return parse_number(parts[1])
 
 
 def parse_minutes(value) -> float:
@@ -133,81 +111,64 @@ def parse_minutes(value) -> float:
     return parse_number(value)
 
 
-def espn_get(url: str, params=None) -> dict:
+def parse_attempts(value) -> float:
+    if not value:
+        return 0.0
+
     try:
-        response = requests.get(
-            url,
-            params=params,
-            headers=ESPN_HEADERS,
-            timeout=(8, 20)
-        )
-
-        response.raise_for_status()
-        return response.json()
-
-    except requests.RequestException as error:
-        logger.warning("Falha ESPN: %s - %s", url, error)
-        raise
-
-    except ValueError as error:
-        logger.warning("JSON inválido da ESPN: %s", error)
-        raise
+        parts = str(value).split("-")
+        if len(parts) != 2:
+            return 0.0
+        return float(parts[1])
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def fetch_espn_games(selected_date: str) -> dict:
     try:
-        data = espn_get(
-            ESPN_SCOREBOARD,
-            params={"dates": selected_date.replace("-", "")}
+        data = request_json(
+            SCOREBOARD_URL,
+            {"dates": selected_date.replace("-", "")}
         )
-
-    except Exception as error:
+    except Exception:
         raise HTTPException(
             status_code=503,
-            detail=f"Não foi possível consultar a agenda da ESPN: {error}"
+            detail="Não foi possível consultar a agenda da ESPN."
         )
 
     games = []
 
     for event in data.get("events", []):
         competitions = event.get("competitions", [])
-
         if not competitions:
             continue
 
-        competitors = competitions[0].get("competitors", [])
         home = None
         away = None
 
-        for competitor in competitors:
+        for competitor in competitions[0].get("competitors", []):
             team = competitor.get("team", {})
-
-            team_data = {
+            item = {
                 "abbr": team.get("abbreviation", ""),
                 "name": team.get("displayName", "")
             }
 
             if competitor.get("homeAway") == "home":
-                home = team_data
-
+                home = item
             elif competitor.get("homeAway") == "away":
-                away = team_data
+                away = item
 
-        if not home or not away:
-            continue
-
-        status = (
-            event.get("status", {})
-            .get("type", {})
-            .get("description", "Status não informado")
-        )
-
-        games.append({
-            "game_id": event.get("id"),
-            "away": away,
-            "home": home,
-            "status": status
-        })
+        if home and away:
+            games.append({
+                "game_id": event.get("id"),
+                "home": home,
+                "away": away,
+                "status": (
+                    event.get("status", {})
+                    .get("type", {})
+                    .get("description", "Não informado")
+                )
+            })
 
     return {
         "date": selected_date,
@@ -217,149 +178,36 @@ def fetch_espn_games(selected_date: str) -> dict:
     }
 
 
+def collect_roster_players(node, players):
+    if isinstance(node, dict):
+        athlete_id = node.get("id")
+        name = node.get("fullName") or node.get("displayName")
+
+        if athlete_id and name:
+            players[str(athlete_id)] = {
+                "id": str(athlete_id),
+                "player": name
+            }
+
+        for value in node.values():
+            collect_roster_players(value, players)
+
+    elif isinstance(node, list):
+        for value in node:
+            collect_roster_players(value, players)
+
+
 @lru_cache(maxsize=40)
 def get_team_roster(team: str) -> tuple:
-    """
-    Consulta o elenco de uma equipe.
-    O resultado fica em cache para evitar consultas repetidas.
-    """
+    data = request_json(ROSTER_URL.format(team=team.lower()))
 
-    try:
-        data = espn_get(
-            ESPN_ROSTER.format(team=team.lower())
-        )
+    players = {}
+    collect_roster_players(data, players)
 
-    except Exception:
-        logger.exception("Falha ao consultar elenco: %s", team)
-        return tuple()
-
-    athletes = {}
-    
-    def walk(obj):
-        if isinstance(obj, dict):
-            athlete_id = obj.get("id")
-            name = obj.get("fullName") or obj.get("displayName")
-
-            if athlete_id and name:
-                athlete_id = str(athlete_id)
-
-                if athlete_id.isdigit():
-                    athletes[athlete_id] = {
-                        "id": athlete_id,
-                        "name": name,
-                        "team": team.upper()
-                    }
-
-            for value in obj.values():
-                walk(value)
-
-        elif isinstance(obj, list):
-            for item in obj:
-                walk(item)
-
-    walk(data)
-
-    result = tuple(athletes.values())
-
-    logger.info(
-        "Elenco %s: %s atletas encontrados",
-        team,
-        len(result)
-    )
-
-    return result
+    return tuple(players.values())
 
 
-@lru_cache(maxsize=800)
-def get_athlete_logs(
-    athlete_id: str,
-    season: str
-) -> tuple:
-    """
-    Consulta o histórico de um atleta na temporada selecionada.
-    Somente a Regular Season é considerada.
-    """
-
-    season_year = espn_season_year(season)
-
-    try:
-        data = espn_get(
-            ESPN_GAMELOG.format(athlete_id=athlete_id),
-            params={"season": season_year}
-        )
-
-    except Exception:
-        logger.warning(
-            "Não foi possível consultar o atleta %s",
-            athlete_id
-        )
-        return tuple()
-
-    event_dates = data.get("events", {})
-    regular_category = None
-
-    for category in data.get("categories", []):
-        display_name = str(category.get("displayName", ""))
-
-        if (
-            "Regular Season" in display_name
-            and season in display_name
-        ):
-            regular_category = category
-            break
-
-    if regular_category is None:
-        return tuple()
-
-    games = []
-
-    for month in regular_category.get("categories", []):
-        for event in month.get("events", []):
-            event_id = str(event.get("eventId", ""))
-            stats = event.get("stats", [])
-
-            metadata = event_dates.get(event_id, {})
-            game_date = (
-                metadata.get("gameDate")
-                or metadata.get("date")
-            )
-
-            if not game_date or len(stats) < 14:
-                continue
-
-            try:
-                parsed_date = datetime.strptime(
-                    str(game_date)[:10],
-                    "%Y-%m-%d"
-                ).date()
-            except ValueError:
-                continue
-
-            games.append({
-                "game_id": event_id,
-                "game_date": parsed_date.isoformat(),
-                "date_object": parsed_date,
-                "minutes": parse_minutes(stats[0]),
-                "fga": parse_attempts(stats[1]),
-                "three_pa": parse_attempts(stats[3]),
-                "rebounds": parse_number(stats[7]),
-                "assists": parse_number(stats[8]),
-                "points": parse_number(stats[13])
-            })
-
-    games.sort(
-        key=lambda item: item["date_object"],
-        reverse=True
-    )
-
-    return tuple(games)
-
-
-def get_players_for_date(selected_date: str) -> tuple:
-    """
-    Busca os jogadores dos times que disputam a rodada.
-    """
-
+def get_players_for_date(selected_date: str) -> dict:
     schedule = fetch_espn_games(selected_date)
 
     teams = set()
@@ -368,212 +216,238 @@ def get_players_for_date(selected_date: str) -> tuple:
         teams.add(game["home"]["abbr"])
         teams.add(game["away"]["abbr"])
 
-    if not teams:
-        return tuple(), schedule
-
     players = {}
 
     with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {
             executor.submit(get_team_roster, team): team
-            for team in sorted(teams)
+            for team in teams
         }
 
         for future in as_completed(futures):
+            team = futures[future]
+
             try:
                 roster = future.result()
+                for player in roster:
+                    players[player["id"]] = {
+                        **player,
+                        "team": team
+                    }
+            except Exception as error:
+                logger.warning(
+                    "Falha no elenco %s: %s",
+                    team,
+                    error
+                )
 
-                for athlete in roster:
-                    players[athlete["id"]] = athlete
-
-            except Exception:
-                logger.exception("Erro ao processar elenco")
-
-    return tuple(players.values()), schedule
-
-
-def get_market_value(game: dict, market: str) -> float:
-    if market == "points":
-        return game["points"]
-
-    if market == "assists":
-        return game["assists"]
-
-    if market == "rebounds":
-        return game["rebounds"]
-
-    if market == "threes":
-        return game["three_pa"]
-
-    if market == "attempts":
-        return game["fga"]
-
-    return 0.0
+    return {
+        "schedule": schedule,
+        "players": list(players.values()),
+        "teams_found": len(teams)
+    }
 
 
-def build_candidates(
-    selected_date: str,
-    market: str,
-    limit: int
-) -> dict:
+@lru_cache(maxsize=800)
+def get_athlete_logs(athlete_id: str, year: int) -> tuple:
+    data = request_json(
+        GAMELOG_URL.format(athlete=athlete_id),
+        {"season": year}
+    )
+
+    season_label = f"{year - 1}-{str(year)[-2:]} Regular Season"
+
+    season_category = None
+
+    for category in data.get("categories", []):
+        display_name = category.get("displayName", "")
+
+        if display_name.strip().lower() == season_label.lower():
+            season_category = category
+            break
+
+    if not season_category:
+        return tuple()
+
+    event_dates = data.get("events", {})
+    games = {}
+
+    for month in season_category.get("categories", []):
+        for event in month.get("events", []):
+            event_id = str(event.get("eventId", ""))
+            stats = event.get("stats", [])
+
+            if not event_id or len(stats) <= 13:
+                continue
+
+            metadata = event_dates.get(event_id, {})
+            game_date = metadata.get("gameDate") or metadata.get("date")
+
+            if not game_date:
+                continue
+
+            game_date = str(game_date)[:10]
+
+            if len(game_date) != 10:
+                continue
+
+            games[event_id] = {
+                "date": game_date,
+                "minutes": parse_minutes(stats[0]),
+                "fga": parse_attempts(stats[1]),
+                "three_pa": parse_attempts(stats[3]),
+                "rebounds": parse_number(stats[7]),
+                "assists": parse_number(stats[8]),
+                "points": parse_number(stats[13])
+            }
+
+    ordered = sorted(
+        games.values(),
+        key=lambda game: game["date"],
+        reverse=True
+    )
+
+    return tuple(ordered)
+
+
+def build_player_result(player, games, target_date, market):
+    previous_games = [
+        game for game in games
+        if game["date"] < target_date.isoformat()
+    ]
+
+    if len(previous_games) < 3:
+        return None
+
+    last5 = previous_games[:5]
+
+    minutes_avg = sum(
+        game["minutes"] for game in last5
+    ) / len(last5)
+
+    if minutes_avg < 24:
+        return None
+
+    stat_key = {
+        "points": "points",
+        "assists": "assists",
+        "rebounds": "rebounds",
+        "threes": "three_pa",
+        "attempts": "fga"
+    }[market]
+
+    last10 = previous_games[:10]
+    last20 = previous_games[:20]
+
+    def average(sample):
+        if not sample:
+            return 0.0
+
+        return sum(
+            game[stat_key] for game in sample
+        ) / len(sample)
+
+    avg5 = average(last5)
+    avg10 = average(last10)
+    avg20 = average(last20)
+
+    consistency = sum(
+        game[stat_key] >= avg5 for game in last5
+    ) / len(last5)
+
+    score = (
+        avg5 * 0.50
+        + avg10 * 0.30
+        + avg20 * 0.20
+    ) * (0.80 + consistency * 0.20)
+
+    return {
+        "player": player["player"],
+        "team": player["team"],
+        "last5_avg": round(avg5, 2),
+        "last10_avg": round(avg10, 2),
+        "last20_avg": round(avg20, 2),
+        "minutes_last5_avg": round(minutes_avg, 1),
+        "triage_score": round(score, 2),
+        "games_last5": len(last5),
+        "games_last10": len(last10),
+        "games_last20": len(last20)
+    }
+
+
+def collect_candidates(selected_date, market, limit):
     target_date = datetime.strptime(
         selected_date,
         "%Y-%m-%d"
     ).date()
 
-    season = season_for(target_date)
+    year = season_year(target_date)
 
-    players, schedule = get_players_for_date(selected_date)
+    roster_data = get_players_for_date(selected_date)
+    players = roster_data["players"]
 
-    if not players:
-        return {
-            "date": selected_date,
-            "market": market,
-            "market_label": MARKETS[market]["label"],
-            "count": 0,
-            "source": "ESPN",
-            "updated_at": datetime.now().isoformat(),
-            "method_note": (
-                "Nenhum atleta foi encontrado nos elencos "
-                "das equipes da data selecionada."
-            ),
-            "candidates": []
-        }
+    results = []
+    successful_logs = 0
+    errors = 0
 
-    candidates_list = []
-
-    logger.info(
-        "Consultando %s atletas para %s",
-        len(players),
-        selected_date
-    )
+    def fetch_player(player):
+        logs = get_athlete_logs(player["id"], year)
+        return player, logs
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = {
-            executor.submit(
-                get_athlete_logs,
-                player["id"],
-                season
-            ): player
+        futures = [
+            executor.submit(fetch_player, player)
             for player in players
-        }
+        ]
 
         for future in as_completed(futures):
-            player = futures[future]
-
             try:
-                logs = future.result()
-            except Exception:
-                continue
+                player, logs = future.result()
+                successful_logs += 1
 
-            eligible = [
-                game for game in logs
-                if game["date_object"] < target_date
-            ]
+                result = build_player_result(
+                    player,
+                    logs,
+                    target_date,
+                    market
+                )
 
-            eligible.sort(
-                key=lambda item: item["date_object"],
-                reverse=True
-            )
+                if result:
+                    results.append(result)
 
-            if not eligible:
-                continue
+            except Exception as error:
+                errors += 1
+                logger.warning(
+                    "Falha ao consultar jogador: %s",
+                    error
+                )
 
-            last5 = eligible[:5]
-            last10 = eligible[:10]
-            last20 = eligible[:20]
-
-            if len(last5) < 3:
-                continue
-
-            minutes_avg = sum(
-                game["minutes"] for game in last5
-            ) / len(last5)
-
-            if minutes_avg < 24:
-                continue
-
-            values5 = [
-                get_market_value(game, market)
-                for game in last5
-            ]
-
-            values10 = [
-                get_market_value(game, market)
-                for game in last10
-            ]
-
-            values20 = [
-                get_market_value(game, market)
-                for game in last20
-            ]
-
-            avg5 = sum(values5) / len(values5)
-            avg10 = sum(values10) / len(values10)
-            avg20 = sum(values20) / len(values20)
-
-            consistency = sum(
-                value >= avg5 for value in values5
-            ) / len(values5)
-
-            score = (
-                avg5 * 0.50
-                + avg10 * 0.30
-                + avg20 * 0.20
-            )
-
-            score *= 0.80 + consistency * 0.20
-
-            candidates_list.append({
-                "player": player["name"],
-                "player_id": player["id"],
-                "team": player["team"],
-                "last5_avg": round(avg5, 2),
-                "last10_avg": round(avg10, 2),
-                "last20_avg": round(avg20, 2),
-                "minutes_last5_avg": round(minutes_avg, 1),
-                "triage_score": round(score, 2),
-                "games_last5": len(last5),
-                "games_last10": len(last10),
-                "games_last20": len(last20)
-            })
-
-    candidates_list.sort(
+    results.sort(
         key=lambda item: item["triage_score"],
         reverse=True
     )
 
-    candidates_list = candidates_list[:limit]
-
     return {
         "date": selected_date,
-        "season": season,
         "market": market,
         "market_label": MARKETS[market]["label"],
-        "count": len(candidates_list),
+        "count": min(len(results), limit),
         "source": "ESPN",
+        "season": season_for(target_date),
+        "teams_found": roster_data["teams_found"],
+        "players_found": len(players),
+        "players_consulted": successful_logs,
+        "players_with_errors": errors,
         "updated_at": datetime.now().isoformat(),
-        "teams_in_schedule": len({
-            team
-            for game in schedule["games"]
-            for team in (
-                game["home"]["abbr"],
-                game["away"]["abbr"]
-            )
-        }),
-        "players_consulted": len(players),
         "method_note": (
-            "Triagem baseada exclusivamente na temporada regular "
-            f"{season}, com jogos anteriores à data selecionada. "
-            "L5, L10 e L20 representam os últimos jogos disponíveis. "
-            "Tentativas de arremesso são extraídas do segundo número "
-            "do formato acertos-tentativas da ESPN. "
-            "Filtro mínimo de 3 jogos em L5 e média de 24 minutos. "
-            "A pontuação não representa probabilidade de acerto nem "
-            "valor esperado. Não considera linha da casa, odds, "
-            "lesões, escalações ou confronto defensivo."
+            "Triagem estatística baseada exclusivamente na temporada "
+            "regular atual da NBA. Médias dos últimos 5, 10 e 20 jogos "
+            "anteriores à data selecionada. Filtro mínimo de 24 minutos "
+            "médios nos últimos cinco jogos. Não considera linhas, odds, "
+            "lesões, escalações ou confronto defensivo. A pontuação não "
+            "representa probabilidade de acerto."
         ),
-        "candidates": candidates_list
+        "candidates": results[:limit]
     }
 
 
@@ -582,7 +456,7 @@ def health():
     return {
         "status": "ok",
         "service": "NBA Props Scanner",
-        "version": VERSION,
+        "version": "3.1.0",
         "source": "ESPN"
     }
 
@@ -598,17 +472,14 @@ def games(
         selected_date = date.today().isoformat()
 
     try:
-        parsed_date = datetime.strptime(
-            selected_date,
-            "%Y-%m-%d"
-        ).date()
+        datetime.strptime(selected_date, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail="Data inválida. Utilize o formato AAAA-MM-DD."
+            detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    return fetch_espn_games(parsed_date.isoformat())
+    return fetch_espn_games(selected_date)
 
 
 @app.get("/stats-check")
@@ -623,49 +494,48 @@ def stats_check(
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail="Data inválida. Utilize o formato AAAA-MM-DD."
+            detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    season = season_for(target_date)
-
-    players, schedule = get_players_for_date(
-        target_date.isoformat()
-    )
+    data = get_players_for_date(selected_date)
+    players = data["players"]
 
     if not players:
         raise HTTPException(
             status_code=503,
-            detail=(
-                "A ESPN não retornou atletas para as equipes "
-                "da data selecionada."
-            )
+            detail="Nenhum jogador encontrado nos elencos consultados."
         )
 
-    sample = players[0]
+    sample_player = players[0]
+    year = season_year(target_date)
 
-    logs = get_athlete_logs(
-        sample["id"],
-        season
-    )
+    try:
+        sample_logs = get_athlete_logs(
+            sample_player["id"],
+            year
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Falha ao consultar histórico ESPN: {error}"
+        )
+
+    previous_games = [
+        game for game in sample_logs
+        if game["date"] < selected_date
+    ]
 
     return {
-        "status": "ok" if logs else "warning",
+        "status": "ok" if previous_games else "warning",
         "source": "ESPN",
-        "season": season,
-        "season_year": espn_season_year(season),
-        "teams_found": len({
-            team
-            for game in schedule["games"]
-            for team in (
-                game["home"]["abbr"],
-                game["away"]["abbr"]
-            )
-        }),
+        "season": season_for(target_date),
+        "season_year": year,
+        "teams_found": data["teams_found"],
         "players_found": len(players),
-        "sample_player": sample["name"],
-        "sample_player_id": sample["id"],
-        "sample_games": len(logs),
-        "sample_game": logs[0]["game_date"] if logs else None,
+        "sample_player": sample_player["player"],
+        "sample_player_id": sample_player["id"],
+        "sample_games": len(previous_games),
+        "sample_game": previous_games[0] if previous_games else None,
         "checked_at": datetime.now().isoformat()
     }
 
@@ -679,10 +549,7 @@ def candidates(
     if market not in MARKETS:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Mercado inválido. Utilize: "
-                + ", ".join(MARKETS.keys())
-            )
+            detail="Mercado inválido: " + ", ".join(MARKETS.keys())
         )
 
     try:
@@ -690,17 +557,26 @@ def candidates(
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail="Data inválida. Utilize o formato AAAA-MM-DD."
+            detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
     logger.info(
-        "Consulta ESPN. Data: %s. Mercado: %s",
+        "Candidatos: data=%s mercado=%s",
         selected_date,
         market
     )
 
-    return build_candidates(
-        selected_date,
-        market,
-        limit
-    )
+    try:
+        return collect_candidates(
+            selected_date,
+            market,
+            limit
+        )
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("Erro ao gerar candidatos")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Não foi possível gerar candidatos: {error}"
+        )
