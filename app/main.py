@@ -963,3 +963,19 @@ def schedule_check():
         "events_count": len(events),
         "sample_events": events[:2]
     }
+
+@app.get("/defense-history-check")
+def defense_history_check():
+    schedule = request_json(
+        "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/den/schedule",
+        {"season": 2027}
+    )
+
+    return {
+        "team": "DEN",
+        "games": get_completed_team_games(
+            schedule,
+            "DEN",
+            5
+        )
+    }
