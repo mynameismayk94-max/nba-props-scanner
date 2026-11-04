@@ -181,6 +181,58 @@ def extract_team_defense_stats(summary, defending_team):
         )
     }
 
+def get_completed_team_games(schedule_data, team_abbr, limit=20):
+    games = []
+
+    for event in schedule_data.get("events", []):
+        season_type = (
+            event.get("seasonType", {})
+            .get("abbreviation")
+        )
+
+        if season_type != "reg":
+            continue
+
+        competition = (
+            event.get("competitions", [{}])[0]
+        )
+
+        status = (
+            competition.get("status", {})
+            .get("type", {})
+        )
+
+        if not status.get("completed"):
+            continue
+
+        opponent = None
+
+        for competitor in competition.get("competitors", []):
+            competitor_team = (
+                competitor.get("team", {})
+                .get("abbreviation")
+            )
+
+            if competitor_team != team_abbr:
+                opponent = competitor_team
+                break
+
+        if not opponent:
+            continue
+
+        games.append({
+            "game_id": str(event.get("id")),
+            "date": event.get("date"),
+            "opponent": opponent
+        })
+
+    games.sort(
+        key=lambda game: game.get("date") or "",
+        reverse=True
+    )
+
+    return games[:limit]
+
 def fetch_espn_games(selected_date: str) -> dict:
     try:
         data = request_json(
