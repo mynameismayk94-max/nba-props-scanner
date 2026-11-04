@@ -1,5 +1,7 @@
 
 import logging
+import time
+
 from datetime import datetime, date
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,7 +18,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.2.0"
+    version="3.3.0"
 )
 
 app.add_middleware(
@@ -268,6 +270,7 @@ def get_completed_team_games(
 # HISTÓRICO DEFENSIVO L5 / L10 / L20
 # ============================================================
 
+@lru_cache(maxsize=60)
 def get_team_defense_history(
     team_abbr,
     limit=20,
@@ -275,6 +278,12 @@ def get_team_defense_history(
 ):
     if target_date is None:
         target_date = date.today()
+
+    logger.info(
+        "Consultando histórico defensivo: equipe=%s data=%s",
+        team_abbr,
+        target_date
+    )
 
     schedule = request_json(
         f"https://site.api.espn.com/apis/site/v2/sports/"
@@ -395,6 +404,12 @@ def get_team_defense_history(
             "games": sample,
             "averages": calculate_averages(sample)
         }
+
+    logger.info(
+        "Histórico defensivo concluído: equipe=%s jogos=%s",
+        team_abbr,
+        len(results)
+    )
 
     return history
 
@@ -857,12 +872,20 @@ def collect_candidates(
     limit
 ):
 
+    total_start = time.perf_counter()
+
     target_date = datetime.strptime(
         selected_date,
         "%Y-%m-%d"
     ).date()
 
     year = season_year(target_date)
+
+    # --------------------------------------------------------
+    # ELENCOS E AGENDA
+    # --------------------------------------------------------
+
+    stage_start = time.perf_counter()
 
     roster_data = get_players_for_date(selected_date)
 
@@ -872,9 +895,18 @@ def collect_candidates(
         roster_data["schedule"]
     )
 
+    logger.info(
+        "Etapa 1 concluída: %s equipes e %s jogadores. Tempo: %.2fs",
+        roster_data["teams_found"],
+        len(players),
+        time.perf_counter() - stage_start
+    )
+
     # --------------------------------------------------------
     # HISTÓRICO DEFENSIVO DAS EQUIPES ADVERSÁRIAS
     # --------------------------------------------------------
+
+    stage_start = time.perf_counter()
 
     defense_cache = {}
 
@@ -912,9 +944,19 @@ def collect_candidates(
                     error
                 )
 
+    logger.info(
+        "Etapa 2 concluída: histórico defensivo de %s/%s equipes. "
+        "Tempo: %.2fs",
+        len(defense_cache),
+        len(unique_opponents),
+        time.perf_counter() - stage_start
+    )
+
     # --------------------------------------------------------
     # HISTÓRICO INDIVIDUAL DOS JOGADORES
     # --------------------------------------------------------
+
+    stage_start = time.perf_counter()
 
     results = []
 
@@ -970,10 +1012,26 @@ def collect_candidates(
                     error
                 )
 
+    logger.info(
+        "Etapa 3 concluída: %s históricos consultados, "
+        "%s erros e %s candidatos. Tempo: %.2fs",
+        successful_logs,
+        errors,
+        len(results),
+        time.perf_counter() - stage_start
+    )
+
     # Ordena pela pontuação original.
     results.sort(
         key=lambda item: item["triage_score"],
         reverse=True
+    )
+
+    logger.info(
+        "Consulta finalizada: data=%s mercado=%s total=%.2fs",
+        selected_date,
+        market,
+        time.perf_counter() - total_start
     )
 
     return {
@@ -1020,7 +1078,7 @@ def health():
     return {
         "status": "ok",
         "service": "NBA Props Scanner",
-        "version": "3.2.0",
+        "version": "3.3.0",
         "source": "ESPN"
     }
 
