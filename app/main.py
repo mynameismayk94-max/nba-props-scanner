@@ -617,9 +617,9 @@ def collect_candidates(selected_date, market, limit):
 
     opponents = get_opponents_for_date(
     roster_data["schedule"]
-)
+    )
 
-defense_cache = {}
+    defense_cache = {}
 
 for team, opponent in opponents.items():
     defense_cache[team] = {
