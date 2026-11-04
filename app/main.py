@@ -522,6 +522,18 @@ def get_athlete_logs(athlete_id: str, year: int) -> tuple:
 
     return tuple(ordered)
 
+def get_opponents_for_date(schedule):
+    opponents = {}
+
+    for game in schedule.get("games", []):
+        home = game["home"]["abbr"]
+        away = game["away"]["abbr"]
+
+        opponents[home] = away
+        opponents[away] = home
+
+    return opponents
+
 def build_player_result(player, games, target_date, market):
     previous_games = [
         game for game in games
