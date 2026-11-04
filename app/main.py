@@ -231,7 +231,7 @@ def get_players_for_date(selected_date: str) -> dict:
         teams.add(game["home"]["abbr"])
         teams.add(game["away"]["abbr"])
 
-    players = {}
+    memberships = {}
 
     with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {
@@ -244,11 +244,20 @@ def get_players_for_date(selected_date: str) -> dict:
 
             try:
                 roster = future.result()
+
                 for player in roster:
-                    players[player["id"]] = {
-                        **player,
-                        "team": team
-                    }
+                    athlete_id = str(player["id"]).strip()
+
+                    entry = memberships.setdefault(
+                        athlete_id,
+                        {
+                            "player": player,
+                            "teams": set()
+                        }
+                    )
+
+                    entry["teams"].add(team)
+
             except Exception as error:
                 logger.warning(
                     "Falha no elenco %s: %s",
@@ -256,10 +265,37 @@ def get_players_for_date(selected_date: str) -> dict:
                     error
                 )
 
+    players = []
+    duplicates = 0
+
+    for athlete_id, entry in memberships.items():
+
+        # Não atribui jogadores encontrados em mais de uma equipe.
+        if len(entry["teams"]) != 1:
+            duplicates += 1
+
+            logger.warning(
+                "Jogador com associação ambígua: %s - equipes: %s",
+                entry["player"]["player"],
+                entry["teams"]
+            )
+
+            continue
+
+        team = next(iter(entry["teams"]))
+
+        players.append({
+            **entry["player"],
+            "team": team
+        })
+
+    players.sort(key=lambda p: p["player"].casefold())
+
     return {
         "schedule": schedule,
-        "players": list(players.values()),
-        "teams_found": len(teams)
+        "players": players,
+        "teams_found": len(teams),
+        "players_excluded_multiple_teams": duplicates
     }
 
 
