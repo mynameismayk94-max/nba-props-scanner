@@ -272,19 +272,13 @@ def get_athlete_logs(athlete_id: str, year: int) -> tuple:
 
     season_label = f"{year - 1}-{str(year)[-2:]} Regular Season"
 
-    print("DEBUG SEASON LABEL:", season_label)
-    print("DEBUG CATEGORIES:", [
-        category.get("displayName")
-        for category in data.get("categories", [])
-    ])
-
     season_category = None
 
-    for category in data.get("categories", []):
-        display_name = category.get("displayName", "")
+    for season_type in data.get("seasonTypes", []):
+        display_name = season_type.get("displayName", "")
 
         if display_name.strip().lower() == season_label.lower():
-            season_category = category
+            season_category = season_type
             break
 
     if not season_category:
@@ -329,7 +323,6 @@ def get_athlete_logs(athlete_id: str, year: int) -> tuple:
     )
 
     return tuple(ordered)
-
 
 def build_player_result(player, games, target_date, market):
     previous_games = [
