@@ -1066,7 +1066,8 @@ def defense_game_check():
 @app.get("/defense-average-check")
 def defense_average_check():
 
-    return get_team_defense_history(
-        "DEN",
-        5
-    )
+    return {
+    "L5": get_team_defense_history("DEN", 5),
+    "L10": get_team_defense_history("DEN", 10),
+    "L20": get_team_defense_history("DEN", 20)
+}
