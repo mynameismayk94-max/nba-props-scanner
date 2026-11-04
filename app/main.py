@@ -344,6 +344,7 @@ def get_athlete_logs(athlete_id: str, year: int) -> tuple:
 
             games[event_id] = {
                 "date": game_date,
+                "team": (metadata.get("team") or {}).get("abbreviation"),
                 "minutes": parse_minutes(stats[0]),
                 "fga": parse_attempts(stats[1]),
                 "three_pa": parse_attempts(stats[3]),
@@ -414,6 +415,11 @@ def build_player_result(player, games, target_date, market):
     return {
         "player": player["player"],
         "team": player["team"],
+        "last_game_team": last5[0].get("team"),
+        "team_changed": bool(
+            last5[0].get("team")
+            and last5[0]["team"] != player["team"]
+        ),
         "last5_avg": round(avg5, 2),
         "last10_avg": round(avg10, 2),
         "last20_avg": round(avg20, 2),
