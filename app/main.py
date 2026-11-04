@@ -503,7 +503,45 @@ def games(
     return fetch_espn_games(selected_date)
 
 
+@app.get("/debug-gamelog")
+def debug_gamelog():
+    athlete_id = "1966"
+    year = 2027
 
+    data = request_json(
+        GAMELOG_URL.format(athlete=athlete_id),
+        {"season": year}
+    )
+
+    events = data.get("events")
+
+    if isinstance(events, dict):
+        events_sample = [
+            {"event_id": key, "data": value}
+            for key, value in list(events.items())[:3]
+        ]
+        events_count = len(events)
+
+    elif isinstance(events, list):
+        events_sample = events[:3]
+        events_count = len(events)
+
+    else:
+        events_sample = events
+        events_count = 0
+
+    return {
+        "athlete_id": athlete_id,
+        "season_year": year,
+        "top_level_keys": list(data.keys()),
+        "categories_present": "categories" in data,
+        "labels": data.get("labels"),
+        "names": data.get("names"),
+        "season_types": data.get("seasonTypes"),
+        "events_type": type(events).__name__,
+        "events_count": events_count,
+        "events_sample": events_sample
+    }
 @app.get("/stats-check")
 def stats_check(
     selected_date: str = Query(alias="date")
