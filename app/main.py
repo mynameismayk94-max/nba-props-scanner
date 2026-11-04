@@ -616,22 +616,21 @@ def collect_candidates(selected_date, market, limit):
     players = roster_data["players"]
 
     opponents = get_opponents_for_date(
-    roster_data["schedule"]
+        roster_data["schedule"]
     )
 
     defense_cache = {}
 
-for team, opponent in opponents.items():
-    defense_cache[team] = {
-        "L5": get_team_defense_history(opponent, 5),
-        "L10": get_team_defense_history(opponent, 10),
-        "L20": get_team_defense_history(opponent, 20)
-    }
+    for team, opponent in opponents.items():
+        defense_cache[team] = {
+            "L5": get_team_defense_history(opponent, 5),
+            "L10": get_team_defense_history(opponent, 10),
+            "L20": get_team_defense_history(opponent, 20)
+        }
 
     results = []
     successful_logs = 0
     errors = 0
-
     def fetch_player(player):
         logs = get_athlete_logs(player["id"], year)
         return player, logs
