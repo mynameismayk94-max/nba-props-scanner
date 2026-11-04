@@ -979,3 +979,20 @@ def defense_history_check():
             5
         )
     }
+
+@app.get("/defense-game-check")
+def defense_game_check():
+    summary = request_json(
+        "https://site.api.espn.com/apis/site/v2/sports/"
+        "basketball/nba/summary",
+        {"event": "401909918"}
+    )
+
+    return {
+        "DEN_defense": extract_team_defense_stats(
+            summary, "DEN"
+        ),
+        "POR_defense": extract_team_defense_stats(
+            summary, "POR"
+        )
+    }
