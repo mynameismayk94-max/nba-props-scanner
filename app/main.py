@@ -138,6 +138,48 @@ def parse_attempts(value) -> float:
     except (ValueError, TypeError):
         return 0.0
 
+def extract_team_defense_stats(summary, defending_team):
+    teams = (
+        summary.get("boxscore", {})
+        .get("teams", [])
+    )
+
+    opponent_stats = None
+
+    for item in teams:
+        team_abbr = (
+            item.get("team", {})
+            .get("abbreviation")
+        )
+
+        if team_abbr != defending_team:
+            opponent_stats = item.get("statistics", [])
+            break
+
+    if opponent_stats is None:
+        return None
+
+    stats = {
+        stat.get("name"): stat.get("displayValue")
+        for stat in opponent_stats
+    }
+
+    return {
+        "fga_allowed": parse_attempts(
+            stats.get("fieldGoalsMade-fieldGoalsAttempted")
+        ),
+        "three_pa_allowed": parse_attempts(
+            stats.get(
+                "threePointFieldGoalsMade-threePointFieldGoalsAttempted"
+            )
+        ),
+        "rebounds_allowed": parse_number(
+            stats.get("totalRebounds")
+        ),
+        "assists_allowed": parse_number(
+            stats.get("assists")
+        )
+    }
 
 def fetch_espn_games(selected_date: str) -> dict:
     try:
