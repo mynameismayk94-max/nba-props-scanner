@@ -233,6 +233,72 @@ def get_completed_team_games(schedule_data, team_abbr, limit=20):
 
     return games[:limit]
 
+def get_team_defense_history(team_abbr, limit=5):
+
+    schedule = request_json(
+        f"https://site.api.espn.com/apis/site/v2/sports/"
+        f"basketball/nba/teams/{team_abbr.lower()}/schedule",
+        {"season": 2027}
+    )
+
+    games = get_completed_team_games(
+        schedule,
+        team_abbr,
+        limit
+    )
+
+    results = []
+
+    for game in games:
+
+        summary = request_json(
+            "https://site.api.espn.com/apis/site/v2/sports/"
+            "basketball/nba/summary",
+            {"event": game["game_id"]}
+        )
+
+        stats = extract_team_defense_stats(
+            summary,
+            team_abbr
+        )
+
+        if not stats:
+            continue
+
+        results.append({
+            **game,
+            **stats
+        })
+
+    stat_keys = [
+        "fga_allowed",
+        "three_pa_allowed",
+        "rebounds_allowed",
+        "assists_allowed"
+    ]
+
+    averages = {}
+
+    for key in stat_keys:
+
+        values = [
+            game[key]
+            for game in results
+            if game.get(key) is not None
+        ]
+
+        averages[key] = (
+            round(sum(values) / len(values), 1)
+            if values else None
+        )
+
+    return {
+        "team": team_abbr,
+        "games_analyzed": len(results),
+        "games": results,
+        "averages": averages
+    }
+
 def fetch_espn_games(selected_date: str) -> dict:
     try:
         data = request_json(
@@ -996,3 +1062,11 @@ def defense_game_check():
             summary, "POR"
         )
     }
+
+@app.get("/defense-average-check")
+def defense_average_check():
+
+    return get_team_defense_history(
+        "DEN",
+        5
+    )
