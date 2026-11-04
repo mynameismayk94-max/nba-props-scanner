@@ -650,6 +650,150 @@ def stats_check(
 
 
 
+@app.get("/team-check")
+def team_check(
+    selected_date: str = Query(alias="date")
+):
+    try:
+        target_date = datetime.strptime(
+            selected_date,
+            "%Y-%m-%d"
+        ).date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize AAAA-MM-DD."
+        )
+
+    data = get_players_for_date(selected_date)
+    players = data["players"]
+
+    if not players:
+        raise HTTPException(
+            status_code=503,
+            detail="Nenhum jogador encontrado nos elencos consultados."
+        )
+
+    year = season_year(target_date)
+
+    def check_player(player):
+        logs = get_athlete_logs(player["id"], year)
+        previous_games = [
+            game for game in logs
+            if game["date"] < selected_date
+        ]
+
+        if not previous_games:
+            return {
+                "player": player["player"],
+                "player_id": player["id"],
+                "current_team": player["team"],
+                "status": "no_previous_games"
+            }
+
+        last_game = previous_games[0]
+        historical_teams = sorted({
+            game.get("team")
+            for game in previous_games[:5]
+            if game.get("team")
+        })
+        last_game_team = last_game.get("team")
+
+        if not last_game_team:
+            status = "missing_historical_team"
+        elif last_game_team != player["team"]:
+            status = "team_mismatch"
+        else:
+            status = "ok"
+
+        return {
+            "player": player["player"],
+            "player_id": player["id"],
+            "current_team": player["team"],
+            "last_game_date": last_game["date"],
+            "last_game_team": last_game_team,
+            "team_changed": bool(
+                last_game_team
+                and last_game_team != player["team"]
+            ),
+            "teams_in_last5": historical_teams,
+            "multiple_teams_last5": len(historical_teams) > 1,
+            "status": status
+        }
+
+    checked_results = []
+    errors = []
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {
+            executor.submit(check_player, player): player
+            for player in players
+        }
+
+        for future in as_completed(futures):
+            player = futures[future]
+            try:
+                checked_results.append(future.result())
+            except Exception as error:
+                errors.append({
+                    "player": player["player"],
+                    "player_id": player["id"],
+                    "current_team": player["team"],
+                    "error": str(error)[:250]
+                })
+
+    checked_results.sort(
+        key=lambda item: item["player"].casefold()
+    )
+    errors.sort(
+        key=lambda item: item["player"].casefold()
+    )
+
+    mismatches = [
+        item for item in checked_results
+        if item["status"] == "team_mismatch"
+    ]
+    missing_historical_team = [
+        item for item in checked_results
+        if item["status"] == "missing_historical_team"
+    ]
+    no_previous_games = [
+        item for item in checked_results
+        if item["status"] == "no_previous_games"
+    ]
+    multiple_teams = [
+        item for item in checked_results
+        if item.get("multiple_teams_last5")
+    ]
+
+    return {
+        "status": "ok" if not errors else "partial",
+        "source": "ESPN",
+        "date": selected_date,
+        "season": season_for(target_date),
+        "teams_found": data["teams_found"],
+        "players_found": len(players),
+        "players_excluded_multiple_rosters": data.get(
+            "players_excluded_multiple_teams", 0
+        ),
+        "players_checked": len(checked_results) + len(errors),
+        "players_with_history": len(checked_results) - len(
+            no_previous_games
+        ),
+        "players_without_history": len(no_previous_games),
+        "players_with_team_mismatch": len(mismatches),
+        "players_missing_historical_team": len(missing_historical_team),
+        "players_with_multiple_teams_last5": len(multiple_teams),
+        "players_with_errors": len(errors),
+        "team_mismatches": mismatches,
+        "missing_historical_team": missing_historical_team,
+        "multiple_teams_last5": multiple_teams,
+        "players_without_history": no_previous_games,
+        "errors": errors,
+        "checked_at": datetime.now().isoformat()
+    }
+
+
 @app.get("/candidates")
 def candidates(
     selected_date: str = Query(alias="date"),
