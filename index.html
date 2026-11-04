@@ -139,9 +139,18 @@ async function buscar(mercado){
    return;
   }
   html+='<div class="tablewrap"><table><tr><th>Jogador</th><th>Equipe</th><th>L5</th><th>L10</th><th>L20</th><th>Minutos L5</th><th>Pontuação</th></tr>';
-  r.candidates.forEach(p=>{
-   html+='<tr><td>'+p.player+'</td><td>'+p.team+'</td><td>'+p.last5_avg+'</td><td>'+p.last10_avg+'</td><td>'+p.last20_avg+'</td><td>'+p.minutes_last5_avg+'</td><td>'+p.triage_score+'</td></tr>';
-  });
+
+r.candidates.forEach(p=>{
+   html+='<tr>'+
+   '<td>'+p.player+'</td>'+
+   '<td>'+p.team+'</td>'+
+   '<td>'+p.last5_avg+' <small>('+p.games_last5+'/5)</small></td>'+
+   '<td>'+p.last10_avg+' <small>('+p.games_last10+'/10)</small></td>'+
+   '<td>'+p.last20_avg+' <small>('+p.games_last20+'/20)</small></td>'+
+   '<td>'+p.minutes_last5_avg+'</td>'+
+   '<td>'+p.triage_score+'</td>'+
+   '</tr>';
+});
   html+='</table></div>';
   box.innerHTML=html;
  }catch(e){
