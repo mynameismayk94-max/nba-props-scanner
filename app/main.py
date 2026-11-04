@@ -615,6 +615,19 @@ def collect_candidates(selected_date, market, limit):
     roster_data = get_players_for_date(selected_date)
     players = roster_data["players"]
 
+    opponents = get_opponents_for_date(
+    roster_data["schedule"]
+)
+
+defense_cache = {}
+
+for team, opponent in opponents.items():
+    defense_cache[team] = {
+        "L5": get_team_defense_history(opponent, 5),
+        "L10": get_team_defense_history(opponent, 10),
+        "L20": get_team_defense_history(opponent, 20)
+    }
+
     results = []
     successful_logs = 0
     errors = 0
