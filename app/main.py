@@ -345,6 +345,7 @@ def get_athlete_logs(athlete_id: str, year: int) -> tuple:
             games[event_id] = {
                 "date": game_date,
                 "team": (metadata.get("team") or {}).get("abbreviation"),
+                "opponent": (metadata.get("opponent") or {}).get("abbreviation"),
                 "minutes": parse_minutes(stats[0]),
                 "fga": parse_attempts(stats[1]),
                 "three_pa": parse_attempts(stats[3]),
