@@ -196,7 +196,7 @@ def fetch_espn_games(selected_date: str) -> dict:
 def collect_roster_players(node, players):
     if isinstance(node, dict):
         athlete_id = node.get("id")
-        name = node.get("fullName") or node.get("displayName")
+        name = node.get("fullName")
 
         if athlete_id and name:
             players[str(athlete_id)] = {
