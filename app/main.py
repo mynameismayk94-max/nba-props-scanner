@@ -877,3 +877,20 @@ def candidates(
             status_code=503,
             detail=f"Não foi possível gerar candidatos: {error}"
         )
+
+@app.get("/defense-check")
+def defense_check():
+    summary = request_json(
+        "https://site.api.espn.com/apis/site/v2/sports/"
+        "basketball/nba/summary",
+        {"event": "0401909918"}
+    )
+
+    return {
+        "POR_defense": extract_team_defense_stats(
+            summary, "POR"
+        ),
+        "DEN_defense": extract_team_defense_stats(
+            summary, "DEN"
+        )
+    }
