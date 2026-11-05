@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NBA Props Scanner</title>
+
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f1f4f9;color:#172033;font-family:Arial,sans-serif}
@@ -25,10 +26,9 @@ th{background:#f5f7fb}
 th:first-child,td:first-child{text-align:left}
 .tablewrap{overflow-x:auto}
 small{color:#64748b}
-.section-title{background:#eaf0f9;font-weight:bold;text-align:center}
 .metric{font-weight:bold;color:#172554}
-.muted{color:#64748b}
 .new-metric{background:#f0f7ff}
+.new-header{background:#dceafa}
 @media(max-width:600px){
  header{padding:18px}
  main{margin:15px auto}
@@ -38,6 +38,7 @@ small{color:#64748b}
 }
 </style>
 </head>
+
 <body>
 
 <header>
@@ -80,18 +81,30 @@ small{color:#64748b}
 
 <section class="card">
 <h2>Como interpretar</h2>
+
 <p>O scanner organiza candidatos com base nas médias recentes e nos minutos em quadra.</p>
+
 <p><b>Defesa geral:</b> produção total permitida pelo adversário por jogo.</p>
+
 <p><b>Defesa por posição:</b> produção total permitida aos jogadores da mesma posição e média individual por participação.</p>
-<p><b>Defesa ajustada à minutagem:</b> considera apenas jogadores da mesma posição que tiveram minutos iguais ou superiores à média L5 do candidato. Apresenta a média por participação, a taxa por minuto e a projeção para os minutos do candidato.</p>
-<p><b>Amostra:</b> quantidade de jogos, participações e minutos considerados no cálculo.</p>
-<p><b>Importante:</b> os resultados são uma triagem estatística, não recomendações garantidas de apostas. As métricas defensivas são contextuais e não alteram a pontuação do candidato.</p>
+
+<p><b>Defesa ajustada à minutagem:</b> considera jogadores da mesma posição que atuaram minutos iguais ou superiores à média L5 do candidato.</p>
+
+<p><b>AST por minuto:</b> taxa de produção permitida por minuto na amostra filtrada.</p>
+
+<p><b>Projeção ajustada:</b> aplica essa taxa à média de minutos do candidato.</p>
+
+<p><b>Amostra:</b> quantidade de jogos, participações e minutos considerados.</p>
+
+<p><b>Importante:</b> as métricas defensivas são contextuais e não alteram a pontuação do candidato. A projeção não representa uma previsão garantida.</p>
+
 <p>Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.</p>
 </section>
 
 </main>
 
 <script>
+
 const api=document.getElementById('api');
 const status=document.getElementById('status');
 const data=document.getElementById('data');
@@ -110,7 +123,11 @@ data.value=new Date().toLocaleDateString('en-CA');
 
 async function requisicao(caminho){
  const resposta=await fetch(endereco()+caminho);
- if(!resposta.ok) throw new Error('Erro HTTP '+resposta.status);
+
+ if(!resposta.ok){
+  throw new Error('Erro HTTP '+resposta.status);
+ }
+
  return await resposta.json();
 }
 
@@ -118,159 +135,279 @@ function numero(valor,casas=2){
  if(valor===null || valor===undefined || valor===''){
   return '—';
  }
+
  const n=Number(valor);
- if(!Number.isFinite(n)) return '—';
+
+ if(!Number.isFinite(n)){
+  return '—';
+ }
+
  return n.toFixed(casas);
 }
 
 function participacoes(valor){
- if(valor===null || valor===undefined) return '—';
+ if(valor===null || valor===undefined){
+  return '—';
+ }
+
  return valor;
 }
 
+function amostra(jogos,apps,minutos){
+ return '<br><small>'+
+ participacoes(jogos)+' jogos · '+
+ participacoes(apps)+' participações · '+
+ numero(minutos,0)+' min</small>';
+}
+
 async function testar(){
+
  status.innerText='Testando conexão...';
+
  try{
   const r=await requisicao('/health');
-  status.innerText='✅ Conectado! Servidor: '+r.service+' | Versão: '+(r.version || 'não informada');
+
+  status.innerText=
+   '✅ Conectado! Servidor: '+r.service+
+   ' | Versão: '+(r.version || 'não informada');
+
  }catch(e){
-  status.innerText='❌ Não foi possível conectar: '+e.message;
+
+  status.innerText=
+   '❌ Não foi possível conectar: '+e.message;
  }
 }
 
 async function carregarJogos(){
+
  const box=document.getElementById('jogos');
+
  box.innerHTML='Carregando jogos...';
+
  try{
+
   const r=await requisicao('/games?date='+data.value);
+
   if(!r.games || !r.games.length){
    box.innerHTML='<p>Nenhum jogo encontrado para esta data.</p>';
    return;
   }
-  let html='<div class="tablewrap"><table><tr><th>Visitante</th><th>Mandante</th><th>Status</th></tr>';
+
+  let html='<div class="tablewrap"><table>';
+  html+='<tr><th>Visitante</th><th>Mandante</th><th>Status</th></tr>';
+
   r.games.forEach(j=>{
-   html+='<tr><td>'+j.away.abbr+' - '+j.away.name+'</td><td>'+j.home.abbr+' - '+j.home.name+'</td><td>'+j.status+'</td></tr>';
-  });
-  box.innerHTML=html+'</table></div>';
- }catch(e){
-  box.innerHTML='Erro ao buscar jogos: '+e.message;
- }
-}
-
-function celulaAmostra(jogos,participacoes,minutos){
- return '<br><small>'+
-  participacoesValor(participacoes)+' part. · '+
-  participacoesValor(jogos)+' jogos · '+
-  numero(minutos,0)+' min</small>';
-}
-
-function participacoesValor(valor){
- return valor===null || valor===undefined ? '—' : valor;
-}
-
-async function buscar(mercado){
- const box=document.getElementById('resultado');
- box.innerHTML='Analisando jogadores...';
-
- try{
-  const r=await requisicao('/candidates?date='+data.value+'&market='+mercado+'&limit=20');
-
-  let html='<h3>'+r.market_label+' - '+r.date+'</h3>';
-  html+='<p><small>'+(r.method_note || 'Triagem estatística exploratória.')+'</small></p>';
-
-  if(!r.candidates || !r.candidates.length){
-   box.innerHTML=html+'<p>Nenhum candidato retornado.</p>';
-   return;
-  }
-
-  html+='<div class="tablewrap"><table>';
-
-  html+='<tr>'+
-  '<th rowspan="2">Jogador</th>'+
-  '<th rowspan="2">Equipe</th>'+
-  '<th rowspan="2">Posição</th>'+
-  '<th rowspan="2">Adversário</th>'+
-  '<th colspan="2">Média do jogador</th>'+
-  '<th rowspan="2">Minutos L5</th>'+
-  '<th rowspan="2">Pontuação</th>'+
-  '<th colspan="2">Defesa geral</th>'+
-  '<th colspan="2">Defesa por posição - total</th>'+
-  '<th colspan="2">Defesa por posição - média individual</th>'+
-  '<th colspan="3" class="new-metric">Defesa ajustada à minutagem</th>'+
-  '</tr>';
-
-  html+='<tr>'+
-  '<th>L5</th><th>L10</th>'+
-  '<th>L5</th><th>L10</th>'+
-  '<th>L5</th><th>L10</th>'+
-  '<th>L5</th><th>L10</th>'+
-  '<th class="new-metric">Média AST L5/L10</th>'+
-  '<th class="new-metric">AST/min L5/L10</th>'+
-  '<th class="new-metric">Projeção L5/L10</th>'+
-  '</tr>';
-
-  r.candidates.forEach(p=>{
-   const d=p.opponent_position_minutes_adjusted_defense || {};
-
-   const avg5=d.l5_avg ?? p.opponent_position_minutes_adjusted_defense_l5_avg;
-   const avg10=d.l10_avg ?? p.opponent_position_minutes_adjusted_defense_l10_avg;
-
-   const rate5=d.l5_per_minute ?? p.opponent_position_minutes_adjusted_defense_l5_per_minute;
-   const rate10=d.l10_per_minute ?? p.opponent_position_minutes_adjusted_defense_l10_per_minute;
-
-   const proj5=d.l5_projected ?? p.opponent_position_minutes_adjusted_defense_l5_projected;
-   const proj10=d.l10_projected ?? p.opponent_position_minutes_adjusted_defense_l10_projected;
-
-   const games5=d.l5_games ?? p.opponent_position_minutes_adjusted_defense_l5_games;
-   const games10=d.l10_games ?? p.opponent_position_minutes_adjusted_defense_l10_games;
-
-   const apps5=d.l5_player_games ?? p.opponent_position_minutes_adjusted_defense_l5_player_games;
-   const apps10=d.l10_player_games ?? p.opponent_position_minutes_adjusted_defense_l10_player_games;
-
-   const minutes5=d.l5_minutes ?? p.opponent_position_minutes_adjusted_defense_l5_minutes;
-   const minutes10=d.l10_minutes ?? p.opponent_position_minutes_adjusted_defense_l10_minutes;
 
    html+='<tr>'+
-   '<td><b>'+p.player+'</b></td>'+
-   '<td>'+p.team+'</td>'+
-   '<td>'+(p.position || '—')+'</td>'+
-   '<td>'+(p.opponent || '—')+'</td>'+
-   '<td>'+numero(p.last5_avg)+'</td>'+
-   '<td>'+numero(p.last10_avg)+'</td>'+
-   '<td>'+numero(p.minutes_last5_avg,1)+'</td>'+
-   '<td class="metric">'+numero(p.triage_score)+'</td>'+
-   '<td>'+numero(p.opponent_defense_l5_avg,1)+'</td>'+
-   '<td>'+numero(p.opponent_defense_l10_avg,1)+'</td>'+
-   '<td>'+numero(p.opponent_position_defense_l5_avg,1)+'</td>'+
-   '<td>'+numero(p.opponent_position_defense_l10_avg,1)+'</td>'+
-   '<td><b>'+numero(p.opponent_position_individual_defense_l5_avg)+'</b>'+
-   '<br><small>'+participacoes(p.opponent_position_individual_defense_player_games_l5)+' participações</small></td>'+
-   '<td><b>'+numero(p.opponent_position_individual_defense_l10_avg)+'</b>'+
-   '<br><small>'+participacoes(p.opponent_position_individual_defense_player_games_l10)+' participações</small></td>'+
-
-   '<td class="new-metric"><b>'+numero(avg5)+'</b>'+
-   celulaAmostra(games5,apps5,minutes5)+
-   '<br><small>L10: '+numero(avg10)+'</small>'+
-   celulaAmostra(games10,apps10,minutes10)+'</td>'+
-
-   '<td class="new-metric"><b>'+numero(rate5,4)+'</b>'+
-   '<br><small>L10: '+numero(rate10,4)+'</small></td>'+
-
-   '<td class="new-metric"><b>'+numero(proj5)+'</b>'+
-   '<br><small>L10: '+numero(proj10)+'</small></td>'+
+   '<td>'+j.away.abbr+' - '+j.away.name+'</td>'+
+   '<td>'+j.home.abbr+' - '+j.home.name+'</td>'+
+   '<td>'+j.status+'</td>'+
    '</tr>';
+
   });
 
   html+='</table></div>';
 
-  html+='<p><small>As métricas defensivas são contextuais e não alteram a pontuação do candidato. A projeção ajustada é uma referência estatística, não uma previsão garantida.</small></p>';
+  box.innerHTML=html;
+
+ }catch(e){
+
+  box.innerHTML='Erro ao buscar jogos: '+e.message;
+ }
+}
+
+async function buscar(mercado){
+
+ const box=document.getElementById('resultado');
+
+ box.innerHTML='Analisando jogadores...';
+
+ try{
+
+  const r=await requisicao(
+   '/candidates?date='+data.value+
+   '&market='+mercado+
+   '&limit=20'
+  );
+
+  let html='<h3>'+r.market_label+' - '+r.date+'</h3>';
+
+  html+='<p><small>'+
+   (r.method_note || 'Triagem estatística exploratória.')+
+   '</small></p>';
+
+  if(!r.candidates || !r.candidates.length){
+
+   box.innerHTML=html+'<p>Nenhum candidato retornado.</p>';
+   return;
+  }
+
+  const mercadoLabel=r.market_label || 'Mercado';
+
+  html+='<div class="tablewrap"><table>';
+
+  // CABEÇALHO PRINCIPAL
+
+  html+='<tr>'+
+   '<th rowspan="2">Jogador</th>'+
+   '<th rowspan="2">Equipe</th>'+
+   '<th rowspan="2">Posição</th>'+
+   '<th rowspan="2">Adversário</th>'+
+   '<th colspan="2">Média do jogador</th>'+
+   '<th rowspan="2">Minutos L5</th>'+
+   '<th rowspan="2">Pontuação</th>'+
+   '<th colspan="2">Defesa geral - '+mercadoLabel+'</th>'+
+   '<th colspan="2">Defesa por posição - total</th>'+
+   '<th colspan="2">Defesa por posição - média individual</th>'+
+   '<th colspan="3" class="new-header">Defesa ajustada à minutagem</th>'+
+   '</tr>';
+
+  // SUBCABEÇALHO
+
+  html+='<tr>'+
+   '<th>L5</th>'+
+   '<th>L10</th>'+
+   '<th>L5</th>'+
+   '<th>L10</th>'+
+   '<th>L5</th>'+
+   '<th>L10</th>'+
+   '<th>L5</th>'+
+   '<th>L10</th>'+
+   '<th class="new-header">Média L5/L10</th>'+
+   '<th class="new-header">Taxa por minuto</th>'+
+   '<th class="new-header">Projeção ajustada</th>'+
+   '</tr>';
+
+  // JOGADORES
+
+  r.candidates.forEach(p=>{
+
+   // CAMPOS REAIS DO JSON
+
+   const avg5=
+    p.opponent_position_minutes_filtered_defense_l5_avg;
+
+   const avg10=
+    p.opponent_position_minutes_filtered_defense_l10_avg;
+
+   const rate5=
+    p.opponent_position_minutes_filtered_defense_l5_per_minute;
+
+   const rate10=
+    p.opponent_position_minutes_filtered_defense_l10_per_minute;
+
+   const proj5=
+    p.opponent_position_minutes_filtered_defense_l5_projected;
+
+   const proj10=
+    p.opponent_position_minutes_filtered_defense_l10_projected;
+
+   const games5=
+    p.opponent_position_minutes_filtered_defense_games_l5;
+
+   const games10=
+    p.opponent_position_minutes_filtered_defense_games_l10;
+
+   const apps5=
+    p.opponent_position_minutes_filtered_defense_player_games_l5;
+
+   const apps10=
+    p.opponent_position_minutes_filtered_defense_player_games_l10;
+
+   const minutes5=
+    p.opponent_position_minutes_filtered_defense_minutes_l5;
+
+   const minutes10=
+    p.opponent_position_minutes_filtered_defense_minutes_l10;
+
+   html+='<tr>';
+
+   html+='<td><b>'+p.player+'</b></td>';
+   html+='<td>'+p.team+'</td>';
+   html+='<td>'+(p.position || '—')+'</td>';
+   html+='<td>'+(p.opponent || '—')+'</td>';
+
+   html+='<td>'+numero(p.last5_avg)+'</td>';
+   html+='<td>'+numero(p.last10_avg)+'</td>';
+
+   html+='<td>'+numero(p.minutes_last5_avg,1)+'</td>';
+
+   html+='<td class="metric">'+numero(p.triage_score)+'</td>';
+
+   // DEFESA GERAL
+
+   html+='<td>'+numero(p.opponent_defense_l5_avg,1)+'</td>';
+   html+='<td>'+numero(p.opponent_defense_l10_avg,1)+'</td>';
+
+   // DEFESA POR POSIÇÃO - TOTAL
+
+   html+='<td>'+numero(p.opponent_position_defense_l5_avg,1)+'</td>';
+   html+='<td>'+numero(p.opponent_position_defense_l10_avg,1)+'</td>';
+
+   // DEFESA POR POSIÇÃO - MÉDIA INDIVIDUAL
+
+   html+='<td><b>'+numero(p.opponent_position_individual_defense_l5_avg)+'</b>'+
+    '<br><small>'+
+    participacoes(p.opponent_position_individual_defense_player_games_l5)+
+    ' participações</small></td>';
+
+   html+='<td><b>'+numero(p.opponent_position_individual_defense_l10_avg)+'</b>'+
+    '<br><small>'+
+    participacoes(p.opponent_position_individual_defense_player_games_l10)+
+    ' participações</small></td>';
+
+   // NOVA MÉTRICA - MÉDIA AJUSTADA
+
+   html+='<td class="new-metric">'+
+    '<b>'+numero(avg5)+'</b>'+
+    '<br><small>L5</small>'+
+    amostra(games5,apps5,minutes5)+
+    '<hr>'+
+    '<b>'+numero(avg10)+'</b>'+
+    '<br><small>L10</small>'+
+    amostra(games10,apps10,minutes10)+
+    '</td>';
+
+   // NOVA MÉTRICA - TAXA POR MINUTO
+
+   html+='<td class="new-metric">'+
+    '<b>'+numero(rate5,4)+'</b>'+
+    '<br><small>L5</small>'+
+    '<hr>'+
+    '<b>'+numero(rate10,4)+'</b>'+
+    '<br><small>L10</small>'+
+    '</td>';
+
+   // NOVA MÉTRICA - PROJEÇÃO
+
+   html+='<td class="new-metric">'+
+    '<b>'+numero(proj5)+'</b>'+
+    '<br><small>L5</small>'+
+    '<hr>'+
+    '<b>'+numero(proj10)+'</b>'+
+    '<br><small>L10</small>'+
+    '</td>';
+
+   html+='</tr>';
+
+  });
+
+  html+='</table></div>';
+
+  html+='<p><small>'+
+   'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
+   'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
+   'A projeção é uma referência estatística, não uma previsão garantida.'+
+   '</small></p>';
 
   box.innerHTML=html;
 
  }catch(e){
+
   box.innerHTML='Erro ao buscar candidatos: '+e.message;
  }
 }
+
 </script>
 
 </body>
