@@ -21,7 +21,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.10.0"
+    version="3.11.0"
 )
 
 app.add_middleware(
@@ -1220,6 +1220,23 @@ def get_completed_team_games(
 # HISTÓRICO DEFENSIVO L5 / L10
 # ============================================================
 
+# ============================================================
+# CACHE DE RESUMOS DE PARTIDAS ESPN
+# ============================================================
+
+@lru_cache(maxsize=500)
+def get_game_summary(event_id: str) -> dict:
+    """
+    Armazena o resumo de cada partida pelo ID do evento.
+    Datas diferentes podem reutilizar resumos de jogos já consultados.
+    """
+
+    return request_json(
+        SUMMARY_URL,
+        {"event": event_id}
+    )
+
+
 @lru_cache(maxsize=60)
 def get_team_defense_history(
     team_abbr,
@@ -1237,24 +1254,21 @@ def get_team_defense_history(
         limit
     )
 
-    schedule = request_json(
-        f"https://site.api.espn.com/apis/site/v2/sports/"
-        f"basketball/nba/teams/{team_abbr.lower()}/schedule",
-        {"season": season_year(target_date)}
-    )
-
-    games = get_completed_team_games(
-        schedule,
-        team_abbr,
-        1000
-    )
-
+    # Reutiliza o calendário já armazenado em cache pela equipe/temporada.
+    # Isso evita baixar novamente a agenda ao consultar outra data ou mercado.
     games = [
         game
-        for game in games
-        if game.get("date", "")[:10]
-        < target_date.isoformat()
+        for game in get_team_regular_season_schedule(
+            team_abbr.upper(),
+            season_year(target_date)
+        )
+        if (game.get("date") or "")[:10] < target_date.isoformat()
     ]
+
+    games.sort(
+        key=lambda game: game.get("date") or "",
+        reverse=True
+    )
 
     games = games[:limit]
 
@@ -1262,9 +1276,8 @@ def get_team_defense_history(
 
     def fetch_game_defense(game):
 
-        summary = request_json(
-            SUMMARY_URL,
-            {"event": game["game_id"]}
+        summary = get_game_summary(
+            str(game["game_id"])
         )
 
         stats = extract_team_defense_stats(
@@ -2873,7 +2886,7 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.10.0",
+        "version": "3.11.0",
 
         "source": "ESPN"
     }
