@@ -1,5 +1,6 @@
 import logging
 import time
+import re
 
 from datetime import datetime, date
 from functools import lru_cache
@@ -17,7 +18,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.4.0"
+    version="3.5.0"
 )
 
 app.add_middleware(
@@ -45,6 +46,11 @@ GAMELOG_URL = (
     "basketball/nba/athletes/{athlete}/gamelog"
 )
 
+SUMMARY_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/"
+    "basketball/nba/summary"
+)
+
 MARKETS = {
     "points": {"index": 13, "label": "Pontos"},
     "assists": {"index": 8, "label": "Assistências"},
@@ -59,6 +65,7 @@ MARKETS = {
 # ============================================================
 
 def season_for(selected_date: date) -> str:
+
     start_year = (
         selected_date.year
         if selected_date.month >= 10
@@ -69,6 +76,7 @@ def season_for(selected_date: date) -> str:
 
 
 def season_year(selected_date: date) -> int:
+
     return (
         selected_date.year + 1
         if selected_date.month >= 10
@@ -81,7 +89,9 @@ def season_year(selected_date: date) -> int:
 # ============================================================
 
 def request_json(url: str, params=None) -> dict:
+
     try:
+
         response = requests.get(
             url,
             params=params,
@@ -94,17 +104,21 @@ def request_json(url: str, params=None) -> dict:
         return response.json()
 
     except requests.RequestException as error:
+
         logger.warning(
             "Falha na consulta ESPN: %s",
             error
         )
+
         raise
 
     except ValueError as error:
+
         logger.warning(
             "JSON inválido recebido da ESPN: %s",
             error
         )
+
         raise
 
 
@@ -113,22 +127,32 @@ def request_json(url: str, params=None) -> dict:
 # ============================================================
 
 def parse_number(value) -> float:
+
     try:
         return float(str(value).strip())
+
     except (ValueError, TypeError):
         return 0.0
 
 
 def parse_minutes(value) -> float:
+
     if value is None:
         return 0.0
 
     value = str(value).strip()
 
     if ":" in value:
+
         try:
+
             minutes, seconds = value.split(":")
-            return float(minutes) + float(seconds) / 60
+
+            return (
+                float(minutes)
+                + float(seconds) / 60
+            )
+
         except (ValueError, TypeError):
             return 0.0
 
@@ -136,11 +160,13 @@ def parse_minutes(value) -> float:
 
 
 def parse_attempts(value) -> float:
-    if not value:
+
+    if value is None:
         return 0.0
 
     try:
-        parts = str(value).split("-")
+
+        parts = str(value).strip().split("-")
 
         if len(parts) != 2:
             return 0.0
@@ -149,6 +175,78 @@ def parse_attempts(value) -> float:
 
     except (ValueError, TypeError):
         return 0.0
+
+
+def parse_optional_number(value):
+
+    """
+    Converte estatísticas individuais preservando
+    a diferença entre zero real e dado ausente.
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+
+        value = (
+            value.get("value")
+            if value.get("value") is not None
+            else value.get("displayValue")
+        )
+
+    if value in ("", "--", "-", "N/A"):
+        return None
+
+    try:
+        return float(str(value).strip())
+
+    except (ValueError, TypeError):
+        return None
+
+
+def parse_optional_attempts(value):
+
+    """
+    Extrai tentativas de valores como:
+
+        10-22
+
+    Também aceita valores numéricos quando a ESPN
+    já retorna apenas a quantidade tentada.
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+
+        display_value = value.get("displayValue")
+
+        if display_value is not None:
+            value = display_value
+
+        else:
+            value = value.get("value")
+
+    if value in ("", "--", "-", "N/A"):
+        return None
+
+    text = str(value).strip()
+
+    if "-" in text:
+
+        parts = text.split("-")
+
+        if len(parts) == 2:
+
+            try:
+                return float(parts[1])
+
+            except (ValueError, TypeError):
+                return None
+
+    return parse_optional_number(value)
 
 
 # ============================================================
@@ -164,15 +262,25 @@ def extract_team_defense_stats(summary, defending_team):
 
     opponent_stats = None
 
+    defending_team = (
+        defending_team or ""
+    ).upper()
+
     for item in teams:
 
         team_abbr = (
             item.get("team", {})
             .get("abbreviation")
-        )
+            or ""
+        ).upper()
 
         if team_abbr != defending_team:
-            opponent_stats = item.get("statistics", [])
+
+            opponent_stats = item.get(
+                "statistics",
+                []
+            )
+
             break
 
     if opponent_stats is None:
@@ -185,7 +293,9 @@ def extract_team_defense_stats(summary, defending_team):
 
     return {
         "fga_allowed": parse_attempts(
-            stats.get("fieldGoalsMade-fieldGoalsAttempted")
+            stats.get(
+                "fieldGoalsMade-fieldGoalsAttempted"
+            )
         ),
 
         "three_pa_allowed": parse_attempts(
@@ -205,6 +315,154 @@ def extract_team_defense_stats(summary, defending_team):
 
 
 # ============================================================
+# AUXILIARES PARA LEITURA DE ESTATÍSTICAS POR POSIÇÃO
+# ============================================================
+
+def normalize_position(position_data):
+
+    if isinstance(position_data, dict):
+
+        position = (
+            position_data.get("abbreviation")
+            or position_data.get("displayName")
+            or position_data.get("name")
+            or ""
+        )
+
+    else:
+
+        position = position_data or ""
+
+    position = str(position).strip().upper()
+
+    if position in (
+        "G",
+        "PG",
+        "SG",
+        "GUARD"
+    ):
+        return "G"
+
+    if position in (
+        "F",
+        "SF",
+        "PF",
+        "FORWARD"
+    ):
+        return "F"
+
+    if position in (
+        "C",
+        "CENTER"
+    ):
+        return "C"
+
+    return "OTHER"
+
+
+def normalize_stat_key(key):
+
+    if key is None:
+        return ""
+
+    key = str(key).strip()
+
+    aliases = {
+        "FG": "fieldGoalsMade-fieldGoalsAttempted",
+        "3PT": "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+        "REB": "rebounds",
+        "AST": "assists",
+        "MIN": "minutes",
+        "PTS": "points"
+    }
+
+    upper_key = key.upper()
+
+    if upper_key in aliases:
+        return aliases[upper_key]
+
+    return key
+
+
+def get_player_stat_value(
+    raw_stats,
+    key_indexes,
+    stat_key,
+    attempt_stat=False
+):
+
+    """
+    Recupera uma estatística individual.
+
+    Suporta:
+    - Lista de valores com índice identificado por keys.
+    - Lista de valores com índice identificado por names.
+    - Dicionário de estatísticas.
+    - Estatísticas no formato dict com value/displayValue.
+    """
+
+    normalized_key = normalize_stat_key(
+        stat_key
+    )
+
+    value = None
+
+    if isinstance(raw_stats, dict):
+
+        value = raw_stats.get(
+            normalized_key
+        )
+
+        if value is None:
+            value = raw_stats.get(
+                stat_key
+            )
+
+    elif isinstance(raw_stats, list):
+
+        index = key_indexes.get(
+            normalized_key
+        )
+
+        if index is None:
+            return None
+
+        if index >= len(raw_stats):
+            return None
+
+        value = raw_stats[index]
+
+    if attempt_stat:
+
+        return parse_optional_attempts(
+            value
+        )
+
+    return parse_optional_number(
+        value
+    )
+
+
+def get_athlete_position(athlete):
+
+    position_data = athlete.get(
+        "position",
+        {}
+    )
+
+    if not position_data:
+
+        position_data = athlete.get(
+            "positionName",
+            ""
+        )
+
+    return normalize_position(
+        position_data
+    )
+
+
+# ============================================================
 # JOGADORES DO ADVERSÁRIO AGRUPADOS POR POSIÇÃO
 # ============================================================
 
@@ -212,37 +470,38 @@ def extract_opponent_players_by_position(
     summary,
     defending_team
 ):
-    """
-    Extrai os jogadores do adversário agrupados por posição.
 
-    Estrutura real da ESPN:
+    """
+    Extrai jogadores do adversário agrupados por posição.
+
+    Estrutura principal esperada da ESPN:
 
         boxscore
             └── players[]
-                    └── team
+                    ├── team
                     └── statistics[]
-                            ├── names
                             ├── keys
                             └── athletes[]
                                     ├── athlete
                                     └── stats
 
-    Grupos utilizados:
+    O parser também aceita variações de estrutura.
+
+    Grupos:
 
         G      = Guard
         F      = Forward
         C      = Center
         OTHER  = posição não identificada
 
-    Estatísticas extraídas:
+    Estatísticas:
 
         assists
         rebounds
         fga
         three_pa
 
-    Jogadores com stats=[] são ignorados porque
-    não participaram da partida.
+    Jogadores sem estatísticas são ignorados.
     """
 
     result = {
@@ -327,50 +586,62 @@ def extract_opponent_players_by_position(
         }
 
     # --------------------------------------------------------
-    # PERCORRE OS BLOCOS DE ESTATÍSTICAS
+    # LOCALIZA OS BLOCOS DE ESTATÍSTICAS
     # --------------------------------------------------------
 
-    for statistics_block in opponent_players_block.get(
+    statistics_blocks = opponent_players_block.get(
         "statistics",
         []
-    ):
+    )
+
+    if isinstance(statistics_blocks, dict):
+
+        statistics_blocks = [
+            statistics_blocks
+        ]
+
+    if not isinstance(statistics_blocks, list):
+
+        return {
+            "opponent": opponent_team,
+            "players": result
+        }
+
+    # --------------------------------------------------------
+    # PERCORRE OS BLOCOS
+    # --------------------------------------------------------
+
+    for statistics_block in statistics_blocks:
+
+        if not isinstance(statistics_block, dict):
+            continue
 
         keys = statistics_block.get(
-            "keys",
-            []
-        )
+            "keys"
+        ) or statistics_block.get(
+            "names"
+        ) or statistics_block.get(
+            "labels"
+        ) or []
+
+        key_indexes = {}
+
+        for index, key in enumerate(keys):
+
+            normalized_key = normalize_stat_key(
+                key
+            )
+
+            if normalized_key:
+                key_indexes[normalized_key] = index
 
         athletes = statistics_block.get(
             "athletes",
             []
         )
 
-        # ----------------------------------------------------
-        # MAPA DOS ÍNDICES
-        #
-        # Exemplo real da ESPN:
-        #
-        # 0  minutes
-        # 1  points
-        # 2  FG
-        # 3  3PT
-        # 4  FT
-        # 5  rebounds
-        # 6  assists
-        # 7  turnovers
-        # 8  steals
-        # 9  blocks
-        # 10 offensiveRebounds
-        # 11 defensiveRebounds
-        # 12 fouls
-        # 13 plusMinus
-        # ----------------------------------------------------
-
-        key_indexes = {}
-
-        for index, key in enumerate(keys):
-
-            key_indexes[key] = index
+        if not isinstance(athletes, list):
+            continue
 
         # ----------------------------------------------------
         # PERCORRE OS JOGADORES
@@ -378,10 +649,16 @@ def extract_opponent_players_by_position(
 
         for athlete_entry in athletes:
 
+            if not isinstance(athlete_entry, dict):
+                continue
+
             athlete = athlete_entry.get(
                 "athlete",
                 {}
             )
+
+            if not isinstance(athlete, dict):
+                continue
 
             player_name = (
                 athlete.get("displayName")
@@ -393,13 +670,17 @@ def extract_opponent_players_by_position(
                 continue
 
             # ------------------------------------------------
-            # IGNORA QUEM NÃO JOGOU
+            # ESTATÍSTICAS DO JOGADOR
             # ------------------------------------------------
 
             raw_stats = athlete_entry.get(
-                "stats",
-                []
+                "stats"
             )
+
+            if raw_stats is None:
+                raw_stats = athlete_entry.get(
+                    "statistics"
+                )
 
             if not raw_stats:
                 continue
@@ -408,99 +689,17 @@ def extract_opponent_players_by_position(
             # POSIÇÃO
             # ------------------------------------------------
 
-            position_data = athlete.get(
-                "position",
-                {}
+            position_group = get_athlete_position(
+                athlete
             )
-
-            if isinstance(
-                position_data,
-                dict
-            ):
-
-                position = (
-                    position_data.get("abbreviation")
-                    or position_data.get("displayName")
-                    or position_data.get("name")
-                    or ""
-                )
-
-            else:
-
-                position = position_data or ""
-
-            position_upper = str(
-                position
-            ).strip().upper()
-
-            if position_upper in (
-                "G",
-                "PG",
-                "SG",
-                "GUARD"
-            ):
-
-                position_group = "G"
-
-            elif position_upper in (
-                "F",
-                "SF",
-                "PF",
-                "FORWARD"
-            ):
-
-                position_group = "F"
-
-            elif position_upper in (
-                "C",
-                "CENTER"
-            ):
-
-                position_group = "C"
-
-            else:
-
-                position_group = "OTHER"
-
-            # ------------------------------------------------
-            # FUNÇÃO PARA ESTATÍSTICA NUMÉRICA
-            # ------------------------------------------------
-
-            def get_numeric_stat(key):
-
-                index = key_indexes.get(
-                    key
-                )
-
-                if index is None:
-                    return None
-
-                if index >= len(raw_stats):
-                    return None
-
-                value = raw_stats[index]
-
-                if value in (
-                    None,
-                    "",
-                    "--"
-                ):
-                    return None
-
-                try:
-                    return float(value)
-
-                except (
-                    TypeError,
-                    ValueError
-                ):
-                    return None
 
             # ------------------------------------------------
             # ASSISTÊNCIAS
             # ------------------------------------------------
 
-            assists = get_numeric_stat(
+            assists = get_player_stat_value(
+                raw_stats,
+                key_indexes,
                 "assists"
             )
 
@@ -508,64 +707,82 @@ def extract_opponent_players_by_position(
             # REBOTES
             # ------------------------------------------------
 
-            rebounds = get_numeric_stat(
+            rebounds = get_player_stat_value(
+                raw_stats,
+                key_indexes,
                 "rebounds"
             )
 
             # ------------------------------------------------
             # FGA
-            #
-            # ESPN retorna algo como:
-            #
-            # "10-22"
-            #
-            # Precisamos do segundo número.
             # ------------------------------------------------
 
-            fga = None
-
-            fga_index = key_indexes.get(
-                "fieldGoalsMade-fieldGoalsAttempted"
+            fga = get_player_stat_value(
+                raw_stats,
+                key_indexes,
+                "fieldGoalsMade-fieldGoalsAttempted",
+                attempt_stat=True
             )
-
-            if (
-                fga_index is not None
-                and fga_index < len(raw_stats)
-            ):
-
-                fga = parse_attempts(
-                    raw_stats[fga_index]
-                )
 
             # ------------------------------------------------
             # 3PA
             # ------------------------------------------------
 
-            three_pa = None
+            three_pa = get_player_stat_value(
+                raw_stats,
+                key_indexes,
+                "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+                attempt_stat=True
+            )
 
-            three_pa_index = key_indexes.get(
-                "threePointFieldGoalsMade-threePointFieldGoalsAttempted"
+            # ------------------------------------------------
+            # VERIFICA PARTICIPAÇÃO NA PARTIDA
+            # ------------------------------------------------
+
+            minutes = get_player_stat_value(
+                raw_stats,
+                key_indexes,
+                "minutes"
             )
 
             if (
-                three_pa_index is not None
-                and three_pa_index < len(raw_stats)
+                minutes is not None
+                and minutes <= 0
             ):
+                continue
 
-                three_pa = parse_attempts(
-                    raw_stats[three_pa_index]
+            if (
+                minutes is None
+                and all(
+                    value is None
+                    for value in (
+                        assists,
+                        rebounds,
+                        fga,
+                        three_pa
+                    )
                 )
+            ):
+                continue
 
             # ------------------------------------------------
             # ADICIONA O JOGADOR
             # ------------------------------------------------
 
             result[position_group].append({
+
                 "player": player_name,
+
                 "position": position_group,
+
+                "minutes": minutes,
+
                 "assists": assists,
+
                 "rebounds": rebounds,
+
                 "fga": fga,
+
                 "three_pa": three_pa
             })
 
@@ -587,7 +804,10 @@ def get_completed_team_games(
 
     games = []
 
-    for event in schedule_data.get("events", []):
+    for event in schedule_data.get(
+        "events",
+        []
+    ):
 
         season_type = (
             event.get("seasonType", {})
@@ -622,6 +842,7 @@ def get_completed_team_games(
             )
 
             if competitor_team != team_abbr:
+
                 opponent = competitor_team
                 break
 
@@ -629,10 +850,13 @@ def get_completed_team_games(
             continue
 
         games.append({
+
             "game_id": str(
                 event.get("id")
             ),
+
             "date": event.get("date"),
+
             "opponent": opponent
         })
 
@@ -691,8 +915,7 @@ def get_team_defense_history(
     def fetch_game_defense(game):
 
         summary = request_json(
-            "https://site.api.espn.com/apis/site/v2/sports/"
-            "basketball/nba/summary",
+            SUMMARY_URL,
             {"event": game["game_id"]}
         )
 
@@ -721,9 +944,7 @@ def get_team_defense_history(
             for game in games
         }
 
-        for future in as_completed(
-            futures
-        ):
+        for future in as_completed(futures):
 
             game = futures[future]
 
@@ -779,25 +1000,30 @@ def get_team_defense_history(
         return averages
 
     history = {
+
         "team": team_abbr,
+
         "games_analyzed": len(results),
+
         "games": results,
+
         "averages": calculate_averages(
             results
         )
     }
 
-    for window in (
-        5,
-        10
-    ):
+    for window in (5, 10):
 
         sample = results[:window]
 
         history[f"L{window}"] = {
+
             "team": team_abbr,
+
             "games_analyzed": len(sample),
+
             "games": sample,
+
             "averages": calculate_averages(
                 sample
             )
@@ -841,10 +1067,7 @@ def fetch_espn_games(
 
     games = []
 
-    for event in data.get(
-        "events",
-        []
-    ):
+    for event in data.get("events", []):
 
         competitions = event.get(
             "competitions",
@@ -868,6 +1091,7 @@ def fetch_espn_games(
             )
 
             item = {
+
                 "abbr": team.get(
                     "abbreviation",
                     ""
@@ -879,48 +1103,39 @@ def fetch_espn_games(
                 )
             }
 
-            if competitor.get(
-                "homeAway"
-            ) == "home":
+            if competitor.get("homeAway") == "home":
 
                 home = item
 
-            elif competitor.get(
-                "homeAway"
-            ) == "away":
+            elif competitor.get("homeAway") == "away":
 
                 away = item
 
         if home and away:
 
             games.append({
-                "game_id": event.get(
-                    "id"
-                ),
+
+                "game_id": event.get("id"),
 
                 "home": home,
+
                 "away": away,
 
                 "status": (
-                    event.get(
-                        "status",
-                        {}
-                    )
-                    .get(
-                        "type",
-                        {}
-                    )
-                    .get(
-                        "description",
-                        "Não informado"
-                    )
+                    event.get("status", {})
+                    .get("type", {})
+                    .get("description", "Não informado")
                 )
             })
 
     return {
+
         "date": selected_date,
+
         "count": len(games),
+
         "source": "ESPN",
+
         "games": games
     }
 
@@ -936,20 +1151,16 @@ def collect_roster_players(
 
     if isinstance(node, dict):
 
-        athlete_id = node.get(
-            "id"
-        )
+        athlete_id = node.get("id")
 
-        name = node.get(
-            "fullName"
-        )
+        name = node.get("fullName")
 
         if athlete_id and name:
 
             players[str(athlete_id)] = {
-                "id": str(
-                    athlete_id
-                ),
+
+                "id": str(athlete_id),
+
                 "player": name
             }
 
@@ -1031,9 +1242,7 @@ def get_players_for_date(
             for team in teams
         }
 
-        for future in as_completed(
-            futures
-        ):
+        for future in as_completed(futures):
 
             team = futures[future]
 
@@ -1055,9 +1264,7 @@ def get_players_for_date(
                         }
                     )
 
-                    entry["teams"].add(
-                        team
-                    )
+                    entry["teams"].add(team)
 
             except Exception as error:
 
@@ -1068,6 +1275,7 @@ def get_players_for_date(
                 )
 
     players = []
+
     duplicates = 0
 
     for athlete_id, entry in memberships.items():
@@ -1089,7 +1297,9 @@ def get_players_for_date(
         )
 
         players.append({
+
             **entry["player"],
+
             "team": team
         })
 
@@ -1098,9 +1308,13 @@ def get_players_for_date(
     )
 
     return {
+
         "schedule": schedule,
+
         "players": players,
+
         "teams_found": len(teams),
+
         "players_excluded_multiple_teams": duplicates
     }
 
@@ -1138,10 +1352,7 @@ def get_athlete_logs(
             ""
         )
 
-        if (
-            display_name.strip().lower()
-            == season_label.lower()
-        ):
+        if display_name.strip().lower() == season_label.lower():
 
             season_category = season_type
             break
@@ -1167,10 +1378,7 @@ def get_athlete_logs(
         ):
 
             event_id = str(
-                event.get(
-                    "eventId",
-                    ""
-                )
+                event.get("eventId", "")
             )
 
             stats = event.get(
@@ -1190,44 +1398,29 @@ def get_athlete_logs(
             )
 
             game_date = (
-                metadata.get(
-                    "gameDate"
-                )
-                or metadata.get(
-                    "date"
-                )
+                metadata.get("gameDate")
+                or metadata.get("date")
             )
 
             if not game_date:
                 continue
 
-            game_date = str(
-                game_date
-            )[:10]
+            game_date = str(game_date)[:10]
 
             if len(game_date) != 10:
                 continue
 
             games[event_id] = {
+
                 "date": game_date,
 
                 "team": (
-                    metadata.get(
-                        "team"
-                    )
-                    or {}
-                ).get(
-                    "abbreviation"
-                ),
+                    metadata.get("team") or {}
+                ).get("abbreviation"),
 
                 "opponent": (
-                    metadata.get(
-                        "opponent"
-                    )
-                    or {}
-                ).get(
-                    "abbreviation"
-                ),
+                    metadata.get("opponent") or {}
+                ).get("abbreviation"),
 
                 "minutes": parse_minutes(
                     stats[0]
@@ -1260,30 +1453,25 @@ def get_athlete_logs(
         reverse=True
     )
 
-    return tuple(
-        ordered
-    )
+    return tuple(ordered)
 
 
 # ============================================================
 # IDENTIFICA ADVERSÁRIOS DA DATA
 # ============================================================
 
-def get_opponents_for_date(
-    schedule
-):
+def get_opponents_for_date(schedule):
 
     opponents = {}
 
-    for game in schedule.get(
-        "games",
-        []
-    ):
+    for game in schedule.get("games", []):
 
         home = game["home"]["abbr"]
+
         away = game["away"]["abbr"]
 
         opponents[home] = away
+
         opponents[away] = home
 
     return opponents
@@ -1305,8 +1493,7 @@ def build_player_result(
     previous_games = [
         game
         for game in games
-        if game["date"]
-        < target_date.isoformat()
+        if game["date"] < target_date.isoformat()
     ]
 
     if len(previous_games) < 3:
@@ -1315,6 +1502,7 @@ def build_player_result(
     previous_games = previous_games[:10]
 
     last5 = previous_games[:5]
+
     last10 = previous_games[:10]
 
     minutes_avg = sum(
@@ -1351,13 +1539,9 @@ def build_player_result(
             for game in sample
         ) / len(sample)
 
-    avg5 = average(
-        last5
-    )
+    avg5 = average(last5)
 
-    avg10 = average(
-        last10
-    )
+    avg10 = average(last10)
 
     consistency = sum(
         game[stat_key] >= avg5
@@ -1403,18 +1587,18 @@ def build_player_result(
     )
 
     return {
+
         "player": player["player"],
+
         "team": player["team"],
+
         "opponent": opponent,
 
-        "last_game_team": last5[0].get(
-            "team"
-        ),
+        "last_game_team": last5[0].get("team"),
 
         "team_changed": bool(
             last5[0].get("team")
-            and last5[0]["team"]
-            != player["team"]
+            and last5[0]["team"] != player["team"]
         ),
 
         "last5_avg": round(
@@ -1437,24 +1621,17 @@ def build_player_result(
             2
         ),
 
-        "games_last5": len(
-            last5
-        ),
+        "games_last5": len(last5),
 
-        "games_last10": len(
-            last10
-        ),
+        "games_last10": len(last10),
 
         "opponent_defense_l5_avg": defense_l5,
+
         "opponent_defense_l10_avg": defense_l10,
 
-        "opponent_defense_games_l5": (
-            defense_games_l5
-        ),
+        "opponent_defense_games_l5": defense_games_l5,
 
-        "opponent_defense_games_l10": (
-            defense_games_l10
-        )
+        "opponent_defense_games_l10": defense_games_l10
     }
 
 
@@ -1537,9 +1714,7 @@ def collect_candidates(
             for team in unique_opponents
         ]
 
-        for future in as_completed(
-            futures
-        ):
+        for future in as_completed(futures):
 
             try:
 
@@ -1571,6 +1746,7 @@ def collect_candidates(
     results = []
 
     successful_logs = 0
+
     errors = 0
 
     def fetch_player(player):
@@ -1594,9 +1770,7 @@ def collect_candidates(
             for player in players
         ]
 
-        for future in as_completed(
-            futures
-        ):
+        for future in as_completed(futures):
 
             try:
 
@@ -1622,9 +1796,7 @@ def collect_candidates(
                 )
 
                 if result:
-                    results.append(
-                        result
-                    )
+                    results.append(result)
 
             except Exception as error:
 
@@ -1664,8 +1836,11 @@ def collect_candidates(
     )
 
     return {
+
         "date": selected_date,
+
         "market": market,
+
         "market_label": MARKETS[market]["label"],
 
         "count": min(
@@ -1674,14 +1849,15 @@ def collect_candidates(
         ),
 
         "source": "ESPN",
-        "season": season_for(
-            target_date
-        ),
+
+        "season": season_for(target_date),
 
         "teams_found": roster_data["teams_found"],
+
         "players_found": len(players),
 
         "players_consulted": successful_logs,
+
         "players_with_errors": errors,
 
         "updated_at": datetime.now().isoformat(),
@@ -1710,9 +1886,13 @@ def collect_candidates(
 def health():
 
     return {
+
         "status": "ok",
+
         "service": "NBA Props Scanner",
-        "version": "3.4.0",
+
+        "version": "3.5.0",
+
         "source": "ESPN"
     }
 
@@ -1769,9 +1949,7 @@ def candidates(
         raise HTTPException(
             status_code=400,
             detail="Mercado inválido: "
-            + ", ".join(
-                MARKETS.keys()
-            )
+            + ", ".join(MARKETS.keys())
         )
 
     try:
@@ -1828,6 +2006,7 @@ def candidates(
 def debug_gamelog():
 
     athlete_id = "1966"
+
     year = 2027
 
     data = request_json(
@@ -1837,9 +2016,7 @@ def debug_gamelog():
         {"season": year}
     )
 
-    events = data.get(
-        "events"
-    )
+    events = data.get("events")
 
     if isinstance(events, dict):
 
@@ -1848,49 +2025,45 @@ def debug_gamelog():
                 "event_id": key,
                 "data": value
             }
-            for key, value in list(
-                events.items()
-            )[:3]
+            for key, value in list(events.items())[:3]
         ]
 
-        events_count = len(
-            events
-        )
+        events_count = len(events)
 
     elif isinstance(events, list):
 
         events_sample = events[:3]
-        events_count = len(
-            events
-        )
+
+        events_count = len(events)
 
     else:
 
         events_sample = events
+
         events_count = 0
 
     return {
+
         "athlete_id": athlete_id,
+
         "season_year": year,
-        "top_level_keys": list(
-            data.keys()
-        ),
+
+        "top_level_keys": list(data.keys()),
+
         "categories_present": (
             "categories" in data
         ),
-        "labels": data.get(
-            "labels"
-        ),
-        "names": data.get(
-            "names"
-        ),
-        "season_types": data.get(
-            "seasonTypes"
-        ),
-        "events_type": type(
-            events
-        ).__name__,
+
+        "labels": data.get("labels"),
+
+        "names": data.get("names"),
+
+        "season_types": data.get("seasonTypes"),
+
+        "events_type": type(events).__name__,
+
         "events_count": events_count,
+
         "events_sample": events_sample
     }
 
@@ -1932,14 +2105,14 @@ def stats_check(
             )
         )
 
-    year = season_year(
-        target_date
-    )
+    year = season_year(target_date)
 
     sample_player = None
+
     previous_games = []
 
     players_checked = 0
+
     players_with_errors = 0
 
     for player in players[:60]:
@@ -1956,22 +2129,25 @@ def stats_check(
             player_games = [
                 game
                 for game in sample_logs
-                if game["date"]
-                < selected_date
+                if game["date"] < selected_date
             ]
 
             if player_games:
 
                 sample_player = player
+
                 previous_games = player_games
+
                 break
 
         except Exception:
 
             players_with_errors += 1
+
             continue
 
     return {
+
         "status": (
             "ok"
             if sample_player
@@ -1979,15 +2155,17 @@ def stats_check(
         ),
 
         "source": "ESPN",
-        "season": season_for(
-            target_date
-        ),
+
+        "season": season_for(target_date),
+
         "season_year": year,
 
         "teams_found": data["teams_found"],
+
         "players_found": len(players),
 
         "players_checked": players_checked,
+
         "players_with_errors": players_with_errors,
 
         "sample_player": (
@@ -2002,9 +2180,7 @@ def stats_check(
             else None
         ),
 
-        "sample_games": len(
-            previous_games
-        ),
+        "sample_games": len(previous_games),
 
         "sample_game": (
             previous_games[0]
@@ -2053,9 +2229,7 @@ def team_check(
             )
         )
 
-    year = season_year(
-        target_date
-    )
+    year = season_year(target_date)
 
     def check_player(player):
 
@@ -2067,16 +2241,19 @@ def team_check(
         previous_games = [
             game
             for game in logs
-            if game["date"]
-            < selected_date
+            if game["date"] < selected_date
         ]
 
         if not previous_games:
 
             return {
+
                 "player": player["player"],
+
                 "player_id": player["id"],
+
                 "current_team": player["team"],
+
                 "status": "no_previous_games"
             }
 
@@ -2088,9 +2265,7 @@ def team_check(
             if game.get("team")
         })
 
-        last_game_team = last_game.get(
-            "team"
-        )
+        last_game_team = last_game.get("team")
 
         if not last_game_team:
 
@@ -2105,17 +2280,20 @@ def team_check(
             status = "ok"
 
         return {
+
             "player": player["player"],
+
             "player_id": player["id"],
+
             "current_team": player["team"],
 
             "last_game_date": last_game["date"],
+
             "last_game_team": last_game_team,
 
             "team_changed": bool(
                 last_game_team
-                and last_game_team
-                != player["team"]
+                and last_game_team != player["team"]
             ),
 
             "teams_in_last5": historical_teams,
@@ -2128,6 +2306,7 @@ def team_check(
         }
 
     checked_results = []
+
     errors = []
 
     with ThreadPoolExecutor(
@@ -2142,9 +2321,7 @@ def team_check(
             for player in players
         }
 
-        for future in as_completed(
-            futures
-        ):
+        for future in as_completed(futures):
 
             player = futures[future]
 
@@ -2157,9 +2334,13 @@ def team_check(
             except Exception as error:
 
                 errors.append({
+
                     "player": player["player"],
+
                     "player_id": player["id"],
+
                     "current_team": player["team"],
+
                     "error": str(error)[:250]
                 })
 
@@ -2174,33 +2355,29 @@ def team_check(
     mismatches = [
         item
         for item in checked_results
-        if item["status"]
-        == "team_mismatch"
+        if item["status"] == "team_mismatch"
     ]
 
     missing_historical_team = [
         item
         for item in checked_results
-        if item["status"]
-        == "missing_historical_team"
+        if item["status"] == "missing_historical_team"
     ]
 
     no_previous_games = [
         item
         for item in checked_results
-        if item["status"]
-        == "no_previous_games"
+        if item["status"] == "no_previous_games"
     ]
 
     multiple_teams = [
         item
         for item in checked_results
-        if item.get(
-            "multiple_teams_last5"
-        )
+        if item.get("multiple_teams_last5")
     ]
 
     return {
+
         "status": (
             "ok"
             if not errors
@@ -2208,12 +2385,13 @@ def team_check(
         ),
 
         "source": "ESPN",
+
         "date": selected_date,
-        "season": season_for(
-            target_date
-        ),
+
+        "season": season_for(target_date),
 
         "teams_found": data["teams_found"],
+
         "players_found": len(players),
 
         "players_excluded_multiple_rosters": (
@@ -2224,48 +2402,34 @@ def team_check(
         ),
 
         "players_checked": (
-            len(checked_results)
-            + len(errors)
+            len(checked_results) + len(errors)
         ),
 
         "players_with_history": (
-            len(checked_results)
-            - len(no_previous_games)
+            len(checked_results) - len(no_previous_games)
         ),
 
-        "players_without_history": (
-            len(no_previous_games)
-        ),
+        "players_without_history": len(no_previous_games),
 
-        "players_with_team_mismatch": (
-            len(mismatches)
-        ),
+        "players_with_team_mismatch": len(mismatches),
 
-        "players_missing_historical_team": (
-            len(missing_historical_team)
-        ),
-
-        "players_with_multiple_teams_last5": (
-            len(multiple_teams)
-        ),
-
-        "players_with_errors": (
-            len(errors)
-        ),
-
-        "team_mismatches": mismatches,
-
-        "missing_historical_team": (
+        "players_missing_historical_team": len(
             missing_historical_team
         ),
 
-        "multiple_teams_last5": (
+        "players_with_multiple_teams_last5": len(
             multiple_teams
         ),
 
-        "players_without_history": (
-            no_previous_games
-        ),
+        "players_with_errors": len(errors),
+
+        "team_mismatches": mismatches,
+
+        "missing_historical_team": missing_historical_team,
+
+        "multiple_teams_last5": multiple_teams,
+
+        "players_without_history": no_previous_games,
 
         "errors": errors,
 
@@ -2277,12 +2441,12 @@ def team_check(
 def defense_check():
 
     summary = request_json(
-        "https://site.api.espn.com/apis/site/v2/sports/"
-        "basketball/nba/summary",
+        SUMMARY_URL,
         {"event": "0401909918"}
     )
 
     return {
+
         "POR_defense": extract_team_defense_stats(
             summary,
             "POR"
@@ -2308,8 +2472,7 @@ def defense_position_check(
     defending_team = defending_team.upper()
 
     summary = request_json(
-        "https://site.api.espn.com/apis/site/v2/sports/"
-        "basketball/nba/summary",
+        SUMMARY_URL,
         {"event": event}
     )
 
@@ -2319,9 +2482,13 @@ def defense_position_check(
     )
 
     return {
+
         "event": event,
+
         "defending_team": defending_team,
+
         "opponent": data["opponent"],
+
         "positions": data["players"]
     }
 
@@ -2339,8 +2506,7 @@ def defense_position_raw_check(
     defending_team = defending_team.upper()
 
     summary = request_json(
-        "https://site.api.espn.com/apis/site/v2/sports/"
-        "basketball/nba/summary",
+        SUMMARY_URL,
         {"event": event}
     )
 
@@ -2357,10 +2523,15 @@ def defense_position_raw_check(
     )
 
     return {
+
         "event": event,
+
         "defending_team": defending_team,
+
         "teams_count": len(teams),
+
         "players_count": len(players),
+
         "players_raw": players
     }
 
@@ -2374,30 +2545,19 @@ def schedule_check():
         "https://site.api.espn.com/apis/site/v2/sports/"
         "basketball/nba/teams/den/schedule",
         {
-            "season": season_year(
-                target_date
-            )
+            "season": season_year(target_date)
         }
     )
 
-    events = data.get(
-        "events",
-        []
-    )
+    events = data.get("events", [])
 
     return {
-        "top_level_keys": list(
-            data.keys()
-        ),
 
-        "team": data.get(
-            "team",
-            {}
-        ),
+        "top_level_keys": list(data.keys()),
 
-        "events_count": len(
-            events
-        ),
+        "team": data.get("team", {}),
+
+        "events_count": len(events),
 
         "sample_events": events[:2]
     }
@@ -2412,13 +2572,12 @@ def defense_history_check():
         "https://site.api.espn.com/apis/site/v2/sports/"
         "basketball/nba/teams/den/schedule",
         {
-            "season": season_year(
-                target_date
-            )
+            "season": season_year(target_date)
         }
     )
 
     return {
+
         "team": "DEN",
 
         "games": get_completed_team_games(
@@ -2433,12 +2592,12 @@ def defense_history_check():
 def defense_game_check():
 
     summary = request_json(
-        "https://site.api.espn.com/apis/site/v2/sports/"
-        "basketball/nba/summary",
+        SUMMARY_URL,
         {"event": "401909918"}
     )
 
     return {
+
         "DEN_defense": extract_team_defense_stats(
             summary,
             "DEN"
