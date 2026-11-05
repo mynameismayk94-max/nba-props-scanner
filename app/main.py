@@ -990,7 +990,7 @@ def collect_candidates(
 
         return player, logs
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=12) as executor:
 
         futures = [
             executor.submit(
