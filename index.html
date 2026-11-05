@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -65,7 +64,9 @@ button{
  margin:5px 5px 5px 0
 }
 
-button:hover{background:#0f766e}
+button:hover{
+ background:#0f766e
+}
 
 .actions{
  display:flex;
@@ -108,7 +109,8 @@ th{
  z-index:1
 }
 
-th:first-child,td:first-child{
+th:first-child,
+td:first-child{
  text-align:left
 }
 
@@ -118,34 +120,51 @@ th:first-child,td:first-child{
 }
 
 .new-metric{
- background:#f0f7ff
+ background:#f0f7ff;
+ min-width:110px
 }
 
 .new-header{
  background:#dceafa
 }
 
-.sample{
- display:block;
- color:#64748b;
+.period-label{
  font-size:10px;
- margin-top:4px;
- line-height:1.4;
- white-space:normal;
- min-width:75px
+ color:#64748b;
+ font-weight:bold;
+ margin-bottom:2px
 }
 
 .metric-value{
+ font-size:13px;
  font-weight:bold;
- color:#172554;
- font-size:13px
+ color:#172554
 }
 
-.period{
+.sample{
  display:block;
+ font-size:9px;
  color:#64748b;
- font-size:10px;
- margin-top:3px
+ line-height:1.3;
+ margin-top:2px;
+ white-space:nowrap
+}
+
+.split-metric{
+ display:flex;
+ flex-direction:column;
+ gap:7px;
+}
+
+.split-item{
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+}
+
+.split-item + .split-item{
+ border-top:1px solid #dbe3ee;
+ padding-top:6px;
 }
 
 .explanation{
@@ -153,23 +172,47 @@ th:first-child,td:first-child{
  font-size:14px
 }
 
-small{color:#64748b}
+small{
+ color:#64748b
+}
 
 @media(max-width:600px){
 
- header{padding:18px}
+ header{
+  padding:18px
+ }
 
- main{margin:15px auto}
+ main{
+  margin:15px auto
+ }
 
- .card{padding:14px}
+ .card{
+  padding:14px
+ }
 
- table{font-size:11px}
+ table{
+  font-size:11px
+ }
 
- th,td{padding:7px 6px}
+ th,td{
+  padding:7px 6px
+ }
 
- .sample{font-size:9px}
+ .new-metric{
+  min-width:105px
+ }
 
- .metric-value{font-size:12px}
+ .metric-value{
+  font-size:12px
+ }
+
+ .sample{
+  font-size:8px
+ }
+
+ .period-label{
+  font-size:9px
+ }
 }
 </style>
 </head>
@@ -177,15 +220,19 @@ small{color:#64748b}
 <body>
 
 <header>
+
 <h1>🏀 NBA Props Scanner</h1>
+
 <div class="sub">
 Análise estatística pré-jogo · Pontos · Assistências · Rebotes · Arremessos
 </div>
+
 </header>
 
 <main>
 
 <section class="card">
+
 <h2>Conexão com a API</h2>
 
 <label>Endereço do servidor</label>
@@ -200,9 +247,11 @@ Análise estatística pré-jogo · Pontos · Assistências · Rebotes · Arremes
 <div id="status" class="status">
 Aguardando conexão com o servidor.
 </div>
+
 </section>
 
 <section class="card">
+
 <h2>Agenda de jogos</h2>
 
 <label>Data dos jogos</label>
@@ -212,9 +261,11 @@ Aguardando conexão com o servidor.
 <button onclick="carregarJogos()">Buscar jogos</button>
 
 <div id="jogos"></div>
+
 </section>
 
 <section class="card">
+
 <h2>Radar de jogadores</h2>
 
 <p>
@@ -224,17 +275,35 @@ Selecione o mercado para buscar jogadores com base nas estatísticas recentes.
 </p>
 
 <div class="actions">
-<button onclick="buscar('points')">Pontos</button>
-<button onclick="buscar('assists')">Assistências</button>
-<button onclick="buscar('rebounds')">Rebotes</button>
-<button onclick="buscar('threes')">Tentativas de 3 pontos</button>
-<button onclick="buscar('attempts')">Tentativas totais</button>
+
+<button onclick="buscar('points')">
+Pontos
+</button>
+
+<button onclick="buscar('assists')">
+Assistências
+</button>
+
+<button onclick="buscar('rebounds')">
+Rebotes
+</button>
+
+<button onclick="buscar('threes')">
+Tentativas de 3 pontos
+</button>
+
+<button onclick="buscar('attempts')">
+Tentativas totais
+</button>
+
 </div>
 
 <div id="resultado"></div>
+
 </section>
 
 <section class="card explanation">
+
 <h2>Como interpretar</h2>
 
 <p>
@@ -276,6 +345,7 @@ O scanner organiza candidatos com base nas médias recentes e nos minutos em qua
 <p>
 Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.
 </p>
+
 </section>
 
 </main>
@@ -291,112 +361,255 @@ api.value=
  'https://nba-props-scanner.onrender.com';
 
 function endereco(){
+
  return api.value.trim().replace(/\/$/,'');
+
 }
 
 api.addEventListener('change',()=>{
- localStorage.setItem('nbaPropsApiBase',endereco());
+
+ localStorage.setItem(
+  'nbaPropsApiBase',
+  endereco()
+ );
+
 });
 
 data.value=new Date().toLocaleDateString('en-CA');
 
 async function requisicao(caminho){
 
- const resposta=await fetch(endereco()+caminho);
+ const resposta=
+  await fetch(endereco()+caminho);
 
  if(!resposta.ok){
-  throw new Error('Erro HTTP '+resposta.status);
+
+  throw new Error(
+   'Erro HTTP '+resposta.status
+  );
+
  }
 
  return await resposta.json();
+
 }
 
 function numero(valor,casas=2){
 
- if(valor===null || valor===undefined || valor===''){
+ if(
+  valor===null ||
+  valor===undefined ||
+  valor===''
+ ){
+
   return '—';
+
  }
 
  const n=Number(valor);
 
  if(!Number.isFinite(n)){
+
   return '—';
+
  }
 
  return n.toFixed(casas);
+
 }
 
 function participacoes(valor){
 
- if(valor===null || valor===undefined){
+ if(
+  valor===null ||
+  valor===undefined
+ ){
+
   return '—';
+
  }
 
  return valor;
+
 }
 
-function amostra(jogos,apps,minutos){
+function blocoPeriodo(
+ valor,
+ periodo,
+ jogos=null,
+ apps=null,
+ minutos=null,
+ casas=2
+){
 
- return '<span class="sample">'+
-  participacoes(jogos)+' jogos · '+
-  participacoes(apps)+' participações · '+
-  numero(minutos,0)+' min'+
- '</span>';
+ let html=
+  '<div class="split-item">';
+
+ html+=
+  '<span class="period-label">'+
+  periodo+
+  '</span>';
+
+ html+=
+  '<span class="metric-value">'+
+  numero(valor,casas)+
+  '</span>';
+
+ if(
+  jogos!==null ||
+  apps!==null ||
+  minutos!==null
+ ){
+
+  html+=
+   '<span class="sample">'+
+   participacoes(jogos)+
+   ' jogos · '+
+   participacoes(apps)+
+   ' participações · '+
+   numero(minutos,0)+
+   ' min'+
+   '</span>';
+
+ }
+
+ html+='</div>';
+
+ return html;
+
 }
 
-function celulaAjustada(valor,jogos,apps,minutos,casas=2){
+function celulaAjustada(
+ valor5,
+ valor10,
+ jogos5,
+ jogos10,
+ apps5,
+ apps10,
+ minutos5,
+ minutos10
+){
 
  return '<td class="new-metric">'+
-  '<span class="metric-value">'+numero(valor,casas)+'</span>'+
-  amostra(jogos,apps,minutos)+
- '</td>';
+
+  '<div class="split-metric">'+
+
+  blocoPeriodo(
+   valor5,
+   'L5',
+   jogos5,
+   apps5,
+   minutos5,
+   2
+  )+
+
+  blocoPeriodo(
+   valor10,
+   'L10',
+   jogos10,
+   apps10,
+   minutos10,
+   2
+  )+
+
+  '</div>'+
+
+  '</td>';
+
 }
 
-function celulaSimples(valor,casas=2){
+function celulaDupla(
+ valor5,
+ valor10,
+ casas=2
+){
 
  return '<td class="new-metric">'+
-  '<span class="metric-value">'+numero(valor,casas)+'</span>'+
- '</td>';
+
+  '<div class="split-metric">'+
+
+  blocoPeriodo(
+   valor5,
+   'L5',
+   null,
+   null,
+   null,
+   casas
+  )+
+
+  blocoPeriodo(
+   valor10,
+   'L10',
+   null,
+   null,
+   null,
+   casas
+  )+
+
+  '</div>'+
+
+  '</td>';
+
 }
 
 async function testar(){
 
- status.innerText='Testando conexão...';
+ status.innerText=
+  'Testando conexão...';
 
  try{
 
-  const r=await requisicao('/health');
+  const r=
+   await requisicao('/health');
 
   status.innerText=
-   '✅ Conectado! Servidor: '+r.service+
-   ' | Versão: '+(r.version || 'não informada');
+   '✅ Conectado! Servidor: '+
+   r.service+
+   ' | Versão: '+
+   (r.version || 'não informada');
 
  }catch(e){
 
   status.innerText=
-   '❌ Não foi possível conectar: '+e.message;
+   '❌ Não foi possível conectar: '+
+   e.message;
+
  }
+
 }
 
 async function carregarJogos(){
 
- const box=document.getElementById('jogos');
+ const box=
+  document.getElementById('jogos');
 
- box.innerHTML='Carregando jogos...';
+ box.innerHTML=
+  'Carregando jogos...';
 
  try{
 
-  const r=await requisicao('/games?date='+data.value);
+  const r=
+   await requisicao(
+    '/games?date='+data.value
+   );
 
-  if(!r.games || !r.games.length){
+  if(
+   !r.games ||
+   !r.games.length
+  ){
 
-   box.innerHTML='<p>Nenhum jogo encontrado para esta data.</p>';
+   box.innerHTML=
+    '<p>Nenhum jogo encontrado para esta data.</p>';
+
    return;
+
   }
 
-  let html='<div class="tablewrap"><table>';
+  let html=
+   '<div class="tablewrap"><table>';
 
-  html+='<tr>'+
+  html+=
+   '<tr>'+
    '<th>Visitante</th>'+
    '<th>Mandante</th>'+
    '<th>Status</th>'+
@@ -404,11 +617,22 @@ async function carregarJogos(){
 
   r.games.forEach(j=>{
 
-   html+='<tr>'+
-    '<td>'+j.away.abbr+' - '+j.away.name+'</td>'+
-    '<td>'+j.home.abbr+' - '+j.home.name+'</td>'+
-    '<td>'+j.status+'</td>'+
-   '</tr>';
+   html+=
+    '<tr>'+
+    '<td>'+
+    j.away.abbr+
+    ' - '+
+    j.away.name+
+    '</td>'+
+    '<td>'+
+    j.home.abbr+
+    ' - '+
+    j.home.name+
+    '</td>'+
+    '<td>'+
+    j.status+
+    '</td>'+
+    '</tr>';
 
   });
 
@@ -418,43 +642,72 @@ async function carregarJogos(){
 
  }catch(e){
 
-  box.innerHTML='Erro ao buscar jogos: '+e.message;
+  box.innerHTML=
+   'Erro ao buscar jogos: '+
+   e.message;
+
  }
+
 }
 
 async function buscar(mercado){
 
- const box=document.getElementById('resultado');
+ const box=
+  document.getElementById('resultado');
 
- box.innerHTML='Analisando jogadores...';
+ box.innerHTML=
+  'Analisando jogadores...';
 
  try{
 
-  const r=await requisicao(
-   '/candidates?date='+data.value+
-   '&market='+mercado+
-   '&limit=20'
+  const r=
+   await requisicao(
+    '/candidates?date='+
+    data.value+
+    '&market='+
+    mercado+
+    '&limit=20'
   );
 
-  let html='<h3>'+r.market_label+' - '+r.date+'</h3>';
+  let html=
+   '<h3>'+
+   r.market_label+
+   ' - '+
+   r.date+
+   '</h3>';
 
-  html+='<p><small>'+
-   (r.method_note || 'Triagem estatística exploratória.')+
+  html+=
+   '<p><small>'+
+   (
+    r.method_note ||
+    'Triagem estatística exploratória.'
+   )+
    '</small></p>';
 
-  if(!r.candidates || !r.candidates.length){
+  if(
+   !r.candidates ||
+   !r.candidates.length
+  ){
 
-   box.innerHTML=html+'<p>Nenhum candidato retornado.</p>';
+   box.innerHTML=
+    html+
+    '<p>Nenhum candidato retornado.</p>';
+
    return;
+
   }
 
-  const mercadoLabel=r.market_label || 'Mercado';
+  const mercadoLabel=
+   r.market_label ||
+   'Mercado';
 
-  html+='<div class="tablewrap"><table>';
+  html+=
+   '<div class="tablewrap"><table>';
 
   // CABEÇALHO PRINCIPAL
 
-  html+='<tr>'+
+  html+=
+   '<tr>'+
 
    '<th rowspan="2">Jogador</th>'+
    '<th rowspan="2">Equipe</th>'+
@@ -464,25 +717,40 @@ async function buscar(mercado){
    '<th colspan="2">Média do jogador</th>'+
 
    '<th rowspan="2">Minutos L5</th>'+
+
    '<th rowspan="2">Pontuação</th>'+
 
-   '<th colspan="2">Defesa geral - '+mercadoLabel+'</th>'+
+   '<th colspan="2">'+
+   'Defesa geral - '+
+   mercadoLabel+
+   '</th>'+
 
-   '<th colspan="2">Defesa por posição - total</th>'+
+   '<th colspan="2">'+
+   'Defesa por posição - total'+
+   '</th>'+
 
-   '<th colspan="2">Defesa por posição - média individual</th>'+
+   '<th colspan="2">'+
+   'Defesa por posição - média individual'+
+   '</th>'+
 
-   '<th colspan="2" class="new-header">Média ajustada</th>'+
+   '<th colspan="1" class="new-header">'+
+   'Média ajustada'+
+   '</th>'+
 
-   '<th colspan="2" class="new-header">Taxa por minuto</th>'+
+   '<th colspan="1" class="new-header">'+
+   'Taxa por minuto'+
+   '</th>'+
 
-   '<th colspan="2" class="new-header">Projeção ajustada</th>'+
+   '<th colspan="1" class="new-header">'+
+   'Projeção ajustada'+
+   '</th>'+
 
-  '</tr>';
+   '</tr>';
 
   // SUBCABEÇALHO
 
-  html+='<tr>'+
+  html+=
+   '<tr>'+
 
    '<th>L5</th>'+
    '<th>L10</th>'+
@@ -496,22 +764,23 @@ async function buscar(mercado){
    '<th>L5</th>'+
    '<th>L10</th>'+
 
-   '<th class="new-header">L5</th>'+
-   '<th class="new-header">L10</th>'+
+   '<th class="new-header">'+
+   'L5 / L10'+
+   '</th>'+
 
-   '<th class="new-header">L5</th>'+
-   '<th class="new-header">L10</th>'+
+   '<th class="new-header">'+
+   'L5 / L10'+
+   '</th>'+
 
-   '<th class="new-header">L5</th>'+
-   '<th class="new-header">L10</th>'+
+   '<th class="new-header">'+
+   'L5 / L10'+
+   '</th>'+
 
-  '</tr>';
+   '</tr>';
 
   // JOGADORES
 
   r.candidates.forEach(p=>{
-
-   // MÉTRICAS DE DEFESA AJUSTADA
 
    const avg5=
     p.opponent_position_minutes_filtered_defense_l5_avg;
@@ -553,85 +822,162 @@ async function buscar(mercado){
 
    // IDENTIFICAÇÃO
 
-   html+='<td><b>'+p.player+'</b></td>';
+   html+=
+    '<td><b>'+
+    p.player+
+    '</b></td>';
 
-   html+='<td>'+p.team+'</td>';
+   html+=
+    '<td>'+
+    p.team+
+    '</td>';
 
-   html+='<td>'+(p.position || '—')+'</td>';
+   html+=
+    '<td>'+
+    (p.position || '—')+
+    '</td>';
 
-   html+='<td>'+(p.opponent || '—')+'</td>';
+   html+=
+    '<td>'+
+    (p.opponent || '—')+
+    '</td>';
 
    // MÉDIA DO JOGADOR
 
-   html+='<td>'+numero(p.last5_avg)+'</td>';
+   html+=
+    '<td>'+
+    numero(p.last5_avg)+
+    '</td>';
 
-   html+='<td>'+numero(p.last10_avg)+'</td>';
+   html+=
+    '<td>'+
+    numero(p.last10_avg)+
+    '</td>';
 
    // MINUTOS
 
-   html+='<td>'+numero(p.minutes_last5_avg,1)+'</td>';
+   html+=
+    '<td>'+
+    numero(
+     p.minutes_last5_avg,
+     1
+    )+
+    '</td>';
 
-   // PONTUAÇÃO ORIGINAL - NÃO ALTERADA
+   // PONTUAÇÃO ORIGINAL
 
-   html+='<td class="metric">'+numero(p.triage_score)+'</td>';
+   html+=
+    '<td class="metric">'+
+    numero(p.triage_score)+
+    '</td>';
 
    // DEFESA GERAL
 
-   html+='<td>'+numero(p.opponent_defense_l5_avg,1)+'</td>';
+   html+=
+    '<td>'+
+    numero(
+     p.opponent_defense_l5_avg,
+     1
+    )+
+    '</td>';
 
-   html+='<td>'+numero(p.opponent_defense_l10_avg,1)+'</td>';
+   html+=
+    '<td>'+
+    numero(
+     p.opponent_defense_l10_avg,
+     1
+    )+
+    '</td>';
 
    // DEFESA POR POSIÇÃO - TOTAL
 
-   html+='<td>'+numero(p.opponent_position_defense_l5_avg,1)+'</td>';
+   html+=
+    '<td>'+
+    numero(
+     p.opponent_position_defense_l5_avg,
+     1
+    )+
+    '</td>';
 
-   html+='<td>'+numero(p.opponent_position_defense_l10_avg,1)+'</td>';
+   html+=
+    '<td>'+
+    numero(
+     p.opponent_position_defense_l10_avg,
+     1
+    )+
+    '</td>';
 
    // DEFESA POR POSIÇÃO - MÉDIA INDIVIDUAL
 
-   html+='<td>'+
-    '<b>'+numero(p.opponent_position_individual_defense_l5_avg)+'</b>'+
+   html+=
+    '<td>'+
+    '<b>'+
+    numero(
+     p.opponent_position_individual_defense_l5_avg
+    )+
+    '</b>'+
     '<br><small>'+
-    participacoes(p.opponent_position_individual_defense_player_games_l5)+
+    participacoes(
+     p.opponent_position_individual_defense_player_games_l5
+    )+
     ' participações</small>'+
-   '</td>';
+    '</td>';
 
-   html+='<td>'+
-    '<b>'+numero(p.opponent_position_individual_defense_l10_avg)+'</b>'+
+   html+=
+    '<td>'+
+    '<b>'+
+    numero(
+     p.opponent_position_individual_defense_l10_avg
+    )+
+    '</b>'+
     '<br><small>'+
-    participacoes(p.opponent_position_individual_defense_player_games_l10)+
+    participacoes(
+     p.opponent_position_individual_defense_player_games_l10
+    )+
     ' participações</small>'+
-   '</td>';
+    '</td>';
 
-   // MÉDIA AJUSTADA L5 E L10
+   // MÉDIA AJUSTADA
 
-   html+=celulaAjustada(
-    avg5,games5,apps5,minutes5
-   );
+   html+=
+    celulaAjustada(
+     avg5,
+     avg10,
+     games5,
+     games10,
+     apps5,
+     apps10,
+     minutes5,
+     minutes10
+    );
 
-   html+=celulaAjustada(
-    avg10,games10,apps10,minutes10
-   );
+   // TAXA POR MINUTO
 
-   // TAXA POR MINUTO L5 E L10
+   html+=
+    celulaDupla(
+     rate5,
+     rate10,
+     4
+    );
 
-   html+=celulaSimples(rate5,4);
+   // PROJEÇÃO
 
-   html+=celulaSimples(rate10,4);
-
-   // PROJEÇÃO AJUSTADA L5 E L10
-
-   html+=celulaSimples(proj5);
-
-   html+=celulaSimples(proj10);
+   html+=
+    celulaDupla(
+     proj5,
+     proj10,
+     2
+    );
 
    html+='</tr>';
 
   });
 
-  html+='</table></div>';
+  html+=
+   '</table></div>';
 
-  html+='<p><small>'+
+  html+=
+   '<p><small>'+
    'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
    'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
    'A projeção é uma referência estatística, não uma previsão garantida.'+
@@ -641,8 +987,12 @@ async function buscar(mercado){
 
  }catch(e){
 
-  box.innerHTML='Erro ao buscar candidatos: '+e.message;
+  box.innerHTML=
+   'Erro ao buscar candidatos: '+
+   e.message;
+
  }
+
 }
 
 </script>
