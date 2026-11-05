@@ -6,7 +6,9 @@
 <title>NBA Props Scanner</title>
 
 <style>
-*{box-sizing:border-box}
+*{
+ box-sizing:border-box
+}
 
 body{
  margin:0;
@@ -22,14 +24,22 @@ header{
 }
 
 main{
- max-width:1700px;
+ max-width:1800px;
  margin:25px auto;
  padding:0 15px
 }
 
-h1{margin:0}
+h1{
+ margin:0
+}
 
-h2{margin-top:0}
+h2{
+ margin-top:0
+}
+
+h3{
+ margin-bottom:8px
+}
 
 .sub{
  color:#cbd5e1;
@@ -44,7 +54,9 @@ h2{margin-top:0}
  box-shadow:0 2px 8px #0000000c
 }
 
-input,select,button{
+input,
+select,
+button{
  padding:11px;
  border:1px solid #ccd3df;
  border-radius:7px;
@@ -68,6 +80,25 @@ button:hover{
  background:#0f766e
 }
 
+button.secondary{
+ background:#64748b
+}
+
+button.secondary:hover{
+ background:#475569
+}
+
+button.analisar{
+ background:#0f766e;
+ font-weight:bold;
+ padding:8px 12px;
+ margin:0
+}
+
+button.analisar:hover{
+ background:#115e59
+}
+
 .actions{
  display:flex;
  flex-wrap:wrap;
@@ -86,7 +117,8 @@ button:hover{
  overflow-x:auto;
  width:100%;
  margin-top:15px;
- border-radius:8px
+ border-radius:8px;
+ border:1px solid #e5e9f0
 }
 
 table{
@@ -96,7 +128,8 @@ table{
  white-space:nowrap
 }
 
-th,td{
+th,
+td{
  padding:9px 8px;
  text-align:center;
  border-bottom:1px solid #e5e9f0
@@ -114,18 +147,13 @@ td:first-child{
  text-align:left
 }
 
+tr:hover td{
+ background:#f8fafc
+}
+
 .metric{
  font-weight:bold;
  color:#172554
-}
-
-.new-metric{
- background:#f0f7ff;
- min-width:110px
-}
-
-.new-header{
- background:#dceafa
 }
 
 .period-label{
@@ -153,46 +181,248 @@ td:first-child{
 .split-metric{
  display:flex;
  flex-direction:column;
- gap:7px;
+ gap:7px
 }
 
 .split-item{
  display:flex;
  flex-direction:column;
- align-items:center;
+ align-items:center
 }
 
 .split-item + .split-item{
  border-top:1px solid #dbe3ee;
- padding-top:6px;
+ padding-top:6px
 }
 
-/* NOVA MÉTRICA */
+.new-metric{
+ background:#f0f7ff;
+ min-width:115px
+}
+
+.new-header{
+ background:#dceafa
+}
+
+/* =========================================================
+   DIFERENÇA VS DEFESA
+   ========================================================= */
 
 .difference-value{
  font-size:13px;
- font-weight:bold;
+ font-weight:bold
 }
 
 .difference-positive{
- color:#15803d;
+ color:#15803d
 }
 
 .difference-negative{
- color:#b91c1c;
+ color:#b91c1c
 }
 
 .difference-neutral{
- color:#64748b;
+ color:#64748b
 }
 
 .difference-header{
- background:#e2f3e7;
+ background:#e2f3e7
 }
 
 .difference-cell{
  background:#f3faf5;
- min-width:115px;
+ min-width:115px
+}
+
+/* =========================================================
+   FILTROS
+   ========================================================= */
+
+.filters{
+ display:grid;
+ grid-template-columns:
+  repeat(6,minmax(130px,1fr));
+ gap:12px;
+ margin-top:15px
+}
+
+.filter-group{
+ display:flex;
+ flex-direction:column
+}
+
+.filter-group label{
+ font-size:11px;
+ font-weight:bold;
+ color:#475569;
+ margin-bottom:5px
+}
+
+.filter-group select{
+ width:100%;
+ background:white
+}
+
+.filter-actions{
+ display:flex;
+ align-items:flex-end;
+ gap:5px
+}
+
+.filter-actions button{
+ width:100%;
+ margin:0
+}
+
+.results-summary{
+ display:flex;
+ flex-wrap:wrap;
+ align-items:center;
+ justify-content:space-between;
+ gap:10px;
+ margin-top:15px;
+ padding:12px 14px;
+ background:#f8fafc;
+ border:1px solid #e5e9f0;
+ border-radius:8px
+}
+
+.results-count{
+ font-weight:bold;
+ color:#172554
+}
+
+.results-info{
+ font-size:12px;
+ color:#64748b
+}
+
+/* =========================================================
+   MODAL / ANÁLISE
+   ========================================================= */
+
+.modal-overlay{
+ display:none;
+ position:fixed;
+ inset:0;
+ background:rgba(15,23,42,.65);
+ z-index:1000;
+ padding:25px;
+ overflow-y:auto
+}
+
+.modal-overlay.active{
+ display:flex;
+ align-items:flex-start;
+ justify-content:center
+}
+
+.modal{
+ width:min(1050px,100%);
+ background:white;
+ border-radius:14px;
+ box-shadow:0 20px 60px rgba(0,0,0,.25);
+ margin:20px auto;
+ overflow:hidden
+}
+
+.modal-header{
+ background:#172554;
+ color:white;
+ padding:20px 22px;
+ display:flex;
+ justify-content:space-between;
+ align-items:flex-start;
+ gap:15px
+}
+
+.modal-header h2{
+ margin:0 0 5px
+}
+
+.modal-header .player-meta{
+ color:#cbd5e1;
+ font-size:13px
+}
+
+.close-modal{
+ background:transparent;
+ border:1px solid rgba(255,255,255,.35);
+ color:white;
+ font-size:20px;
+ padding:5px 10px;
+ margin:0
+}
+
+.close-modal:hover{
+ background:rgba(255,255,255,.1)
+}
+
+.modal-body{
+ padding:22px
+}
+
+.analysis-grid{
+ display:grid;
+ grid-template-columns:
+  repeat(2,minmax(0,1fr));
+ gap:15px
+}
+
+.analysis-card{
+ border:1px solid #e5e9f0;
+ border-radius:10px;
+ padding:15px;
+ background:#fff
+}
+
+.analysis-card h3{
+ color:#172554;
+ font-size:14px;
+ margin-top:0
+}
+
+.analysis-table{
+ width:100%;
+ border-collapse:collapse;
+ white-space:normal;
+ font-size:13px
+}
+
+.analysis-table th,
+.analysis-table td{
+ padding:9px;
+ border-bottom:1px solid #e5e9f0;
+ text-align:left
+}
+
+.analysis-table th{
+ position:static;
+ background:#f8fafc;
+ color:#475569
+}
+
+.highlight{
+ font-size:20px;
+ font-weight:bold
+}
+
+.highlight-positive{
+ color:#15803d
+}
+
+.highlight-negative{
+ color:#b91c1c
+}
+
+.analysis-note{
+ margin-top:15px;
+ padding:12px;
+ background:#f8fafc;
+ border-left:4px solid #172554;
+ border-radius:5px;
+ font-size:13px;
+ line-height:1.6
 }
 
 .explanation{
@@ -202,6 +432,24 @@ td:first-child{
 
 small{
  color:#64748b
+}
+
+.empty-state{
+ padding:30px;
+ text-align:center;
+ color:#64748b
+}
+
+@media(max-width:1100px){
+
+ .filters{
+  grid-template-columns:
+   repeat(3,minmax(150px,1fr))
+ }
+
+ .analysis-grid{
+  grid-template-columns:1fr
+ }
 }
 
 @media(max-width:600px){
@@ -222,32 +470,34 @@ small{
   font-size:11px
  }
 
- th,td{
+ th,
+ td{
   padding:7px 6px
  }
 
- .new-metric{
-  min-width:105px
+ .filters{
+  grid-template-columns:1fr
  }
 
- .metric-value{
-  font-size:12px
+ .results-summary{
+  align-items:flex-start;
+  flex-direction:column
  }
 
- .sample{
-  font-size:8px
+ .modal-overlay{
+  padding:10px
  }
 
- .period-label{
-  font-size:9px
+ .modal{
+  margin:5px auto
  }
 
- .difference-value{
-  font-size:12px
+ .modal-header{
+  padding:16px
  }
 
- .difference-cell{
-  min-width:105px
+ .modal-body{
+  padding:15px
  }
 }
 </style>
@@ -267,6 +517,10 @@ Análise estatística pré-jogo · Pontos · Assistências · Rebotes · Arremes
 
 <main>
 
+<!-- =======================================================
+     CONEXÃO
+======================================================= -->
+
 <section class="card">
 
 <h2>Conexão com a API</h2>
@@ -278,7 +532,9 @@ Análise estatística pré-jogo · Pontos · Assistências · Rebotes · Arremes
  value="https://nba-props-scanner.onrender.com"
 >
 
-<button onclick="testar()">Testar conexão</button>
+<button onclick="testar()">
+Testar conexão
+</button>
 
 <div id="status" class="status">
 Aguardando conexão com o servidor.
@@ -286,27 +542,43 @@ Aguardando conexão com o servidor.
 
 </section>
 
+
+<!-- =======================================================
+     AGENDA
+======================================================= -->
+
 <section class="card">
 
 <h2>Agenda de jogos</h2>
 
 <label>Data dos jogos</label>
 
-<input type="date" id="data">
+<input
+ type="date"
+ id="data"
+>
 
-<button onclick="carregarJogos()">Buscar jogos</button>
+<button onclick="carregarJogos()">
+Buscar jogos
+</button>
 
 <div id="jogos"></div>
 
 </section>
 
+
+<!-- =======================================================
+     SCANNER
+======================================================= -->
+
 <section class="card">
 
-<h2>Radar de jogadores</h2>
+<h2>🔎 Scanner de jogadores</h2>
 
 <p>
 <small>
-Selecione o mercado para buscar jogadores com base nas estatísticas recentes.
+Encontre jogadores que merecem atenção com base em desempenho recente,
+minutagem e contexto defensivo.
 </small>
 </p>
 
@@ -338,12 +610,18 @@ Tentativas totais
 
 </section>
 
+
+<!-- =======================================================
+     EXPLICAÇÃO
+======================================================= -->
+
 <section class="card explanation">
 
 <h2>Como interpretar</h2>
 
 <p>
-O scanner organiza candidatos com base nas médias recentes e nos minutos em quadra.
+O Scanner organiza candidatos com base nas médias recentes e nos minutos
+em quadra, permitindo que o usuário filtre e aprofunde a análise de cada jogador.
 </p>
 
 <p>
@@ -351,11 +629,13 @@ O scanner organiza candidatos com base nas médias recentes e nos minutos em qua
 </p>
 
 <p>
-<b>Defesa por posição:</b> produção total permitida aos jogadores da mesma posição e média individual por participação.
+<b>Defesa por posição:</b> produção total permitida aos jogadores da mesma posição
+e média individual por participação.
 </p>
 
 <p>
-<b>Defesa ajustada à minutagem:</b> considera jogadores da mesma posição que atuaram minutos iguais ou superiores à média L5 do candidato.
+<b>Defesa ajustada à minutagem:</b> considera jogadores da mesma posição que atuaram
+minutos iguais ou superiores à média L5 do candidato.
 </p>
 
 <p>
@@ -375,7 +655,8 @@ O scanner organiza candidatos com base nas médias recentes e nos minutos em qua
 </p>
 
 <p>
-Exemplo: se o jogador possui média L5 de <b>8,00 AST</b> e a projeção ajustada da defesa é <b>5,16 AST</b>, a diferença será <b>+2,84 AST</b>.
+Exemplo: se o jogador possui média L5 de <b>8,00 AST</b> e a projeção ajustada
+da defesa é <b>5,16 AST</b>, a diferença será <b>+2,84 AST</b>.
 </p>
 
 <p>
@@ -383,48 +664,134 @@ Exemplo: se o jogador possui média L5 de <b>8,00 AST</b> e a projeção ajustad
 </p>
 
 <p>
-<b>Importante:</b> as métricas defensivas são contextuais e não alteram a pontuação do candidato. A projeção não representa uma previsão garantida.
+<b>Importante:</b> as métricas defensivas são contextuais e não alteram a pontuação
+do candidato. A projeção não representa uma previsão garantida.
 </p>
 
 <p>
-Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.
+O Scanner é uma ferramenta de pesquisa e análise estatística.
+A decisão final sobre qualquer entrada é sempre do usuário.
+</p>
+
+<p>
+Antes de qualquer entrada, confira lesões, escalações, confronto defensivo,
+linha e odd disponíveis na casa de apostas.
 </p>
 
 </section>
 
 </main>
 
+
+<!-- =======================================================
+     MODAL DE ANÁLISE
+======================================================= -->
+
+<div
+ id="analysisModal"
+ class="modal-overlay"
+ onclick="fecharModalFora(event)"
+>
+
+<div class="modal">
+
+<div class="modal-header">
+
+<div>
+
+<h2 id="modalPlayer">
+Análise do jogador
+</h2>
+
+<div
+ id="modalMeta"
+ class="player-meta"
+></div>
+
+</div>
+
+<button
+ class="close-modal"
+ onclick="fecharModal()"
+>
+×
+</button>
+
+</div>
+
+<div
+ id="modalBody"
+ class="modal-body"
+>
+</div>
+
+</div>
+
+</div>
+
+
 <script>
 
-const api=document.getElementById('api');
-const status=document.getElementById('status');
-const data=document.getElementById('data');
+const api=
+ document.getElementById('api');
+
+const status=
+ document.getElementById('status');
+
+const data=
+ document.getElementById('data');
+
 
 api.value=
  localStorage.getItem('nbaPropsApiBase') ||
  'https://nba-props-scanner.onrender.com';
 
+
 function endereco(){
 
- return api.value.trim().replace(/\/$/,'');
+ return api.value
+  .trim()
+  .replace(/\/$/,'');
 
 }
 
-api.addEventListener('change',()=>{
 
- localStorage.setItem(
-  'nbaPropsApiBase',
-  endereco()
- );
+api.addEventListener(
+ 'change',
+ ()=>{
 
-});
+  localStorage.setItem(
+   'nbaPropsApiBase',
+   endereco()
+  );
 
-data.value=new Date().toLocaleDateString('en-CA');
+ }
+);
+
+
+data.value=
+ new Date().toLocaleDateString('en-CA');
+
+
+/* =========================================================
+   ESTADO DO SCANNER
+========================================================= */
+
+let candidatosAtuais=[];
+let mercadoAtual='';
+let resultadoAtual=null;
+
+
+/* =========================================================
+   REQUISIÇÃO
+========================================================= */
 
 async function requisicao(caminho){
 
  const resposta=
-  await fetch(endereco()+caminho);
+  await fetch(
+   endereco()+caminho
+  );
 
  if(!resposta.ok){
 
@@ -438,7 +805,15 @@ async function requisicao(caminho){
 
 }
 
-function numero(valor,casas=2){
+
+/* =========================================================
+   FORMATAÇÃO
+========================================================= */
+
+function numero(
+ valor,
+ casas=2
+){
 
  if(
   valor===null ||
@@ -450,7 +825,8 @@ function numero(valor,casas=2){
 
  }
 
- const n=Number(valor);
+ const n=
+  Number(valor);
 
  if(!Number.isFinite(n)){
 
@@ -461,6 +837,7 @@ function numero(valor,casas=2){
  return n.toFixed(casas);
 
 }
+
 
 function participacoes(valor){
 
@@ -476,6 +853,36 @@ function participacoes(valor){
  return valor;
 
 }
+
+
+/* =========================================================
+   ESCAPE HTML
+========================================================= */
+
+function escapeHtml(valor){
+
+ if(
+  valor===null ||
+  valor===undefined
+ ){
+
+  return '';
+
+ }
+
+ return String(valor)
+  .replace(/&/g,'&amp;')
+  .replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;')
+  .replace(/'/g,'&#039;');
+
+}
+
+
+/* =========================================================
+   BLOCO DE PERÍODO
+========================================================= */
 
 function blocoPeriodo(
  valor,
@@ -517,11 +924,17 @@ function blocoPeriodo(
 
  }
 
- html+='</div>';
+ html+=
+  '</div>';
 
  return html;
 
 }
+
+
+/* =========================================================
+   CÉLULA MÉTRICA AJUSTADA
+========================================================= */
 
 function celulaAjustada(
  valor5,
@@ -562,6 +975,11 @@ function celulaAjustada(
 
 }
 
+
+/* =========================================================
+   CÉLULA DUPLA
+========================================================= */
+
 function celulaDupla(
  valor5,
  valor10,
@@ -599,7 +1017,7 @@ function celulaDupla(
 
 /* =========================================================
    DIFERENÇA VS DEFESA
-   ========================================================= */
+========================================================= */
 
 function diferencaVsDefesa(
  valorJogador,
@@ -648,7 +1066,8 @@ function formatarDiferenca(valor){
 
  }
 
- const n=Number(valor);
+ const n=
+  Number(valor);
 
  if(!Number.isFinite(n)){
 
@@ -678,7 +1097,8 @@ function classeDiferenca(valor){
 
  }
 
- const n=Number(valor);
+ const n=
+  Number(valor);
 
  if(!Number.isFinite(n)){
 
@@ -745,7 +1165,7 @@ function celulaDiferenca(
 
 /* =========================================================
    TESTE API
-   ========================================================= */
+========================================================= */
 
 async function testar(){
 
@@ -776,7 +1196,7 @@ async function testar(){
 
 /* =========================================================
    JOGOS
-   ========================================================= */
+========================================================= */
 
 async function carregarJogos(){
 
@@ -820,17 +1240,17 @@ async function carregarJogos(){
    html+=
     '<tr>'+
     '<td>'+
-    j.away.abbr+
+    escapeHtml(j.away.abbr)+
     ' - '+
-    j.away.name+
+    escapeHtml(j.away.name)+
     '</td>'+
     '<td>'+
-    j.home.abbr+
+    escapeHtml(j.home.abbr)+
     ' - '+
-    j.home.name+
+    escapeHtml(j.home.name)+
     '</td>'+
     '<td>'+
-    j.status+
+    escapeHtml(j.status)+
     '</td>'+
     '</tr>';
 
@@ -838,13 +1258,14 @@ async function carregarJogos(){
 
   html+='</table></div>';
 
-  box.innerHTML=html;
+  box.innerHTML=
+   html;
 
  }catch(e){
 
   box.innerHTML=
    'Erro ao buscar jogos: '+
-   e.message;
+   escapeHtml(e.message);
 
  }
 
@@ -852,16 +1273,1344 @@ async function carregarJogos(){
 
 
 /* =========================================================
+   CONSTRUÇÃO DOS FILTROS
+========================================================= */
+
+function filtrosHtml(){
+
+ return `
+
+ <div class="filters">
+
+  <div class="filter-group">
+
+   <label for="filtroMinutos">
+    MINUTOS L5
+   </label>
+
+   <select id="filtroMinutos">
+
+    <option value="0">
+     Todos
+    </option>
+
+    <option value="24">
+     ≥ 24
+    </option>
+
+    <option value="28">
+     ≥ 28
+    </option>
+
+    <option value="30">
+     ≥ 30
+    </option>
+
+    <option value="32">
+     ≥ 32
+    </option>
+
+   </select>
+
+  </div>
+
+
+  <div class="filter-group">
+
+   <label for="filtroScore">
+    SCORE
+   </label>
+
+   <select id="filtroScore">
+
+    <option value="0">
+     Todos
+    </option>
+
+    <option value="5">
+     ≥ 5
+    </option>
+
+    <option value="6">
+     ≥ 6
+    </option>
+
+    <option value="7">
+     ≥ 7
+    </option>
+
+    <option value="8">
+     ≥ 8
+    </option>
+
+   </select>
+
+  </div>
+
+
+  <div class="filter-group">
+
+   <label for="filtroDiferenca">
+    DIF. VS DEFESA
+   </label>
+
+   <select id="filtroDiferenca">
+
+    <option value="all">
+     Todos
+    </option>
+
+    <option value="positive">
+     Positiva
+    </option>
+
+    <option value="1">
+     ≥ +1
+    </option>
+
+    <option value="2">
+     ≥ +2
+    </option>
+
+    <option value="3">
+     ≥ +3
+    </option>
+
+    <option value="-1">
+     ≤ -1
+    </option>
+
+    <option value="-2">
+     ≤ -2
+    </option>
+
+   </select>
+
+  </div>
+
+
+  <div class="filter-group">
+
+   <label for="filtroPosicao">
+    POSIÇÃO
+   </label>
+
+   <select id="filtroPosicao">
+
+    <option value="all">
+     Todas
+    </option>
+
+    <option value="G">
+     G
+    </option>
+
+    <option value="F">
+     F
+    </option>
+
+    <option value="C">
+     C
+    </option>
+
+   </select>
+
+  </div>
+
+
+  <div class="filter-group">
+
+   <label for="filtroOrdenacao">
+    ORDENAR POR
+   </label>
+
+   <select id="filtroOrdenacao">
+
+    <option value="score">
+     Score ↓
+    </option>
+
+    <option value="difference">
+     Diferença vs defesa ↓
+    </option>
+
+    <option value="l5">
+     Média L5 ↓
+    </option>
+
+    <option value="l10">
+     Média L10 ↓
+    </option>
+
+    <option value="minutes">
+     Minutos L5 ↓
+    </option>
+
+   </select>
+
+  </div>
+
+
+  <div class="filter-actions">
+
+   <button
+    onclick="limparFiltros()"
+    class="secondary"
+   >
+    Limpar filtros
+   </button>
+
+  </div>
+
+ </div>
+
+ `;
+
+}
+
+
+/* =========================================================
+   OBTÉM DIFERENÇA
+========================================================= */
+
+function obterDiferenca(
+ jogador
+){
+
+ const proj5=
+  jogador
+   .opponent_position_minutes_filtered_defense_l5_projected;
+
+ const proj10=
+  jogador
+   .opponent_position_minutes_filtered_defense_l10_projected;
+
+ const d5=
+  diferencaVsDefesa(
+   jogador.last5_avg,
+   proj5
+  );
+
+ const d10=
+  diferencaVsDefesa(
+   jogador.last10_avg,
+   proj10
+  );
+
+ /*
+  Para filtros e ordenação usamos a maior
+  diferença disponível entre L5 e L10.
+ */
+ const valores=
+  [d5,d10]
+   .filter(v=>v!==null);
+
+ if(!valores.length){
+
+  return null;
+
+ }
+
+ return Math.max(...valores);
+
+}
+
+
+/* =========================================================
+   FILTRAR
+========================================================= */
+
+function filtrarCandidatos(){
+
+ const min=
+  Number(
+   document.getElementById(
+    'filtroMinutos'
+   ).value
+  );
+
+ const score=
+  Number(
+   document.getElementById(
+    'filtroScore'
+   ).value
+  );
+
+ const diferenca=
+  document.getElementById(
+   'filtroDiferenca'
+  ).value;
+
+ const posicao=
+  document.getElementById(
+   'filtroPosicao'
+  ).value;
+
+ const ordenacao=
+  document.getElementById(
+   'filtroOrdenacao'
+  ).value;
+
+
+ let filtrados=
+  candidatosAtuais.filter(p=>{
+
+   const minutos=
+    Number(p.minutes_last5_avg);
+
+   const triage=
+    Number(p.triage_score);
+
+   const pos=
+    String(
+     p.position || ''
+    ).toUpperCase();
+
+   const diff=
+    obterDiferenca(p);
+
+
+   if(
+    min>0 &&
+    (
+     !Number.isFinite(minutos) ||
+     minutos<min
+    )
+   ){
+
+    return false;
+
+   }
+
+
+   if(
+    score>0 &&
+    (
+     !Number.isFinite(triage) ||
+     triage<score
+    )
+   ){
+
+    return false;
+
+   }
+
+
+   if(
+    posicao!=='all' &&
+    pos!==posicao
+   ){
+
+    return false;
+
+   }
+
+
+   if(diferenca==='positive'){
+
+    if(
+     diff===null ||
+     diff<=0
+    ){
+
+     return false;
+
+    }
+
+   }
+
+   else if(
+    diferenca==='1' ||
+    diferenca==='2' ||
+    diferenca==='3'
+   ){
+
+    const limite=
+     Number(diferenca);
+
+    if(
+     diff===null ||
+     diff<limite
+    ){
+
+     return false;
+
+    }
+
+   }
+
+   else if(
+    diferenca==='-1' ||
+    diferenca==='-2'
+   ){
+
+    const limite=
+     Number(diferenca);
+
+    if(
+     diff===null ||
+     diff>limite
+    ){
+
+     return false;
+
+    }
+
+   }
+
+
+   return true;
+
+ });
+
+
+ /* =======================================================
+    ORDENAÇÃO
+ ======================================================= */
+
+ filtrados.sort((a,b)=>{
+
+  let va=0;
+  let vb=0;
+
+  if(ordenacao==='score'){
+
+   va=
+    Number(a.triage_score);
+
+   vb=
+    Number(b.triage_score);
+
+  }
+
+  else if(
+   ordenacao==='difference'
+  ){
+
+   va=
+    obterDiferenca(a);
+
+   vb=
+    obterDiferenca(b);
+
+   va=
+    va===null ? -Infinity : va;
+
+   vb=
+    vb===null ? -Infinity : vb;
+
+  }
+
+  else if(ordenacao==='l5'){
+
+   va=
+    Number(a.last5_avg);
+
+   vb=
+    Number(b.last5_avg);
+
+  }
+
+  else if(ordenacao==='l10'){
+
+   va=
+    Number(a.last10_avg);
+
+   vb=
+    Number(b.last10_avg);
+
+  }
+
+  else if(
+   ordenacao==='minutes'
+  ){
+
+   va=
+    Number(a.minutes_last5_avg);
+
+   vb=
+    Number(b.minutes_last5_avg);
+
+  }
+
+
+  if(!Number.isFinite(va)){
+
+   va=-Infinity;
+
+  }
+
+  if(!Number.isFinite(vb)){
+
+   vb=-Infinity;
+
+  }
+
+  return vb-va;
+
+ });
+
+
+ return filtrados;
+
+}
+
+
+/* =========================================================
+   RENDERIZA RESULTADOS
+========================================================= */
+
+function renderizarResultados(){
+
+ const box=
+  document.getElementById(
+   'resultado'
+  );
+
+ const filtrados=
+  filtrarCandidatos();
+
+
+ let html='';
+
+
+ html+=
+  '<div class="results-summary">'+
+
+  '<div class="results-count">'+
+  filtrados.length+
+  ' de '+
+  candidatosAtuais.length+
+  ' jogadores exibidos'+
+  '</div>'+
+
+  '<div class="results-info">'+
+  'Use os filtros para personalizar sua pesquisa.'+
+  '</div>'+
+
+  '</div>';
+
+
+ if(!filtrados.length){
+
+  html+=
+   '<div class="empty-state">'+
+   '<b>Nenhum jogador atende aos filtros selecionados.</b>'+
+   '<br>'+
+   '<small>'+
+   'Tente reduzir os critérios para ampliar a busca.'+
+   '</small>'+
+   '</div>';
+
+  box.innerHTML=
+   html;
+
+  return;
+
+ }
+
+
+ html+=
+  '<div class="tablewrap"><table>';
+
+
+ /* =======================================================
+    CABEÇALHO
+ ======================================================= */
+
+ html+=
+  '<tr>'+
+
+  '<th>Jogador</th>'+
+  '<th>Equipe</th>'+
+  '<th>Posição</th>'+
+  '<th>Adversário</th>'+
+
+  '<th>L5</th>'+
+  '<th>L10</th>'+
+
+  '<th>Minutos L5</th>'+
+
+  '<th>Score</th>'+
+
+  '<th>Defesa ajustada</th>'+
+
+  '<th>Dif. vs defesa</th>'+
+
+  '<th>Análise</th>'+
+
+  '</tr>';
+
+
+ /* =======================================================
+    LINHAS
+ ======================================================= */
+
+ filtrados.forEach(p=>{
+
+  const proj5=
+   p.opponent_position_minutes_filtered_defense_l5_projected;
+
+  const proj10=
+   p.opponent_position_minutes_filtered_defense_l10_projected;
+
+
+  const difference5=
+   diferencaVsDefesa(
+    p.last5_avg,
+    proj5
+   );
+
+  const difference10=
+   diferencaVsDefesa(
+    p.last10_avg,
+    proj10
+   );
+
+
+  html+=
+   '<tr>';
+
+
+  /* JOGADOR */
+
+  html+=
+   '<td><b>'+
+   escapeHtml(p.player)+
+   '</b></td>';
+
+
+  /* EQUIPE */
+
+  html+=
+   '<td>'+
+   escapeHtml(p.team || '—')+
+   '</td>';
+
+
+  /* POSIÇÃO */
+
+  html+=
+   '<td>'+
+   escapeHtml(p.position || '—')+
+   '</td>';
+
+
+  /* ADVERSÁRIO */
+
+  html+=
+   '<td>'+
+   escapeHtml(p.opponent || '—')+
+   '</td>';
+
+
+  /* L5 */
+
+  html+=
+   '<td>'+
+   numero(p.last5_avg)+
+   '</td>';
+
+
+  /* L10 */
+
+  html+=
+   '<td>'+
+   numero(p.last10_avg)+
+   '</td>';
+
+
+  /* MINUTOS */
+
+  html+=
+   '<td>'+
+   numero(
+    p.minutes_last5_avg,
+    1
+   )+
+   '</td>';
+
+
+  /* SCORE */
+
+  html+=
+   '<td class="metric">'+
+   numero(
+    p.triage_score
+   )+
+   '</td>';
+
+
+  /* DEFESA AJUSTADA */
+
+  html+=
+   '<td class="new-metric">'+
+
+   '<div class="split-metric">'+
+
+   blocoPeriodo(
+    proj5,
+    'L5'
+   )+
+
+   blocoPeriodo(
+    proj10,
+    'L10'
+   )+
+
+   '</div>'+
+
+   '</td>';
+
+
+  /* DIFERENÇA */
+
+  html+=
+   celulaDiferenca(
+    difference5,
+    difference10
+   );
+
+
+  /* ANÁLISE */
+
+  html+=
+   '<td>'+
+   '<button '+
+   'class="analisar" '+
+   'onclick="abrirAnalise('+
+   candidatosAtuais.indexOf(p)+
+   ')">'+
+   'Analisar'+
+   '</button>'+
+   '</td>';
+
+
+  html+=
+   '</tr>';
+
+ });
+
+
+ html+=
+  '</table></div>';
+
+
+ html+=
+  '<p><small>'+
+  'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
+  'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
+  'A diferença vs defesa representa a distância entre a média do jogador e a projeção ajustada da defesa. '+
+  'A projeção é uma referência estatística, não uma previsão garantida.'+
+  '</small></p>';
+
+
+ box.innerHTML=
+  html;
+
+}
+
+
+/* =========================================================
+   LIMPAR FILTROS
+========================================================= */
+
+function limparFiltros(){
+
+ document.getElementById(
+  'filtroMinutos'
+ ).value='0';
+
+ document.getElementById(
+  'filtroScore'
+ ).value='0';
+
+ document.getElementById(
+  'filtroDiferenca'
+ ).value='all';
+
+ document.getElementById(
+  'filtroPosicao'
+ ).value='all';
+
+ document.getElementById(
+  'filtroOrdenacao'
+ ).value='score';
+
+ renderizarResultados();
+
+}
+
+
+/* =========================================================
+   EVENTOS DOS FILTROS
+========================================================= */
+
+function ativarFiltros(){
+
+ const ids=[
+  'filtroMinutos',
+  'filtroScore',
+  'filtroDiferenca',
+  'filtroPosicao',
+  'filtroOrdenacao'
+ ];
+
+ ids.forEach(id=>{
+
+  const elemento=
+   document.getElementById(id);
+
+  if(elemento){
+
+   elemento.addEventListener(
+    'change',
+    renderizarResultados
+   );
+
+  }
+
+ });
+
+}
+
+
+/* =========================================================
+   ANÁLISE DETALHADA
+========================================================= */
+
+function abrirAnalise(indice){
+
+ const p=
+  candidatosAtuais[indice];
+
+ if(!p){
+
+  return;
+
+ }
+
+
+ const modal=
+  document.getElementById(
+   'analysisModal'
+  );
+
+ const title=
+  document.getElementById(
+   'modalPlayer'
+  );
+
+ const meta=
+  document.getElementById(
+   'modalMeta'
+  );
+
+ const body=
+  document.getElementById(
+   'modalBody'
+  );
+
+
+ title.innerText=
+  p.player || 'Jogador';
+
+
+ meta.innerText=
+  (p.team || '—')+
+  ' · '+
+  (p.position || '—')+
+  ' · vs '+
+  (p.opponent || '—')+
+  ' · '+
+  (resultadoAtual?.market_label || mercadoAtual);
+
+
+ const proj5=
+  p.opponent_position_minutes_filtered_defense_l5_projected;
+
+ const proj10=
+  p.opponent_position_minutes_filtered_defense_l10_projected;
+
+
+ const difference5=
+  diferencaVsDefesa(
+   p.last5_avg,
+   proj5
+  );
+
+ const difference10=
+  diferencaVsDefesa(
+   p.last10_avg,
+   proj10
+  );
+
+
+ const diffClass5=
+  classeDiferenca(
+   difference5
+  );
+
+ const diffClass10=
+  classeDiferenca(
+   difference10
+  );
+
+
+ const diff5Display=
+  formatarDiferenca(
+   difference5
+  );
+
+ const diff10Display=
+  formatarDiferenca(
+   difference10
+  );
+
+
+ const avg5=
+  p.opponent_position_minutes_filtered_defense_l5_avg;
+
+ const avg10=
+  p.opponent_position_minutes_filtered_defense_l10_avg;
+
+
+ const rate5=
+  p.opponent_position_minutes_filtered_defense_l5_per_minute;
+
+ const rate10=
+  p.opponent_position_minutes_filtered_defense_l10_per_minute;
+
+
+ const games5=
+  p.opponent_position_minutes_filtered_defense_games_l5;
+
+ const games10=
+  p.opponent_position_minutes_filtered_defense_games_l10;
+
+
+ const apps5=
+  p.opponent_position_minutes_filtered_defense_player_games_l5;
+
+ const apps10=
+  p.opponent_position_minutes_filtered_defense_player_games_l10;
+
+
+ const minutes5=
+  p.opponent_position_minutes_filtered_defense_minutes_l5;
+
+ const minutes10=
+  p.opponent_position_minutes_filtered_defense_minutes_l10;
+
+
+ let html='';
+
+
+ /* =======================================================
+    RESUMO
+ ======================================================= */
+
+ html+=
+  '<div class="analysis-grid">';
+
+
+ html+=
+  '<div class="analysis-card">'+
+
+  '<h3>📊 Desempenho do jogador</h3>'+
+
+  '<table class="analysis-table">'+
+
+  '<tr>'+
+  '<th></th>'+
+  '<th>L5</th>'+
+  '<th>L10</th>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Média</td>'+
+  '<td><b>'+
+  numero(p.last5_avg)+
+  '</b></td>'+
+  '<td><b>'+
+  numero(p.last10_avg)+
+  '</b></td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Minutos</td>'+
+  '<td><b>'+
+  numero(p.minutes_last5_avg,1)+
+  '</b></td>'+
+  '<td>—</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Score</td>'+
+  '<td><b>'+
+  numero(p.triage_score)+
+  '</b></td>'+
+  '<td>—</td>'+
+  '</tr>'+
+
+  '</table>'+
+
+  '</div>';
+
+
+ /* =======================================================
+    DIFERENÇA
+ ======================================================= */
+
+ html+=
+  '<div class="analysis-card">'+
+
+  '<h3>🎯 Diferença vs defesa</h3>'+
+
+  '<table class="analysis-table">'+
+
+  '<tr>'+
+  '<th></th>'+
+  '<th>L5</th>'+
+  '<th>L10</th>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Média do jogador</td>'+
+  '<td>'+
+  numero(p.last5_avg)+
+  '</td>'+
+  '<td>'+
+  numero(p.last10_avg)+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Projeção defesa</td>'+
+  '<td>'+
+  numero(proj5)+
+  '</td>'+
+  '<td>'+
+  numero(proj10)+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td><b>Diferença</b></td>'+
+  '<td>'+
+  '<span class="highlight '+
+  diffClass5+
+  '">'+
+  diff5Display+
+  '</span>'+
+  '</td>'+
+  '<td>'+
+  '<span class="highlight '+
+  diffClass10+
+  '">'+
+  diff10Display+
+  '</span>'+
+  '</td>'+
+  '</tr>'+
+
+  '</table>'+
+
+  '</div>';
+
+
+ /* =======================================================
+    DEFESA AJUSTADA
+ ======================================================= */
+
+ html+=
+  '<div class="analysis-card">'+
+
+  '<h3>🛡️ Defesa ajustada à minutagem</h3>'+
+
+  '<table class="analysis-table">'+
+
+  '<tr>'+
+  '<th></th>'+
+  '<th>L5</th>'+
+  '<th>L10</th>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Média ajustada</td>'+
+  '<td>'+
+  numero(avg5)+
+  '</td>'+
+  '<td>'+
+  numero(avg10)+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Taxa por minuto</td>'+
+  '<td>'+
+  numero(rate5,4)+
+  '</td>'+
+  '<td>'+
+  numero(rate10,4)+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Projeção</td>'+
+  '<td>'+
+  '<b>'+
+  numero(proj5)+
+  '</b>'+
+  '</td>'+
+  '<td>'+
+  '<b>'+
+  numero(proj10)+
+  '</b>'+
+  '</td>'+
+  '</tr>'+
+
+  '</table>'+
+
+  '</div>';
+
+
+ /* =======================================================
+    AMOSTRA
+ ======================================================= */
+
+ html+=
+  '<div class="analysis-card">'+
+
+  '<h3>🔬 Qualidade da amostra</h3>'+
+
+  '<table class="analysis-table">'+
+
+  '<tr>'+
+  '<th></th>'+
+  '<th>L5</th>'+
+  '<th>L10</th>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Jogos</td>'+
+  '<td>'+
+  participacoes(games5)+
+  '</td>'+
+  '<td>'+
+  participacoes(games10)+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Participações</td>'+
+  '<td>'+
+  participacoes(apps5)+
+  '</td>'+
+  '<td>'+
+  participacoes(apps10)+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Minutos</td>'+
+  '<td>'+
+  numero(minutes5,0)+
+  '</td>'+
+  '<td>'+
+  numero(minutes10,0)+
+  '</td>'+
+  '</tr>'+
+
+  '</table>'+
+
+  '</div>';
+
+
+ html+=
+  '</div>';
+
+
+ /* =======================================================
+    DEFESAS COMPLETAS
+ ======================================================= */
+
+ html+=
+  '<div class="analysis-card" style="margin-top:15px">'+
+
+  '<h3>🛡️ Contexto defensivo</h3>'+
+
+  '<table class="analysis-table">'+
+
+  '<tr>'+
+  '<th>Indicador</th>'+
+  '<th>L5</th>'+
+  '<th>L10</th>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Defesa geral</td>'+
+  '<td>'+
+  numero(
+   p.opponent_defense_l5_avg,
+   1
+  )+
+  '</td>'+
+  '<td>'+
+  numero(
+   p.opponent_defense_l10_avg,
+   1
+  )+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Defesa por posição — total</td>'+
+  '<td>'+
+  numero(
+   p.opponent_position_defense_l5_avg,
+   1
+  )+
+  '</td>'+
+  '<td>'+
+  numero(
+   p.opponent_position_defense_l10_avg,
+   1
+  )+
+  '</td>'+
+  '</tr>'+
+
+  '<tr>'+
+  '<td>Defesa por posição — média individual</td>'+
+  '<td>'+
+  numero(
+   p.opponent_position_individual_defense_l5_avg
+  )+
+  '<br><small>'+
+  participacoes(
+   p.opponent_position_individual_defense_player_games_l5
+  )+
+  ' participações</small>'+
+  '</td>'+
+  '<td>'+
+  numero(
+   p.opponent_position_individual_defense_l10_avg
+  )+
+  '<br><small>'+
+  participacoes(
+   p.opponent_position_individual_defense_player_games_l10
+  )+
+  ' participações</small>'+
+  '</td>'+
+  '</tr>'+
+
+  '</table>'+
+
+  '</div>';
+
+
+ /* =======================================================
+    NOTA
+ ======================================================= */
+
+ html+=
+  '<div class="analysis-note">'+
+
+  '<b>Como ler esta análise:</b><br><br>'+
+
+  'A diferença vs defesa compara a média recente do jogador '+
+  'com a projeção ajustada da defesa adversária. '+
+  'Valores positivos indicam que a média recente do jogador '+
+  'está acima dessa referência estatística; valores negativos '+
+  'indicam o contrário.<br><br>'+
+
+  '<b>Importante:</b> a diferença não é uma probabilidade de acerto '+
+  'e não representa uma recomendação automática. '+
+  'Também é importante observar o tamanho da amostra, lesões, '+
+  'escalações, matchup, linha e odd disponíveis antes de tomar uma decisão.'+
+
+  '</div>';
+
+
+ body.innerHTML=
+  html;
+
+
+ modal.classList.add(
+  'active'
+ );
+
+ document.body.style.overflow=
+  'hidden';
+
+}
+
+
+/* =========================================================
+   FECHAR MODAL
+========================================================= */
+
+function fecharModal(){
+
+ const modal=
+  document.getElementById(
+   'analysisModal'
+  );
+
+ modal.classList.remove(
+  'active'
+ );
+
+ document.body.style.overflow=
+  '';
+
+}
+
+
+function fecharModalFora(event){
+
+ if(
+  event.target.id===
+  'analysisModal'
+ ){
+
+  fecharModal();
+
+ }
+
+}
+
+
+document.addEventListener(
+ 'keydown',
+ event=>{
+
+  if(
+   event.key==='Escape'
+  ){
+
+   fecharModal();
+
+  }
+
+ }
+);
+
+
+/* =========================================================
    CANDIDATOS
-   ========================================================= */
+========================================================= */
 
 async function buscar(mercado){
 
  const box=
-  document.getElementById('resultado');
+  document.getElementById(
+   'resultado'
+  );
 
  box.innerHTML=
-  'Analisando jogadores...';
+  '<div class="status">'+
+  'Analisando jogadores...'+
+  '</div>';
 
  try{
 
@@ -872,22 +2621,8 @@ async function buscar(mercado){
     '&market='+
     mercado+
     '&limit=20'
-  );
+   );
 
-  let html=
-   '<h3>'+
-   r.market_label+
-   ' - '+
-   r.date+
-   '</h3>';
-
-  html+=
-   '<p><small>'+
-   (
-    r.method_note ||
-    'Triagem estatística exploratória.'
-   )+
-   '</small></p>';
 
   if(
    !r.candidates ||
@@ -895,383 +2630,92 @@ async function buscar(mercado){
   ){
 
    box.innerHTML=
-    html+
     '<p>Nenhum candidato retornado.</p>';
 
    return;
 
   }
 
-  const mercadoLabel=
-   r.market_label ||
-   'Mercado';
 
-  html+=
-   '<div class="tablewrap"><table>';
+  candidatosAtuais=
+   r.candidates;
 
+  mercadoAtual=
+   mercado;
 
-  /* =====================================================
-     CABEÇALHO PRINCIPAL
-     ===================================================== */
+  resultadoAtual=
+   r;
 
-  html+=
-   '<tr>'+
 
-   '<th rowspan="2">Jogador</th>'+
-   '<th rowspan="2">Equipe</th>'+
-   '<th rowspan="2">Posição</th>'+
-   '<th rowspan="2">Adversário</th>'+
-
-   '<th colspan="2">Média do jogador</th>'+
-
-   '<th rowspan="2">Minutos L5</th>'+
-
-   '<th rowspan="2">Pontuação</th>'+
-
-   '<th colspan="2">'+
-   'Defesa geral - '+
-   mercadoLabel+
-   '</th>'+
-
-   '<th colspan="2">'+
-   'Defesa por posição - total'+
-   '</th>'+
-
-   '<th colspan="2">'+
-   'Defesa por posição - média individual'+
-   '</th>'+
-
-   '<th colspan="1" class="new-header">'+
-   'Média ajustada'+
-   '</th>'+
-
-   '<th colspan="1" class="new-header">'+
-   'Taxa por minuto'+
-   '</th>'+
-
-   '<th colspan="1" class="new-header">'+
-   'Projeção ajustada'+
-   '</th>'+
-
-   '<th colspan="1" class="difference-header">'+
-   'Diferença vs defesa'+
-   '</th>'+
-
-   '</tr>';
-
-
-  /* =====================================================
-     SUBCABEÇALHO
-     ===================================================== */
-
-  html+=
-   '<tr>'+
-
-   '<th>L5</th>'+
-   '<th>L10</th>'+
-
-   '<th>L5</th>'+
-   '<th>L10</th>'+
-
-   '<th>L5</th>'+
-   '<th>L10</th>'+
-
-   '<th>L5</th>'+
-   '<th>L10</th>'+
-
-   '<th class="new-header">'+
-   'L5 / L10'+
-   '</th>'+
-
-   '<th class="new-header">'+
-   'L5 / L10'+
-   '</th>'+
-
-   '<th class="new-header">'+
-   'L5 / L10'+
-   '</th>'+
-
-   '<th class="difference-header">'+
-   'L5 / L10'+
-   '</th>'+
-
-   '</tr>';
-
-
-  /* =====================================================
-     JOGADORES
-     ===================================================== */
-
-  r.candidates.forEach(p=>{
-
-
-   /* -----------------------------------------------------
-      DEFESA AJUSTADA
-      ----------------------------------------------------- */
-
-   const avg5=
-    p.opponent_position_minutes_filtered_defense_l5_avg;
-
-   const avg10=
-    p.opponent_position_minutes_filtered_defense_l10_avg;
-
-
-   const rate5=
-    p.opponent_position_minutes_filtered_defense_l5_per_minute;
-
-   const rate10=
-    p.opponent_position_minutes_filtered_defense_l10_per_minute;
-
-
-   const proj5=
-    p.opponent_position_minutes_filtered_defense_l5_projected;
-
-   const proj10=
-    p.opponent_position_minutes_filtered_defense_l10_projected;
-
-
-   const games5=
-    p.opponent_position_minutes_filtered_defense_games_l5;
-
-   const games10=
-    p.opponent_position_minutes_filtered_defense_games_l10;
-
-
-   const apps5=
-    p.opponent_position_minutes_filtered_defense_player_games_l5;
-
-   const apps10=
-    p.opponent_position_minutes_filtered_defense_player_games_l10;
-
-
-   const minutes5=
-    p.opponent_position_minutes_filtered_defense_minutes_l5;
-
-   const minutes10=
-    p.opponent_position_minutes_filtered_defense_minutes_l10;
-
-
-   /* -----------------------------------------------------
-      DIFERENÇA VS DEFESA
-
-      Média do jogador
-      -
-      Projeção ajustada da defesa
-      ----------------------------------------------------- */
-
-   const difference5=
-    diferencaVsDefesa(
-     p.last5_avg,
-     proj5
-    );
-
-   const difference10=
-    diferencaVsDefesa(
-     p.last10_avg,
-     proj10
-    );
-
-
-   html+='<tr>';
-
-
-   /* IDENTIFICAÇÃO */
-
-   html+=
-    '<td><b>'+
-    p.player+
-    '</b></td>';
-
-   html+=
-    '<td>'+
-    p.team+
-    '</td>';
-
-   html+=
-    '<td>'+
-    (p.position || '—')+
-    '</td>';
-
-   html+=
-    '<td>'+
-    (p.opponent || '—')+
-    '</td>';
-
-
-   /* MÉDIA DO JOGADOR */
-
-   html+=
-    '<td>'+
-    numero(p.last5_avg)+
-    '</td>';
-
-   html+=
-    '<td>'+
-    numero(p.last10_avg)+
-    '</td>';
-
-
-   /* MINUTOS */
-
-   html+=
-    '<td>'+
-    numero(
-     p.minutes_last5_avg,
-     1
-    )+
-    '</td>';
-
-
-   /* PONTUAÇÃO ORIGINAL */
-
-   html+=
-    '<td class="metric">'+
-    numero(p.triage_score)+
-    '</td>';
-
-
-   /* DEFESA GERAL */
-
-   html+=
-    '<td>'+
-    numero(
-     p.opponent_defense_l5_avg,
-     1
-    )+
-    '</td>';
-
-   html+=
-    '<td>'+
-    numero(
-     p.opponent_defense_l10_avg,
-     1
-    )+
-    '</td>';
-
-
-   /* DEFESA POR POSIÇÃO - TOTAL */
-
-   html+=
-    '<td>'+
-    numero(
-     p.opponent_position_defense_l5_avg,
-     1
-    )+
-    '</td>';
-
-   html+=
-    '<td>'+
-    numero(
-     p.opponent_position_defense_l10_avg,
-     1
-    )+
-    '</td>';
-
-
-   /* DEFESA POR POSIÇÃO - MÉDIA INDIVIDUAL */
-
-   html+=
-    '<td>'+
-    '<b>'+
-    numero(
-     p.opponent_position_individual_defense_l5_avg
-    )+
-    '</b>'+
-    '<br><small>'+
-    participacoes(
-     p.opponent_position_individual_defense_player_games_l5
-    )+
-    ' participações</small>'+
-    '</td>';
-
-   html+=
-    '<td>'+
-    '<b>'+
-    numero(
-     p.opponent_position_individual_defense_l10_avg
-    )+
-    '</b>'+
-    '<br><small>'+
-    participacoes(
-     p.opponent_position_individual_defense_player_games_l10
-    )+
-    ' participações</small>'+
-    '</td>';
-
-
-   /* MÉDIA AJUSTADA */
-
-   html+=
-    celulaAjustada(
-     avg5,
-     avg10,
-     games5,
-     games10,
-     apps5,
-     apps10,
-     minutes5,
-     minutes10
-    );
-
-
-   /* TAXA POR MINUTO */
-
-   html+=
-    celulaDupla(
-     rate5,
-     rate10,
-     4
-    );
-
-
-   /* PROJEÇÃO */
-
-   html+=
-    celulaDupla(
-     proj5,
-     proj10,
-     2
-    );
-
-
-   /* DIFERENÇA VS DEFESA */
-
-   html+=
-    celulaDiferenca(
-     difference5,
-     difference10
-    );
-
-
-   html+='</tr>';
-
-  });
+  let html='';
 
 
   html+=
-   '</table></div>';
+   '<h3>'+
+   escapeHtml(
+    r.market_label
+   )+
+   ' - '+
+   escapeHtml(
+    r.date
+   )+
+   '</h3>';
 
 
   html+=
    '<p><small>'+
-   'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
-   'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
-   'A diferença vs defesa representa a distância entre a média do jogador e a projeção ajustada da defesa. '+
-   'A projeção é uma referência estatística, não uma previsão garantida.'+
+   escapeHtml(
+    r.method_note ||
+    'Triagem estatística exploratória.'
+   )+
    '</small></p>';
 
 
-  box.innerHTML=html;
+  html+=
+   filtrosHtml();
+
+
+  box.innerHTML=
+   html;
+
+
+  ativarFiltros();
+
+  renderizarResultados();
+
 
  }catch(e){
 
   box.innerHTML=
-   'Erro ao buscar candidatos: '+
-   e.message;
+   '<div class="status">'+
+   '❌ Erro ao buscar candidatos: '+
+   escapeHtml(e.message)+
+   '</div>';
 
  }
 
 }
+
+
+/* =========================================================
+   FECHAR MODAL AO CARREGAR
+========================================================= */
+
+document.addEventListener(
+ 'DOMContentLoaded',
+ ()=>{
+
+  const modal=
+   document.getElementById(
+    'analysisModal'
+   );
+
+  modal.classList.remove(
+   'active'
+  );
+
+ }
+);
 
 </script>
 
