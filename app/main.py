@@ -1,6 +1,7 @@
 import logging
 import time
 import re
+import os
 
 from datetime import datetime, date
 from functools import lru_cache
@@ -8,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import requests
+import psycopg
+from psycopg.types.json import Jsonb
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,7 +21,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.8.0"
+    version="3.9.0"
 )
 
 app.add_middleware(
@@ -28,6 +31,146 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================================
+# BANCO DE DADOS - HISTÓRICO IMUTÁVEL DE CANDIDATOS
+# ============================================================
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def get_database_connection():
+    """Abre conexão com PostgreSQL/Neon sem expor credenciais."""
+
+    if not DATABASE_URL:
+        raise RuntimeError("Variável DATABASE_URL não configurada.")
+
+    return psycopg.connect(
+        DATABASE_URL,
+        connect_timeout=10
+    )
+
+
+def initialize_database():
+    """Cria a estrutura de histórico caso ainda não exista."""
+
+    if not DATABASE_URL:
+        logger.warning(
+            "DATABASE_URL não configurada. Histórico ficará desativado."
+        )
+        return False
+
+    try:
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS candidate_snapshots (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        position TEXT,
+                        triage_score DOUBLE PRECISION,
+                        last5_avg DOUBLE PRECISION,
+                        last10_avg DOUBLE PRECISION,
+                        minutes_last5_avg DOUBLE PRECISION,
+                        payload JSONB NOT NULL,
+                        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_candidate_snapshot
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_candidate_snapshots_date_market
+                    ON candidate_snapshots (selected_date, market)
+                    """
+                )
+
+        logger.info("Banco Neon inicializado. Tabela candidate_snapshots disponível.")
+        return True
+
+    except Exception as error:
+        logger.exception("Não foi possível inicializar o banco Neon: %s", error)
+        return False
+
+
+def save_candidate_snapshots(selected_date, market, candidates):
+    """Salva todos os candidatos antes do limite de exibição, sem sobrescrever."""
+
+    if not candidates:
+        return 0
+
+    if not DATABASE_URL:
+        logger.warning("Histórico não salvo: DATABASE_URL não configurada.")
+        return 0
+
+    rows = []
+
+    for candidate in candidates:
+        player_id = candidate.get("player_id")
+
+        if not player_id:
+            logger.warning(
+                "Candidato sem player_id ignorado no histórico: %s",
+                candidate.get("player")
+            )
+            continue
+
+        rows.append((
+            selected_date,
+            market,
+            str(player_id),
+            candidate.get("player", ""),
+            candidate.get("team"),
+            candidate.get("opponent"),
+            candidate.get("position"),
+            candidate.get("triage_score"),
+            candidate.get("last5_avg"),
+            candidate.get("last10_avg"),
+            candidate.get("minutes_last5_avg"),
+            Jsonb(candidate)
+        ))
+
+    if not rows:
+        return 0
+
+    try:
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO candidate_snapshots (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, position, triage_score,
+                        last5_avg, last10_avg, minutes_last5_avg, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id) DO NOTHING
+                    """,
+                    rows
+                )
+
+        logger.info(
+            "Histórico processado: %s candidatos enviados para %s/%s.",
+            len(rows), selected_date, market
+        )
+        return len(rows)
+
+    except Exception as error:
+        logger.exception("Falha ao salvar histórico de candidatos: %s", error)
+        return 0
+
+
+@app.on_event("startup")
+def startup_database():
+    initialize_database()
 
 HEADERS = {"User-Agent": "Mozilla/5.0 NBA Props Scanner"}
 
@@ -2215,6 +2358,8 @@ def build_player_result(
 
     return {
 
+        "player_id": str(player["id"]),
+
         "player": player["player"],
 
         "team": player["team"],
@@ -2606,6 +2751,14 @@ def collect_candidates(
         reverse=True
     )
 
+    # Registra TODOS os candidatos elegíveis, antes do limite de exibição.
+    # O banco preserva a primeira fotografia para cada data/mercado/jogador.
+    save_candidate_snapshots(
+        selected_date,
+        market,
+        results
+    )
+
     final_limit = min(
         limit,
         10
@@ -2689,10 +2842,45 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.8.0",
+        "version": "3.9.0",
 
         "source": "ESPN"
     }
+
+
+@app.get("/health/db")
+def database_health():
+
+    if not DATABASE_URL:
+        return {
+            "status": "not_configured",
+            "database": "Neon PostgreSQL",
+            "history_enabled": False
+        }
+
+    try:
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM candidate_snapshots"
+                )
+                total_snapshots = cursor.fetchone()[0]
+
+        return {
+            "status": "connected",
+            "database": "Neon PostgreSQL",
+            "history_enabled": True,
+            "total_snapshots": total_snapshots
+        }
+
+    except Exception as error:
+        logger.exception("Verificação do banco falhou: %s", error)
+        return {
+            "status": "error",
+            "database": "Neon PostgreSQL",
+            "history_enabled": False,
+            "message": "Não foi possível consultar o banco de dados."
+        }
 
 
 @app.get("/games")
