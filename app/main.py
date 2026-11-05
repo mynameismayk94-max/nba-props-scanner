@@ -21,7 +21,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.9.0"
+    version="3.10.0"
 )
 
 app.add_middleware(
@@ -90,6 +90,31 @@ def initialize_database():
                     """
                     CREATE INDEX IF NOT EXISTS idx_candidate_snapshots_date_market
                     ON candidate_snapshots (selected_date, market)
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS candidate_results (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        actual_value DOUBLE PRECISION NOT NULL,
+                        game_id TEXT,
+                        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        payload JSONB,
+                        CONSTRAINT uq_candidate_result
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_candidate_results_date_market
+                    ON candidate_results (selected_date, market)
                     """
                 )
 
@@ -1618,6 +1643,12 @@ def fetch_espn_games(
                     event.get("status", {})
                     .get("type", {})
                     .get("description", "Não informado")
+                ),
+
+                "completed": bool(
+                    event.get("status", {})
+                    .get("type", {})
+                    .get("completed", False)
                 )
             })
 
@@ -2842,7 +2873,7 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.9.0",
+        "version": "3.10.0",
 
         "source": "ESPN"
     }
@@ -2865,12 +2896,17 @@ def database_health():
                     "SELECT COUNT(*) FROM candidate_snapshots"
                 )
                 total_snapshots = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT COUNT(*) FROM candidate_results"
+                )
+                total_results = cursor.fetchone()[0]
 
         return {
             "status": "connected",
             "database": "Neon PostgreSQL",
             "history_enabled": True,
-            "total_snapshots": total_snapshots
+            "total_snapshots": total_snapshots,
+            "total_results": total_results
         }
 
     except Exception as error:
@@ -2982,6 +3018,174 @@ def candidates(
                 f"Não foi possível gerar candidatos: {error}"
             )
         )
+
+
+@app.get("/collect-results")
+def collect_results(
+    selected_date: str = Query(alias="date"),
+    market: str = Query(default="assists")
+):
+    """
+    Coleta resultados reais de assistências apenas para jogos finalizados.
+    A fotografia pré-jogo em candidate_snapshots nunca é alterada.
+    """
+
+    if market != "assists":
+        raise HTTPException(
+            status_code=400,
+            detail="Nesta primeira etapa, a coleta está habilitada apenas para assists."
+        )
+
+    try:
+        target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize AAAA-MM-DD."
+        )
+
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    # A agenda confirma quais partidas da data já foram encerradas.
+    schedule = fetch_espn_games(selected_date)
+    completed_games = {}
+    for game in schedule.get("games", []):
+        if game.get("completed"):
+            home = game.get("home", {}).get("abbr")
+            away = game.get("away", {}).get("abbr")
+            game_id = str(game.get("game_id") or "")
+            if home and away:
+                completed_games[(home.upper(), away.upper())] = game_id
+                completed_games[(away.upper(), home.upper())] = game_id
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT player_id, player_name, team, opponent, payload
+                FROM candidate_snapshots
+                WHERE selected_date = %s AND market = %s
+                ORDER BY player_name
+                """,
+                (target_date, market)
+            )
+            snapshots = cursor.fetchall()
+
+    if not snapshots:
+        return {
+            "date": selected_date,
+            "market": market,
+            "status": "no_snapshots",
+            "snapshots_found": 0,
+            "completed_games": sum(1 for g in schedule.get("games", []) if g.get("completed")),
+            "results_saved": 0,
+            "pending": 0,
+            "message": "Não há candidatos históricos para essa data e mercado. Consulte os candidatos antes do jogo para registrar a fotografia."
+        }
+
+    year = season_year(target_date)
+    results_to_save = []
+    pending = 0
+    errors = 0
+
+    def fetch_player_result(snapshot):
+        player_id, player_name, team, opponent, payload = snapshot
+        logs = get_athlete_logs(str(player_id), year)
+        matching = [
+            game for game in logs
+            if game.get("date") == selected_date
+            and (game.get("team") or "").upper() == (team or "").upper()
+            and (game.get("opponent") or "").upper() == (opponent or "").upper()
+        ]
+        if not matching:
+            return ("pending", None)
+
+        game = matching[0]
+        if (game.get("minutes") or 0) <= 0:
+            return ("pending", None)
+
+        game_id = completed_games.get((
+            (team or "").upper(), (opponent or "").upper()
+        ))
+        if not game_id:
+            return ("pending", None)
+
+        actual = game.get("assists")
+        if actual is None:
+            return ("pending", None)
+
+        row = (
+            target_date, market, str(player_id), player_name,
+            team, opponent, float(actual), game_id,
+            Jsonb({
+                "minutes": game.get("minutes"),
+                "game_date": game.get("date"),
+                "source": "ESPN gamelog"
+            })
+        )
+        return ("ready", row)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(fetch_player_result, row) for row in snapshots]
+        for future in as_completed(futures):
+            try:
+                status, row = future.result()
+                if status == "ready":
+                    results_to_save.append(row)
+                else:
+                    pending += 1
+            except Exception as error:
+                errors += 1
+                logger.warning("Falha ao coletar resultado individual: %s", error)
+
+    inserted = 0
+    if results_to_save:
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                for row in results_to_save:
+                    cursor.execute(
+                        """
+                        INSERT INTO candidate_results (
+                            selected_date, market, player_id, player_name,
+                            team, opponent, actual_value, game_id, payload
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (selected_date, market, player_id) DO NOTHING
+                        RETURNING id
+                        """,
+                        row
+                    )
+                    if cursor.fetchone():
+                        inserted += 1
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM candidate_results
+                WHERE selected_date = %s AND market = %s
+                """,
+                (target_date, market)
+            )
+            total_saved = cursor.fetchone()[0]
+
+    return {
+        "date": selected_date,
+        "market": market,
+        "status": "processed",
+        "snapshots_found": len(snapshots),
+        "completed_games": sum(1 for g in schedule.get("games", []) if g.get("completed")),
+        "results_detected": len(results_to_save),
+        "results_saved_this_run": inserted,
+        "total_results_saved": total_saved,
+        "pending": pending,
+        "errors": errors,
+        "note": "Somente jogos finalizados e registros individuais confirmados são gravados. Ausência de registro não é convertida em zero; candidatos pendentes podem ser consultados novamente."
+    }
 
 
 # ============================================================
