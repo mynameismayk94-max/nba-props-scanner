@@ -205,7 +205,6 @@ def extract_team_defense_stats(summary, defending_team):
 
 
 # ============================================================
-# NOVO:
 # JOGADORES DO ADVERSÁRIO AGRUPADOS POR POSIÇÃO
 # ============================================================
 
@@ -216,17 +215,34 @@ def extract_opponent_players_by_position(
     """
     Extrai os jogadores do adversário agrupados por posição.
 
+    Estrutura real da ESPN:
+
+        boxscore
+            └── players[]
+                    └── team
+                    └── statistics[]
+                            ├── names
+                            ├── keys
+                            └── athletes[]
+                                    ├── athlete
+                                    └── stats
+
     Grupos utilizados:
+
         G      = Guard
         F      = Forward
         C      = Center
         OTHER  = posição não identificada
 
-    Retorna também as estatísticas individuais:
+    Estatísticas extraídas:
+
         assists
         rebounds
         fga
         three_pa
+
+    Jogadores com stats=[] são ignorados porque
+    não participaram da partida.
     """
 
     result = {
@@ -236,13 +252,27 @@ def extract_opponent_players_by_position(
         "OTHER": []
     }
 
-    boxscore = summary.get("boxscore", {})
+    boxscore = summary.get(
+        "boxscore",
+        {}
+    )
 
-    teams = boxscore.get("teams", [])
-    players = boxscore.get("players", [])
+    teams = boxscore.get(
+        "teams",
+        []
+    )
+
+    players_blocks = boxscore.get(
+        "players",
+        []
+    )
+
+    defending_team = (
+        defending_team or ""
+    ).upper()
 
     # --------------------------------------------------------
-    # Identifica o adversário
+    # IDENTIFICA O ADVERSÁRIO
     # --------------------------------------------------------
 
     opponent_team = None
@@ -252,13 +282,15 @@ def extract_opponent_players_by_position(
         team_abbr = (
             team.get("team", {})
             .get("abbreviation")
-        )
+            or ""
+        ).upper()
 
         if (
             team_abbr
-            and team_abbr.upper() != defending_team.upper()
+            and team_abbr != defending_team
         ):
-            opponent_team = team_abbr.upper()
+
+            opponent_team = team_abbr
             break
 
     if not opponent_team:
@@ -269,23 +301,22 @@ def extract_opponent_players_by_position(
         }
 
     # --------------------------------------------------------
-    # Procura o bloco de jogadores do adversário
+    # LOCALIZA O BLOCO DE JOGADORES DO ADVERSÁRIO
     # --------------------------------------------------------
 
     opponent_players_block = None
 
-    for team_players in players:
+    for block in players_blocks:
 
         team_abbr = (
-            team_players.get("team", {})
+            block.get("team", {})
             .get("abbreviation")
-        )
+            or ""
+        ).upper()
 
-        if (
-            team_abbr
-            and team_abbr.upper() == opponent_team
-        ):
-            opponent_players_block = team_players
+        if team_abbr == opponent_team:
+
+            opponent_players_block = block
             break
 
     if not opponent_players_block:
@@ -296,186 +327,247 @@ def extract_opponent_players_by_position(
         }
 
     # --------------------------------------------------------
-    # Processa os jogadores
+    # PERCORRE OS BLOCOS DE ESTATÍSTICAS
     # --------------------------------------------------------
 
-    for player_entry in opponent_players_block.get(
+    for statistics_block in opponent_players_block.get(
         "statistics",
         []
     ):
 
-        athlete = player_entry.get(
-            "athlete",
-            {}
-        )
-
-        player_name = (
-            athlete.get("displayName")
-            or athlete.get("fullName")
-            or athlete.get("shortName")
-        )
-
-        if not player_name:
-            continue
-
-        # ----------------------------------------------------
-        # POSIÇÃO
-        # ----------------------------------------------------
-
-        position_data = athlete.get(
-            "position",
-            {}
-        )
-
-        if isinstance(position_data, dict):
-
-            position = (
-                position_data.get("abbreviation")
-                or position_data.get("displayName")
-                or position_data.get("name")
-            )
-
-        else:
-
-            position = position_data
-
-        position_upper = str(
-            position or ""
-        ).strip().upper()
-
-        if position_upper in (
-            "G",
-            "PG",
-            "SG",
-            "GUARD"
-        ):
-
-            position_group = "G"
-
-        elif position_upper in (
-            "F",
-            "SF",
-            "PF",
-            "FORWARD"
-        ):
-
-            position_group = "F"
-
-        elif position_upper in (
-            "C",
-            "CENTER"
-        ):
-
-            position_group = "C"
-
-        else:
-
-            position_group = "OTHER"
-
-        # ----------------------------------------------------
-        # ESTATÍSTICAS
-        # ----------------------------------------------------
-
-        stats = {}
-
-        raw_statistics = player_entry.get(
-            "statistics",
+        keys = statistics_block.get(
+            "keys",
             []
         )
 
-        # Em algumas estruturas a ESPN pode fornecer
-        # statistics como lista de strings/valores.
-        # Quando isso ocorrer, usamos os nomes presentes
-        # no bloco do jogador, se disponíveis.
-
-        if isinstance(raw_statistics, list):
-
-            for stat in raw_statistics:
-
-                if isinstance(stat, dict):
-
-                    name = stat.get("name")
-
-                    if name:
-                        stats[name] = stat
-
-        def get_stat(*names):
-
-            for name in names:
-
-                if name not in stats:
-                    continue
-
-                item = stats[name]
-
-                value = item.get(
-                    "value"
-                )
-
-                if value is not None:
-
-                    try:
-                        return float(value)
-
-                    except (
-                        TypeError,
-                        ValueError
-                    ):
-                        pass
-
-                display_value = item.get(
-                    "displayValue"
-                )
-
-                if display_value is not None:
-
-                    try:
-                        return parse_number(
-                            display_value
-                        )
-
-                    except (
-                        TypeError,
-                        ValueError
-                    ):
-                        pass
-
-            return None
+        athletes = statistics_block.get(
+            "athletes",
+            []
+        )
 
         # ----------------------------------------------------
-        # Alguns summaries da ESPN usam diretamente os nomes
-        # abaixo. Mantemos também aliases para maior robustez.
+        # MAPA DOS ÍNDICES
+        #
+        # Exemplo real da ESPN:
+        #
+        # 0  minutes
+        # 1  points
+        # 2  FG
+        # 3  3PT
+        # 4  FT
+        # 5  rebounds
+        # 6  assists
+        # 7  turnovers
+        # 8  steals
+        # 9  blocks
+        # 10 offensiveRebounds
+        # 11 defensiveRebounds
+        # 12 fouls
+        # 13 plusMinus
         # ----------------------------------------------------
 
-        assists = get_stat(
-            "assists",
-            "AST"
-        )
+        key_indexes = {}
 
-        rebounds = get_stat(
-            "totalRebounds",
-            "rebounds",
-            "REB"
-        )
+        for index, key in enumerate(keys):
 
-        fga = get_stat(
-            "fieldGoalsAttempted",
-            "FGA"
-        )
+            key_indexes[key] = index
 
-        three_pa = get_stat(
-            "threePointFieldGoalsAttempted",
-            "3PA"
-        )
+        # ----------------------------------------------------
+        # PERCORRE OS JOGADORES
+        # ----------------------------------------------------
 
-        result[position_group].append({
-            "player": player_name,
-            "position": position,
-            "assists": assists,
-            "rebounds": rebounds,
-            "fga": fga,
-            "three_pa": three_pa
-        })
+        for athlete_entry in athletes:
+
+            athlete = athlete_entry.get(
+                "athlete",
+                {}
+            )
+
+            player_name = (
+                athlete.get("displayName")
+                or athlete.get("fullName")
+                or athlete.get("shortName")
+            )
+
+            if not player_name:
+                continue
+
+            # ------------------------------------------------
+            # IGNORA QUEM NÃO JOGOU
+            # ------------------------------------------------
+
+            raw_stats = athlete_entry.get(
+                "stats",
+                []
+            )
+
+            if not raw_stats:
+                continue
+
+            # ------------------------------------------------
+            # POSIÇÃO
+            # ------------------------------------------------
+
+            position_data = athlete.get(
+                "position",
+                {}
+            )
+
+            if isinstance(
+                position_data,
+                dict
+            ):
+
+                position = (
+                    position_data.get("abbreviation")
+                    or position_data.get("displayName")
+                    or position_data.get("name")
+                    or ""
+                )
+
+            else:
+
+                position = position_data or ""
+
+            position_upper = str(
+                position
+            ).strip().upper()
+
+            if position_upper in (
+                "G",
+                "PG",
+                "SG",
+                "GUARD"
+            ):
+
+                position_group = "G"
+
+            elif position_upper in (
+                "F",
+                "SF",
+                "PF",
+                "FORWARD"
+            ):
+
+                position_group = "F"
+
+            elif position_upper in (
+                "C",
+                "CENTER"
+            ):
+
+                position_group = "C"
+
+            else:
+
+                position_group = "OTHER"
+
+            # ------------------------------------------------
+            # FUNÇÃO PARA ESTATÍSTICA NUMÉRICA
+            # ------------------------------------------------
+
+            def get_numeric_stat(key):
+
+                index = key_indexes.get(
+                    key
+                )
+
+                if index is None:
+                    return None
+
+                if index >= len(raw_stats):
+                    return None
+
+                value = raw_stats[index]
+
+                if value in (
+                    None,
+                    "",
+                    "--"
+                ):
+                    return None
+
+                try:
+                    return float(value)
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    return None
+
+            # ------------------------------------------------
+            # ASSISTÊNCIAS
+            # ------------------------------------------------
+
+            assists = get_numeric_stat(
+                "assists"
+            )
+
+            # ------------------------------------------------
+            # REBOTES
+            # ------------------------------------------------
+
+            rebounds = get_numeric_stat(
+                "rebounds"
+            )
+
+            # ------------------------------------------------
+            # FGA
+            #
+            # ESPN retorna algo como:
+            #
+            # "10-22"
+            #
+            # Precisamos do segundo número.
+            # ------------------------------------------------
+
+            fga = None
+
+            fga_index = key_indexes.get(
+                "fieldGoalsMade-fieldGoalsAttempted"
+            )
+
+            if (
+                fga_index is not None
+                and fga_index < len(raw_stats)
+            ):
+
+                fga = parse_attempts(
+                    raw_stats[fga_index]
+                )
+
+            # ------------------------------------------------
+            # 3PA
+            # ------------------------------------------------
+
+            three_pa = None
+
+            three_pa_index = key_indexes.get(
+                "threePointFieldGoalsMade-threePointFieldGoalsAttempted"
+            )
+
+            if (
+                three_pa_index is not None
+                and three_pa_index < len(raw_stats)
+            ):
+
+                three_pa = parse_attempts(
+                    raw_stats[three_pa_index]
+                )
+
+            # ------------------------------------------------
+            # ADICIONA O JOGADOR
+            # ------------------------------------------------
+
+            result[position_group].append({
+                "player": player_name,
+                "position": position_group,
+                "assists": assists,
+                "rebounds": rebounds,
+                "fga": fga,
+                "three_pa": three_pa
+            })
 
     return {
         "opponent": opponent_team,
@@ -585,7 +677,6 @@ def get_team_defense_history(
         1000
     )
 
-    # Somente partidas anteriores à data selecionada.
     games = [
         game
         for game in games
@@ -593,7 +684,6 @@ def get_team_defense_history(
         < target_date.isoformat()
     ]
 
-    # Máximo de 10 partidas defensivas.
     games = games[:limit]
 
     results = []
@@ -619,8 +709,6 @@ def get_team_defense_history(
             **stats
         }
 
-    # Reduzida de 5 para 3 chamadas simultâneas
-    # para evitar excesso de requisições à ESPN.
     with ThreadPoolExecutor(
         max_workers=3
     ) as executor:
@@ -699,7 +787,6 @@ def get_team_defense_history(
         )
     }
 
-    # Agora somente L5 e L10.
     for window in (
         5,
         10
@@ -1225,8 +1312,6 @@ def build_player_result(
     if len(previous_games) < 3:
         return None
 
-    # A análise individual agora considera no máximo
-    # os últimos 10 jogos.
     previous_games = previous_games[:10]
 
     last5 = previous_games[:5]
@@ -1274,13 +1359,11 @@ def build_player_result(
         last10
     )
 
-    # Consistência baseada no L5.
     consistency = sum(
         game[stat_key] >= avg5
         for game in last5
     ) / len(last5)
 
-    # Score adaptado para L5 + L10.
     score = (
         avg5 * 0.60
         + avg10 * 0.40
@@ -1289,7 +1372,6 @@ def build_player_result(
         + consistency * 0.20
     )
 
-    # Médias defensivas do adversário.
     defense_l5 = (
         defense.get("L5", {})
         .get("averages", {})
@@ -1443,7 +1525,6 @@ def collect_candidates(
 
         return team, defense
 
-    # Reduzido de 4 para 3 equipes simultâneas.
     with ThreadPoolExecutor(
         max_workers=3
     ) as executor:
@@ -1563,7 +1644,6 @@ def collect_candidates(
         time.perf_counter() - stage_start
     )
 
-    # Ordenação pela pontuação.
     results.sort(
         key=lambda item: item["triage_score"],
         reverse=True
@@ -2216,7 +2296,6 @@ def defense_check():
 
 
 # ============================================================
-# NOVO ENDPOINT:
 # DEFESA POR POSIÇÃO
 # ============================================================
 
@@ -2246,11 +2325,17 @@ def defense_position_check(
         "positions": data["players"]
     }
 
+
+# ============================================================
+# DIAGNÓSTICO BRUTO DA ESTRUTURA ESPN
+# ============================================================
+
 @app.get("/defense-position-raw-check")
 def defense_position_raw_check(
     event: str = Query(...),
     defending_team: str = Query(...)
 ):
+
     defending_team = defending_team.upper()
 
     summary = request_json(
@@ -2259,8 +2344,17 @@ def defense_position_raw_check(
         {"event": event}
     )
 
-    teams = summary.get("boxscore", {}).get("teams", [])
-    players = summary.get("boxscore", {}).get("players", [])
+    teams = (
+        summary
+        .get("boxscore", {})
+        .get("teams", [])
+    )
+
+    players = (
+        summary
+        .get("boxscore", {})
+        .get("players", [])
+    )
 
     return {
         "event": event,
