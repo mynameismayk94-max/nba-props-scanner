@@ -167,6 +167,34 @@ td:first-child{
  padding-top:6px;
 }
 
+/* NOVA MÉTRICA */
+
+.difference-value{
+ font-size:13px;
+ font-weight:bold;
+}
+
+.difference-positive{
+ color:#15803d;
+}
+
+.difference-negative{
+ color:#b91c1c;
+}
+
+.difference-neutral{
+ color:#64748b;
+}
+
+.difference-header{
+ background:#e2f3e7;
+}
+
+.difference-cell{
+ background:#f3faf5;
+ min-width:115px;
+}
+
 .explanation{
  line-height:1.6;
  font-size:14px
@@ -212,6 +240,14 @@ small{
 
  .period-label{
   font-size:9px
+ }
+
+ .difference-value{
+  font-size:12px
+ }
+
+ .difference-cell{
+  min-width:105px
  }
 }
 </style>
@@ -332,6 +368,14 @@ O scanner organiza candidatos com base nas médias recentes e nos minutos em qua
 
 <p>
 <b>Projeção ajustada:</b> aplica a taxa por minuto à média de minutos do candidato.
+</p>
+
+<p>
+<b>Diferença vs defesa:</b> média do jogador menos a projeção ajustada da defesa.
+</p>
+
+<p>
+Exemplo: se o jogador possui média L5 de <b>8,00 AST</b> e a projeção ajustada da defesa é <b>5,16 AST</b>, a diferença será <b>+2,84 AST</b>.
 </p>
 
 <p>
@@ -552,6 +596,157 @@ function celulaDupla(
 
 }
 
+
+/* =========================================================
+   DIFERENÇA VS DEFESA
+   ========================================================= */
+
+function diferencaVsDefesa(
+ valorJogador,
+ projecaoDefesa
+){
+
+ if(
+  valorJogador===null ||
+  valorJogador===undefined ||
+  projecaoDefesa===null ||
+  projecaoDefesa===undefined
+ ){
+
+  return null;
+
+ }
+
+ const jogador=
+  Number(valorJogador);
+
+ const defesa=
+  Number(projecaoDefesa);
+
+ if(
+  !Number.isFinite(jogador) ||
+  !Number.isFinite(defesa)
+ ){
+
+  return null;
+
+ }
+
+ return jogador-defesa;
+
+}
+
+
+function formatarDiferenca(valor){
+
+ if(
+  valor===null ||
+  valor===undefined
+ ){
+
+  return '—';
+
+ }
+
+ const n=Number(valor);
+
+ if(!Number.isFinite(n)){
+
+  return '—';
+
+ }
+
+ if(n>0){
+
+  return '+'+n.toFixed(2);
+
+ }
+
+ return n.toFixed(2);
+
+}
+
+
+function classeDiferenca(valor){
+
+ if(
+  valor===null ||
+  valor===undefined
+ ){
+
+  return 'difference-neutral';
+
+ }
+
+ const n=Number(valor);
+
+ if(!Number.isFinite(n)){
+
+  return 'difference-neutral';
+
+ }
+
+ if(n>0){
+
+  return 'difference-positive';
+
+ }
+
+ if(n<0){
+
+  return 'difference-negative';
+
+ }
+
+ return 'difference-neutral';
+
+}
+
+
+function celulaDiferenca(
+ valor5,
+ valor10
+){
+
+ return '<td class="difference-cell">'+
+
+  '<div class="split-metric">'+
+
+  '<div class="split-item">'+
+
+   '<span class="period-label">L5</span>'+
+
+   '<span class="difference-value '+
+   classeDiferenca(valor5)+
+   '">' +
+   formatarDiferenca(valor5)+
+   '</span>'+
+
+  '</div>'+
+
+  '<div class="split-item">'+
+
+   '<span class="period-label">L10</span>'+
+
+   '<span class="difference-value '+
+   classeDiferenca(valor10)+
+   '">' +
+   formatarDiferenca(valor10)+
+   '</span>'+
+
+  '</div>'+
+
+  '</div>'+
+
+  '</td>';
+
+}
+
+
+/* =========================================================
+   TESTE API
+   ========================================================= */
+
 async function testar(){
 
  status.innerText=
@@ -577,6 +772,11 @@ async function testar(){
  }
 
 }
+
+
+/* =========================================================
+   JOGOS
+   ========================================================= */
 
 async function carregarJogos(){
 
@@ -650,6 +850,11 @@ async function carregarJogos(){
 
 }
 
+
+/* =========================================================
+   CANDIDATOS
+   ========================================================= */
+
 async function buscar(mercado){
 
  const box=
@@ -704,7 +909,10 @@ async function buscar(mercado){
   html+=
    '<div class="tablewrap"><table>';
 
-  // CABEÇALHO PRINCIPAL
+
+  /* =====================================================
+     CABEÇALHO PRINCIPAL
+     ===================================================== */
 
   html+=
    '<tr>'+
@@ -745,9 +953,16 @@ async function buscar(mercado){
    'Projeção ajustada'+
    '</th>'+
 
+   '<th colspan="1" class="difference-header">'+
+   'Diferença vs defesa'+
+   '</th>'+
+
    '</tr>';
 
-  // SUBCABEÇALHO
+
+  /* =====================================================
+     SUBCABEÇALHO
+     ===================================================== */
 
   html+=
    '<tr>'+
@@ -776,11 +991,23 @@ async function buscar(mercado){
    'L5 / L10'+
    '</th>'+
 
+   '<th class="difference-header">'+
+   'L5 / L10'+
+   '</th>'+
+
    '</tr>';
 
-  // JOGADORES
+
+  /* =====================================================
+     JOGADORES
+     ===================================================== */
 
   r.candidates.forEach(p=>{
+
+
+   /* -----------------------------------------------------
+      DEFESA AJUSTADA
+      ----------------------------------------------------- */
 
    const avg5=
     p.opponent_position_minutes_filtered_defense_l5_avg;
@@ -788,11 +1015,13 @@ async function buscar(mercado){
    const avg10=
     p.opponent_position_minutes_filtered_defense_l10_avg;
 
+
    const rate5=
     p.opponent_position_minutes_filtered_defense_l5_per_minute;
 
    const rate10=
     p.opponent_position_minutes_filtered_defense_l10_per_minute;
+
 
    const proj5=
     p.opponent_position_minutes_filtered_defense_l5_projected;
@@ -800,11 +1029,13 @@ async function buscar(mercado){
    const proj10=
     p.opponent_position_minutes_filtered_defense_l10_projected;
 
+
    const games5=
     p.opponent_position_minutes_filtered_defense_games_l5;
 
    const games10=
     p.opponent_position_minutes_filtered_defense_games_l10;
+
 
    const apps5=
     p.opponent_position_minutes_filtered_defense_player_games_l5;
@@ -812,15 +1043,39 @@ async function buscar(mercado){
    const apps10=
     p.opponent_position_minutes_filtered_defense_player_games_l10;
 
+
    const minutes5=
     p.opponent_position_minutes_filtered_defense_minutes_l5;
 
    const minutes10=
     p.opponent_position_minutes_filtered_defense_minutes_l10;
 
+
+   /* -----------------------------------------------------
+      DIFERENÇA VS DEFESA
+
+      Média do jogador
+      -
+      Projeção ajustada da defesa
+      ----------------------------------------------------- */
+
+   const difference5=
+    diferencaVsDefesa(
+     p.last5_avg,
+     proj5
+    );
+
+   const difference10=
+    diferencaVsDefesa(
+     p.last10_avg,
+     proj10
+    );
+
+
    html+='<tr>';
 
-   // IDENTIFICAÇÃO
+
+   /* IDENTIFICAÇÃO */
 
    html+=
     '<td><b>'+
@@ -842,7 +1097,8 @@ async function buscar(mercado){
     (p.opponent || '—')+
     '</td>';
 
-   // MÉDIA DO JOGADOR
+
+   /* MÉDIA DO JOGADOR */
 
    html+=
     '<td>'+
@@ -854,7 +1110,8 @@ async function buscar(mercado){
     numero(p.last10_avg)+
     '</td>';
 
-   // MINUTOS
+
+   /* MINUTOS */
 
    html+=
     '<td>'+
@@ -864,14 +1121,16 @@ async function buscar(mercado){
     )+
     '</td>';
 
-   // PONTUAÇÃO ORIGINAL
+
+   /* PONTUAÇÃO ORIGINAL */
 
    html+=
     '<td class="metric">'+
     numero(p.triage_score)+
     '</td>';
 
-   // DEFESA GERAL
+
+   /* DEFESA GERAL */
 
    html+=
     '<td>'+
@@ -889,7 +1148,8 @@ async function buscar(mercado){
     )+
     '</td>';
 
-   // DEFESA POR POSIÇÃO - TOTAL
+
+   /* DEFESA POR POSIÇÃO - TOTAL */
 
    html+=
     '<td>'+
@@ -907,7 +1167,8 @@ async function buscar(mercado){
     )+
     '</td>';
 
-   // DEFESA POR POSIÇÃO - MÉDIA INDIVIDUAL
+
+   /* DEFESA POR POSIÇÃO - MÉDIA INDIVIDUAL */
 
    html+=
     '<td>'+
@@ -937,7 +1198,8 @@ async function buscar(mercado){
     ' participações</small>'+
     '</td>';
 
-   // MÉDIA AJUSTADA
+
+   /* MÉDIA AJUSTADA */
 
    html+=
     celulaAjustada(
@@ -951,7 +1213,8 @@ async function buscar(mercado){
      minutes10
     );
 
-   // TAXA POR MINUTO
+
+   /* TAXA POR MINUTO */
 
    html+=
     celulaDupla(
@@ -960,7 +1223,8 @@ async function buscar(mercado){
      4
     );
 
-   // PROJEÇÃO
+
+   /* PROJEÇÃO */
 
    html+=
     celulaDupla(
@@ -969,19 +1233,33 @@ async function buscar(mercado){
      2
     );
 
+
+   /* DIFERENÇA VS DEFESA */
+
+   html+=
+    celulaDiferenca(
+     difference5,
+     difference10
+    );
+
+
    html+='</tr>';
 
   });
 
+
   html+=
    '</table></div>';
+
 
   html+=
    '<p><small>'+
    'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
    'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
+   'A diferença vs defesa representa a distância entre a média do jogador e a projeção ajustada da defesa. '+
    'A projeção é uma referência estatística, não uma previsão garantida.'+
    '</small></p>';
+
 
   box.innerHTML=html;
 
