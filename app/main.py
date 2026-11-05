@@ -1,4 +1,3 @@
-
 import logging
 import time
 import re
@@ -19,7 +18,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.7.0"
+    version="3.8.0"
 )
 
 app.add_middleware(
@@ -384,6 +383,8 @@ def get_player_stat_value(
     - Lista de valores com índice identificado por names.
     - Dicionário de estatísticas.
     - Estatísticas no formato dict com value/displayValue.
+
+    Para minutos, também interpreta valores no formato MM:SS.
     """
 
     normalized_key = normalize_stat_key(
@@ -416,6 +417,26 @@ def get_player_stat_value(
             return None
 
         value = raw_stats[index]
+
+    # TRATAMENTO ESPECIAL PARA MINUTAGEM
+
+    if normalized_key == "minutes":
+
+        if isinstance(value, dict):
+
+            value = (
+                value.get("displayValue")
+                if value.get("displayValue") is not None
+                else value.get("value")
+            )
+
+        if value in ("", "--", "-", "N/A"):
+            return None
+
+        if value is None:
+            return None
+
+        return parse_minutes(value)
 
     if attempt_stat:
 
@@ -717,9 +738,11 @@ def aggregate_position_game(
     Soma as estatísticas dos jogadores adversários
     por posição dentro de uma partida.
 
-    Também contabiliza quantos jogadores possuem um
-    valor válido para cada estatística. Essa contagem
-    será usada no cálculo da média individual histórica.
+    Mantém os totais e as contagens anteriores.
+
+    Também preserva os dados individuais de cada jogador,
+    incluindo minutagem, para permitir filtros posteriores
+    de minutagem compatível com o jogador analisado.
     """
 
     extracted = extract_opponent_players_by_position(
@@ -757,7 +780,10 @@ def aggregate_position_game(
 
             "three_pa": None,
 
-            "stat_players_count": {}
+            "stat_players_count": {},
+
+            # NOVO: DADOS INDIVIDUAIS PRESERVADOS
+            "players": players
         }
 
         for stat_key in stat_keys:
@@ -786,6 +812,163 @@ def aggregate_position_game(
         "opponent": extracted["opponent"],
 
         "positions": result
+    }
+
+
+# ============================================================
+# DEFESA POR POSIÇÃO COM FILTRO DE MINUTAGEM
+# ============================================================
+
+def calculate_minutes_filtered_position_defense(
+    sample,
+    position,
+    stat_key,
+    minutes_threshold
+):
+
+    """
+    Calcula a defesa do adversário considerando somente
+    jogadores da posição selecionada que tenham atuado
+    minutos iguais ou superiores à minutagem média do
+    jogador analisado nos seus últimos cinco jogos.
+
+    Métricas calculadas:
+
+    - Média da estatística por participação individual.
+    - Estatística concedida por minuto.
+    - Projeção para a minutagem do jogador analisado.
+    - Quantidade de partidas utilizadas.
+    - Quantidade de participações individuais.
+    - Total de minutos considerados.
+
+    A taxa por minuto é calculada sobre o total da estatística
+    dividido pelo total de minutos dos jogadores selecionados.
+    """
+
+    total_stat = 0.0
+
+    total_minutes = 0.0
+
+    player_appearances = 0
+
+    games_analyzed = 0
+
+    for game in sample:
+
+        position_data = (
+            game.get("positions", {})
+            .get(position, {})
+        )
+
+        players = position_data.get(
+            "players",
+            []
+        )
+
+        game_has_valid_player = False
+
+        for player in players:
+
+            player_minutes = player.get(
+                "minutes"
+            )
+
+            stat_value = player.get(
+                stat_key
+            )
+
+            # Não é possível validar a minutagem
+            # quando o dado está ausente.
+
+            if player_minutes is None:
+                continue
+
+            # Aplica o limite inclusivo:
+            # minutos iguais ou superiores à média do candidato.
+
+            if player_minutes < minutes_threshold:
+                continue
+
+            # Só contabiliza a participação quando
+            # a estatística também está disponível.
+
+            if stat_value is None:
+                continue
+
+            total_stat += stat_value
+
+            total_minutes += player_minutes
+
+            player_appearances += 1
+
+            game_has_valid_player = True
+
+        if game_has_valid_player:
+            games_analyzed += 1
+
+    # MÉDIA POR PARTICIPAÇÃO INDIVIDUAL
+
+    average_per_player = (
+        round(
+            total_stat / player_appearances,
+            2
+        )
+        if player_appearances > 0
+        else None
+    )
+
+    # ESTATÍSTICA CONCEDIDA POR MINUTO
+
+    per_minute = (
+        round(
+            total_stat / total_minutes,
+            4
+        )
+        if total_minutes > 0
+        else None
+    )
+
+    # PROJEÇÃO AJUSTADA À MINUTAGEM DO JOGADOR
+
+    projected_value = (
+        round(
+            per_minute * minutes_threshold,
+            2
+        )
+        if per_minute is not None
+        else None
+    )
+
+    return {
+
+        "minutes_threshold": round(
+            minutes_threshold,
+            1
+        ),
+
+        "games_analyzed": games_analyzed,
+
+        "player_appearances": player_appearances,
+
+        "total_minutes": round(
+            total_minutes,
+            1
+        ),
+
+        "total_stat": round(
+            total_stat,
+            1
+        ),
+
+        "average_per_player_appearance": (
+            average_per_player
+        ),
+
+        "per_minute": per_minute,
+
+        "projected_at_player_minutes": (
+            projected_value
+        )
     }
 
 
@@ -1814,6 +1997,11 @@ def build_player_result(
     position_player_games_l5 = 0
     position_player_games_l10 = 0
 
+    # NOVOS INDICADORES COM MINUTAGEM COMPATÍVEL
+
+    position_filtered_l5 = None
+    position_filtered_l10 = None
+
     if (
         defense
         and position in ("G", "F", "C")
@@ -1832,7 +2020,9 @@ def build_player_result(
             .get(position, {})
         )
 
-        # Média total por jogo
+        # --------------------------------------------
+        # MÉDIA TOTAL POR JOGO
+        # --------------------------------------------
 
         position_defense_l5 = (
             position_data_l5
@@ -1846,7 +2036,7 @@ def build_player_result(
             .get(position_stat_key)
         )
 
-        # Quantidade de jogos utilizados na média total
+        # QUANTIDADE DE JOGOS UTILIZADOS NA MÉDIA TOTAL
 
         position_games_l5 = (
             position_data_l5
@@ -1860,7 +2050,7 @@ def build_player_result(
             .get(position_stat_key, 0)
         )
 
-        # Nova média individual por participação
+        # MÉDIA INDIVIDUAL POR PARTICIPAÇÃO
 
         position_individual_l5 = (
             position_data_l5
@@ -1874,7 +2064,7 @@ def build_player_result(
             .get(position_stat_key)
         )
 
-        # Quantidade de participações individuais utilizadas
+        # QUANTIDADE DE PARTICIPAÇÕES INDIVIDUAIS
 
         position_player_games_l5 = (
             position_data_l5
@@ -1886,6 +2076,38 @@ def build_player_result(
             position_data_l10
             .get("stat_player_appearances", {})
             .get(position_stat_key, 0)
+        )
+
+        # --------------------------------------------
+        # NOVA MÉTRICA: FILTRO POR MINUTAGEM
+        # --------------------------------------------
+
+        defense_games_sample_l5 = (
+            defense.get("L5", {})
+            .get("games", [])
+        )
+
+        defense_games_sample_l10 = (
+            defense.get("L10", {})
+            .get("games", [])
+        )
+
+        position_filtered_l5 = (
+            calculate_minutes_filtered_position_defense(
+                defense_games_sample_l5,
+                position,
+                position_stat_key,
+                minutes_avg
+            )
+        )
+
+        position_filtered_l10 = (
+            calculate_minutes_filtered_position_defense(
+                defense_games_sample_l10,
+                position,
+                position_stat_key,
+                minutes_avg
+            )
         )
 
     # RESULTADO
@@ -1939,6 +2161,10 @@ def build_player_result(
 
         "opponent_defense_games_l10": defense_games_l10,
 
+        # --------------------------------------------
+        # INDICADORES DEFENSIVOS ORIGINAIS POR POSIÇÃO
+        # --------------------------------------------
+
         "opponent_position_defense_l5_avg": (
             position_defense_l5
         ),
@@ -1969,6 +2195,128 @@ def build_player_result(
 
         "opponent_position_individual_defense_player_games_l10": (
             position_player_games_l10
+        ),
+
+        # --------------------------------------------
+        # NOVOS INDICADORES COM MINUTAGEM COMPATÍVEL
+        # --------------------------------------------
+
+        "opponent_position_minutes_filtered_threshold": (
+            round(minutes_avg, 1)
+        ),
+
+        # Média da estatística por participação
+
+        "opponent_position_minutes_filtered_defense_l5_avg": (
+            position_filtered_l5.get(
+                "average_per_player_appearance"
+            )
+            if position_filtered_l5
+            else None
+        ),
+
+        "opponent_position_minutes_filtered_defense_l10_avg": (
+            position_filtered_l10.get(
+                "average_per_player_appearance"
+            )
+            if position_filtered_l10
+            else None
+        ),
+
+        # Estatística concedida por minuto
+
+        "opponent_position_minutes_filtered_defense_l5_per_minute": (
+            position_filtered_l5.get(
+                "per_minute"
+            )
+            if position_filtered_l5
+            else None
+        ),
+
+        "opponent_position_minutes_filtered_defense_l10_per_minute": (
+            position_filtered_l10.get(
+                "per_minute"
+            )
+            if position_filtered_l10
+            else None
+        ),
+
+        # Projeção ajustada à minutagem do candidato
+
+        "opponent_position_minutes_filtered_defense_l5_projected": (
+            position_filtered_l5.get(
+                "projected_at_player_minutes"
+            )
+            if position_filtered_l5
+            else None
+        ),
+
+        "opponent_position_minutes_filtered_defense_l10_projected": (
+            position_filtered_l10.get(
+                "projected_at_player_minutes"
+            )
+            if position_filtered_l10
+            else None
+        ),
+
+        # Quantidade de partidas consideradas
+
+        "opponent_position_minutes_filtered_defense_games_l5": (
+            position_filtered_l5.get(
+                "games_analyzed",
+                0
+            )
+            if position_filtered_l5
+            else 0
+        ),
+
+        "opponent_position_minutes_filtered_defense_games_l10": (
+            position_filtered_l10.get(
+                "games_analyzed",
+                0
+            )
+            if position_filtered_l10
+            else 0
+        ),
+
+        # Quantidade de participações individuais
+
+        "opponent_position_minutes_filtered_defense_player_games_l5": (
+            position_filtered_l5.get(
+                "player_appearances",
+                0
+            )
+            if position_filtered_l5
+            else 0
+        ),
+
+        "opponent_position_minutes_filtered_defense_player_games_l10": (
+            position_filtered_l10.get(
+                "player_appearances",
+                0
+            )
+            if position_filtered_l10
+            else 0
+        ),
+
+        # Total de minutos que compõem a amostra filtrada
+
+        "opponent_position_minutes_filtered_defense_minutes_l5": (
+            position_filtered_l5.get(
+                "total_minutes",
+                0
+            )
+            if position_filtered_l5
+            else 0
+        ),
+
+        "opponent_position_minutes_filtered_defense_minutes_l10": (
+            position_filtered_l10.get(
+                "total_minutes",
+                0
+            )
+            if position_filtered_l10
+            else 0
         )
     }
 
@@ -2201,12 +2549,19 @@ def collect_candidates(
             "de 24 minutos médios nos últimos cinco jogos. Inclui "
             "indicadores defensivos gerais do adversário e indicadores "
             "defensivos por posição nos períodos L5 e L10. Os indicadores "
-            "por posição apresentam tanto a produção total média por "
-            "jogo quanto a média individual por participação de jogador. "
-            "Esses indicadores são contexto complementar e não fazem "
-            "parte da pontuação. Não considera linhas, odds, lesões ou "
-            "escalações. A pontuação não representa probabilidade "
-            "de acerto."
+            "por posição apresentam a produção total média por jogo "
+            "e a média individual por participação de jogador. Também "
+            "incluem uma análise adicional filtrada pela minutagem: "
+            "considera somente jogadores da mesma posição que tenham "
+            "atuado minutos iguais ou superiores à média de minutos "
+            "do candidato nos últimos cinco jogos. Para esse grupo, "
+            "calcula a média por participação, a taxa por minuto e "
+            "uma projeção ajustada à minutagem do candidato. A amostra "
+            "filtrada informa partidas, participações e minutos "
+            "considerados. Esses indicadores são contexto complementar "
+            "e não fazem parte da pontuação. Não considera linhas, odds, "
+            "lesões ou escalações. A pontuação não representa "
+            "probabilidade de acerto."
         ),
 
         "candidates": results[:final_limit]
@@ -2226,7 +2581,7 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.7.0",
+        "version": "3.8.0",
 
         "source": "ESPN"
     }
