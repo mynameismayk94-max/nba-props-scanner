@@ -18,7 +18,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.5.0"
+    version="3.6.0"
 )
 
 app.add_middleware(
@@ -180,8 +180,7 @@ def parse_attempts(value) -> float:
 def parse_optional_number(value):
 
     """
-    Converte estatísticas individuais preservando
-    a diferença entre zero real e dado ausente.
+    Preserva a diferença entre zero real e dado ausente.
     """
 
     if value is None:
@@ -208,12 +207,10 @@ def parse_optional_number(value):
 def parse_optional_attempts(value):
 
     """
-    Extrai tentativas de valores como:
-
-        10-22
+    Extrai tentativas de valores como 10-22.
 
     Também aceita valores numéricos quando a ESPN
-    já retorna apenas a quantidade tentada.
+    retorna apenas a quantidade tentada.
     """
 
     if value is None:
@@ -445,6 +442,9 @@ def get_player_stat_value(
 
 def get_athlete_position(athlete):
 
+    if not isinstance(athlete, dict):
+        return "OTHER"
+
     position_data = athlete.get(
         "position",
         {}
@@ -470,39 +470,6 @@ def extract_opponent_players_by_position(
     summary,
     defending_team
 ):
-
-    """
-    Extrai jogadores do adversário agrupados por posição.
-
-    Estrutura principal esperada da ESPN:
-
-        boxscore
-            └── players[]
-                    ├── team
-                    └── statistics[]
-                            ├── keys
-                            └── athletes[]
-                                    ├── athlete
-                                    └── stats
-
-    O parser também aceita variações de estrutura.
-
-    Grupos:
-
-        G      = Guard
-        F      = Forward
-        C      = Center
-        OTHER  = posição não identificada
-
-    Estatísticas:
-
-        assists
-        rebounds
-        fga
-        three_pa
-
-    Jogadores sem estatísticas são ignorados.
-    """
 
     result = {
         "G": [],
@@ -616,13 +583,12 @@ def extract_opponent_players_by_position(
         if not isinstance(statistics_block, dict):
             continue
 
-        keys = statistics_block.get(
-            "keys"
-        ) or statistics_block.get(
-            "names"
-        ) or statistics_block.get(
-            "labels"
-        ) or []
+        keys = (
+            statistics_block.get("keys")
+            or statistics_block.get("names")
+            or statistics_block.get("labels")
+            or []
+        )
 
         key_indexes = {}
 
@@ -669,10 +635,6 @@ def extract_opponent_players_by_position(
             if not player_name:
                 continue
 
-            # ------------------------------------------------
-            # ESTATÍSTICAS DO JOGADOR
-            # ------------------------------------------------
-
             raw_stats = athlete_entry.get(
                 "stats"
             )
@@ -685,17 +647,9 @@ def extract_opponent_players_by_position(
             if not raw_stats:
                 continue
 
-            # ------------------------------------------------
-            # POSIÇÃO
-            # ------------------------------------------------
-
             position_group = get_athlete_position(
                 athlete
             )
-
-            # ------------------------------------------------
-            # ASSISTÊNCIAS
-            # ------------------------------------------------
 
             assists = get_player_stat_value(
                 raw_stats,
@@ -703,19 +657,11 @@ def extract_opponent_players_by_position(
                 "assists"
             )
 
-            # ------------------------------------------------
-            # REBOTES
-            # ------------------------------------------------
-
             rebounds = get_player_stat_value(
                 raw_stats,
                 key_indexes,
                 "rebounds"
             )
-
-            # ------------------------------------------------
-            # FGA
-            # ------------------------------------------------
 
             fga = get_player_stat_value(
                 raw_stats,
@@ -724,20 +670,12 @@ def extract_opponent_players_by_position(
                 attempt_stat=True
             )
 
-            # ------------------------------------------------
-            # 3PA
-            # ------------------------------------------------
-
             three_pa = get_player_stat_value(
                 raw_stats,
                 key_indexes,
                 "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
                 attempt_stat=True
             )
-
-            # ------------------------------------------------
-            # VERIFICA PARTICIPAÇÃO NA PARTIDA
-            # ------------------------------------------------
 
             minutes = get_player_stat_value(
                 raw_stats,
@@ -765,10 +703,6 @@ def extract_opponent_players_by_position(
             ):
                 continue
 
-            # ------------------------------------------------
-            # ADICIONA O JOGADOR
-            # ------------------------------------------------
-
             result[position_group].append({
 
                 "player": player_name,
@@ -789,6 +723,87 @@ def extract_opponent_players_by_position(
     return {
         "opponent": opponent_team,
         "players": result
+    }
+
+
+# ============================================================
+# AGREGA ESTATÍSTICAS POR POSIÇÃO EM UMA PARTIDA
+# ============================================================
+
+def aggregate_position_game(
+    summary,
+    defending_team
+):
+
+    """
+    Soma as estatísticas dos jogadores adversários
+    por posição dentro de uma partida.
+
+    A média histórica será calculada posteriormente
+    sobre os totais de cada partida.
+
+    Isso evita calcular a média individual dos atletas
+    e distorcer o volume permitido pela defesa.
+    """
+
+    extracted = extract_opponent_players_by_position(
+        summary,
+        defending_team
+    )
+
+    players_by_position = extracted["players"]
+
+    result = {}
+
+    stat_keys = [
+        "assists",
+        "rebounds",
+        "fga",
+        "three_pa"
+    ]
+
+    for position in ("G", "F", "C", "OTHER"):
+
+        players = players_by_position.get(
+            position,
+            []
+        )
+
+        position_result = {
+
+            "players_count": len(players),
+
+            "assists": None,
+
+            "rebounds": None,
+
+            "fga": None,
+
+            "three_pa": None
+        }
+
+        for stat_key in stat_keys:
+
+            values = [
+                player[stat_key]
+                for player in players
+                if player.get(stat_key) is not None
+            ]
+
+            if values:
+
+                position_result[stat_key] = round(
+                    sum(values),
+                    1
+                )
+
+        result[position] = position_result
+
+    return {
+
+        "opponent": extracted["opponent"],
+
+        "positions": result
     }
 
 
@@ -927,9 +942,18 @@ def get_team_defense_history(
         if not stats:
             return None
 
+        position_data = aggregate_position_game(
+            summary,
+            team_abbr
+        )
+
         return {
+
             **game,
-            **stats
+
+            **stats,
+
+            "positions": position_data["positions"]
         }
 
     with ThreadPoolExecutor(
@@ -976,6 +1000,17 @@ def get_team_defense_history(
         "assists_allowed"
     ]
 
+    position_stat_keys = [
+        "assists",
+        "rebounds",
+        "fga",
+        "three_pa"
+    ]
+
+    # --------------------------------------------------------
+    # MÉDIAS DEFENSIVAS GERAIS
+    # --------------------------------------------------------
+
     def calculate_averages(sample):
 
         averages = {}
@@ -999,6 +1034,101 @@ def get_team_defense_history(
 
         return averages
 
+    # --------------------------------------------------------
+    # MÉDIAS DEFENSIVAS POR POSIÇÃO
+    # --------------------------------------------------------
+
+    def calculate_position_averages(sample):
+
+        position_results = {}
+
+        for position in ("G", "F", "C", "OTHER"):
+
+            position_games = [
+                game
+                for game in sample
+                if (
+                    game.get("positions", {})
+                    .get(position, {})
+                    .get("players_count", 0) > 0
+                )
+            ]
+
+            averages = {}
+
+            stat_games_analyzed = {}
+
+            for stat_key in position_stat_keys:
+
+                values = []
+
+                for game in position_games:
+
+                    position_data = (
+                        game.get("positions", {})
+                        .get(position, {})
+                    )
+
+                    value = position_data.get(
+                        stat_key
+                    )
+
+                    if value is not None:
+                        values.append(value)
+
+                stat_games_analyzed[stat_key] = len(
+                    values
+                )
+
+                averages[stat_key] = (
+                    round(
+                        sum(values) / len(values),
+                        1
+                    )
+                    if values
+                    else None
+                )
+
+            players_per_game = [
+                game.get(
+                    "positions", {}
+                ).get(
+                    position, {}
+                ).get(
+                    "players_count", 0
+                )
+                for game in position_games
+            ]
+
+            position_results[position] = {
+
+                "games_analyzed": len(
+                    position_games
+                ),
+
+                "players_per_game_avg": (
+                    round(
+                        sum(players_per_game)
+                        / len(players_per_game),
+                        1
+                    )
+                    if players_per_game
+                    else 0
+                ),
+
+                "stat_games_analyzed": (
+                    stat_games_analyzed
+                ),
+
+                "averages": averages
+            }
+
+        return position_results
+
+    # --------------------------------------------------------
+    # HISTÓRICO COMPLETO
+    # --------------------------------------------------------
+
     history = {
 
         "team": team_abbr,
@@ -1009,8 +1139,16 @@ def get_team_defense_history(
 
         "averages": calculate_averages(
             results
+        ),
+
+        "positions": calculate_position_averages(
+            results
         )
     }
+
+    # --------------------------------------------------------
+    # L5 / L10
+    # --------------------------------------------------------
 
     for window in (5, 10):
 
@@ -1025,6 +1163,10 @@ def get_team_defense_history(
             "games": sample,
 
             "averages": calculate_averages(
+                sample
+            ),
+
+            "positions": calculate_position_averages(
                 sample
             )
         }
@@ -1157,12 +1299,33 @@ def collect_roster_players(
 
         if athlete_id and name:
 
-            players[str(athlete_id)] = {
+            athlete_id = str(athlete_id)
 
-                "id": str(athlete_id),
+            position = get_athlete_position(
+                node
+            )
 
-                "player": name
-            }
+            existing = players.get(
+                athlete_id
+            )
+
+            if existing is None:
+
+                players[athlete_id] = {
+
+                    "id": athlete_id,
+
+                    "player": name,
+
+                    "position": position
+                }
+
+            elif (
+                existing.get("position") == "OTHER"
+                and position != "OTHER"
+            ):
+
+                existing["position"] = position
 
         for value in node.values():
 
@@ -1265,6 +1428,18 @@ def get_players_for_date(
                     )
 
                     entry["teams"].add(team)
+
+                    # Preserva uma posição identificada
+                    # caso outra ocorrência esteja como OTHER.
+
+                    if (
+                        entry["player"].get("position") == "OTHER"
+                        and player.get("position") != "OTHER"
+                    ):
+
+                        entry["player"]["position"] = (
+                            player["position"]
+                        )
 
             except Exception as error:
 
@@ -1529,6 +1704,10 @@ def build_player_result(
         "attempts": "fga_allowed"
     }[market]
 
+    # --------------------------------------------------------
+    # MÉDIAS INDIVIDUAIS
+    # --------------------------------------------------------
+
     def average(sample):
 
         if not sample:
@@ -1548,6 +1727,10 @@ def build_player_result(
         for game in last5
     ) / len(last5)
 
+    # --------------------------------------------------------
+    # SCORE ORIGINAL - MANTIDO SEM ALTERAÇÕES
+    # --------------------------------------------------------
+
     score = (
         avg5 * 0.60
         + avg10 * 0.40
@@ -1555,6 +1738,10 @@ def build_player_result(
         0.80
         + consistency * 0.20
     )
+
+    # --------------------------------------------------------
+    # DEFESA GERAL DO ADVERSÁRIO
+    # --------------------------------------------------------
 
     defense_l5 = (
         defense.get("L5", {})
@@ -1586,11 +1773,80 @@ def build_player_result(
         else 0
     )
 
+    # --------------------------------------------------------
+    # DEFESA DO ADVERSÁRIO POR POSIÇÃO
+    # --------------------------------------------------------
+
+    position = normalize_position(
+        player.get("position")
+    )
+
+    position_stat_key = {
+        "assists": "assists",
+        "rebounds": "rebounds",
+        "threes": "three_pa",
+        "attempts": "fga"
+    }.get(market)
+
+    position_defense_l5 = None
+    position_defense_l10 = None
+
+    position_games_l5 = 0
+    position_games_l10 = 0
+
+    if (
+        defense
+        and position in ("G", "F", "C")
+        and position_stat_key
+    ):
+
+        position_data_l5 = (
+            defense.get("L5", {})
+            .get("positions", {})
+            .get(position, {})
+        )
+
+        position_data_l10 = (
+            defense.get("L10", {})
+            .get("positions", {})
+            .get(position, {})
+        )
+
+        position_defense_l5 = (
+            position_data_l5
+            .get("averages", {})
+            .get(position_stat_key)
+        )
+
+        position_defense_l10 = (
+            position_data_l10
+            .get("averages", {})
+            .get(position_stat_key)
+        )
+
+        position_games_l5 = (
+            position_data_l5
+            .get("stat_games_analyzed", {})
+            .get(position_stat_key, 0)
+        )
+
+        position_games_l10 = (
+            position_data_l10
+            .get("stat_games_analyzed", {})
+            .get(position_stat_key, 0)
+        )
+
+    # --------------------------------------------------------
+    # RESULTADO
+    # --------------------------------------------------------
+
     return {
 
         "player": player["player"],
 
         "team": player["team"],
+
+        "position": position,
 
         "opponent": opponent,
 
@@ -1631,7 +1887,23 @@ def build_player_result(
 
         "opponent_defense_games_l5": defense_games_l5,
 
-        "opponent_defense_games_l10": defense_games_l10
+        "opponent_defense_games_l10": defense_games_l10,
+
+        "opponent_position_defense_l5_avg": (
+            position_defense_l5
+        ),
+
+        "opponent_position_defense_l10_avg": (
+            position_defense_l10
+        ),
+
+        "opponent_position_defense_games_l5": (
+            position_games_l5
+        ),
+
+        "opponent_position_defense_games_l10": (
+            position_games_l10
+        )
     }
 
 
@@ -1867,11 +2139,12 @@ def collect_candidates(
             "regular atual da NBA. Médias individuais dos últimos 5 "
             "e 10 jogos anteriores à data selecionada. Filtro mínimo "
             "de 24 minutos médios nos últimos cinco jogos. Inclui "
-            "indicadores defensivos do adversário nos períodos L5 "
-            "e L10 como contexto complementar. Os indicadores "
-            "defensivos não fazem parte da pontuação. Não considera "
-            "linhas, odds, lesões ou escalações. A pontuação não "
-            "representa probabilidade de acerto."
+            "indicadores defensivos gerais do adversário e indicadores "
+            "defensivos por posição nos períodos L5 e L10 como contexto "
+            "complementar. Os indicadores defensivos não fazem parte "
+            "da pontuação. Não considera linhas, odds, lesões ou "
+            "escalações. A pontuação não representa probabilidade "
+            "de acerto."
         ),
 
         "candidates": results[:final_limit]
@@ -1891,7 +2164,7 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.5.0",
+        "version": "3.6.0",
 
         "source": "ESPN"
     }
