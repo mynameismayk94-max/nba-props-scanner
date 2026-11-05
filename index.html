@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -8,7 +9,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:#f1f4f9;color:#172033;font-family:Arial,sans-serif}
 header{background:#172554;color:white;padding:25px}
-main{max-width:1100px;margin:25px auto;padding:0 15px}
+main{max-width:1400px;margin:25px auto;padding:0 15px}
 h1{margin:0}
 .sub{color:#cbd5e1;margin-top:8px}
 .card{background:white;padding:20px;border-radius:12px;margin-bottom:18px;box-shadow:0 2px 8px #0000000c}
@@ -18,12 +19,22 @@ button{background:#172554;color:white;border:0;cursor:pointer;margin:5px 5px 5px
 button:hover{background:#0f766e}
 .actions{display:flex;flex-wrap:wrap;gap:5px}
 .status{padding:10px;background:#fff7df;border-radius:7px;margin-top:12px;font-size:13px}
-table{width:100%;border-collapse:collapse;margin-top:15px;font-size:13px}
-th,td{padding:11px;text-align:left;border-bottom:1px solid #e5e9f0}
+table{width:100%;border-collapse:collapse;margin-top:15px;font-size:13px;white-space:nowrap}
+th,td{padding:10px;text-align:center;border-bottom:1px solid #e5e9f0}
 th{background:#f5f7fb}
+th:first-child,td:first-child{text-align:left}
 .tablewrap{overflow-x:auto}
 small{color:#64748b}
-@media(max-width:600px){header{padding:18px}main{margin:15px auto}.card{padding:14px}}
+.section-title{background:#eaf0f9;font-weight:bold;text-align:center}
+.metric{font-weight:bold;color:#172554}
+.muted{color:#64748b}
+@media(max-width:600px){
+ header{padding:18px}
+ main{margin:15px auto}
+ .card{padding:14px}
+ table{font-size:12px}
+ th,td{padding:8px}
+}
 </style>
 </head>
 <body>
@@ -69,6 +80,8 @@ small{color:#64748b}
 <section class="card">
 <h2>Como interpretar</h2>
 <p>O scanner organiza candidatos com base nas médias recentes e nos minutos em quadra.</p>
+<p><b>Defesa por posição:</b> apresenta a produção total que o adversário permite à posição do jogador e a média individual por participação de jogador.</p>
+<p><b>Participações:</b> quantidade de atuações de jogadores consideradas no cálculo da média individual.</p>
 <p><b>Importante:</b> os resultados são uma triagem estatística, não recomendações garantidas de apostas.</p>
 <p>Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.</p>
 </section>
@@ -98,11 +111,25 @@ async function requisicao(caminho){
  return await resposta.json();
 }
 
+function numero(valor,casas=2){
+ if(valor===null || valor===undefined || valor===''){
+  return '—';
+ }
+ const n=Number(valor);
+ if(!Number.isFinite(n)) return '—';
+ return n.toFixed(casas);
+}
+
+function participacoes(valor){
+ if(valor===null || valor===undefined) return '—';
+ return valor;
+}
+
 async function testar(){
  status.innerText='Testando conexão...';
  try{
   const r=await requisicao('/health');
-  status.innerText='✅ Conectado! Servidor: '+r.service;
+  status.innerText='✅ Conectado! Servidor: '+r.service+' | Versão: '+(r.version || 'não informada');
  }catch(e){
   status.innerText='❌ Não foi possível conectar: '+e.message;
  }
@@ -130,29 +157,67 @@ async function carregarJogos(){
 async function buscar(mercado){
  const box=document.getElementById('resultado');
  box.innerHTML='Analisando jogadores...';
+
  try{
   const r=await requisicao('/candidates?date='+data.value+'&market='+mercado+'&limit=20');
+
   let html='<h3>'+r.market_label+' - '+r.date+'</h3>';
-  html+='<p><small>'+ (r.method_note || 'Triagem estatística exploratória.')+'</small></p>';
+  html+='<p><small>'+(r.method_note || 'Triagem estatística exploratória.')+'</small></p>';
+
   if(!r.candidates || !r.candidates.length){
    box.innerHTML=html+'<p>Nenhum candidato retornado.</p>';
    return;
   }
-  html+='<div class="tablewrap"><table><tr><th>Jogador</th><th>Equipe</th><th>L5</th><th>L10</th><th>L20</th><th>Minutos L5</th><th>Pontuação</th></tr>';
 
-r.candidates.forEach(p=>{
+  html+='<div class="tablewrap"><table>';
+
+  html+='<tr>'+
+  '<th rowspan="2">Jogador</th>'+
+  '<th rowspan="2">Equipe</th>'+
+  '<th rowspan="2">Posição</th>'+
+  '<th rowspan="2">Adversário</th>'+
+  '<th colspan="2">Média do jogador</th>'+
+  '<th rowspan="2">Minutos L5</th>'+
+  '<th rowspan="2">Pontuação</th>'+
+  '<th colspan="2">Defesa geral - AST</th>'+
+  '<th colspan="2">Defesa por posição - total AST</th>'+
+  '<th colspan="2">Defesa por posição - média individual AST</th>'+
+  '</tr>';
+
+  html+='<tr>'+
+  '<th>L5</th><th>L10</th>'+
+  '<th>L5</th><th>L10</th>'+
+  '<th>L5</th><th>L10</th>'+
+  '<th>L5</th><th>L10</th>'+
+  '</tr>';
+
+  r.candidates.forEach(p=>{
    html+='<tr>'+
-   '<td>'+p.player+'</td>'+
+   '<td><b>'+p.player+'</b></td>'+
    '<td>'+p.team+'</td>'+
-   '<td>'+p.last5_avg+' <small>('+p.games_last5+'/5)</small></td>'+
-   '<td>'+p.last10_avg+' <small>('+p.games_last10+'/10)</small></td>'+
-   '<td>'+p.last20_avg+' <small>('+p.games_last20+'/20)</small></td>'+
-   '<td>'+p.minutes_last5_avg+'</td>'+
-   '<td>'+p.triage_score+'</td>'+
+   '<td>'+ (p.position || '—') +'</td>'+
+   '<td>'+ (p.opponent || '—') +'</td>'+
+   '<td>'+numero(p.last5_avg)+'</td>'+
+   '<td>'+numero(p.last10_avg)+'</td>'+
+   '<td>'+numero(p.minutes_last5_avg,1)+'</td>'+
+   '<td class="metric">'+numero(p.triage_score)+'</td>'+
+   '<td>'+numero(p.opponent_defense_l5_avg,1)+'</td>'+
+   '<td>'+numero(p.opponent_defense_l10_avg,1)+'</td>'+
+   '<td>'+numero(p.opponent_position_defense_l5_avg,1)+'</td>'+
+   '<td>'+numero(p.opponent_position_defense_l10_avg,1)+'</td>'+
+   '<td><b>'+numero(p.opponent_position_individual_defense_l5_avg)+'</b>'+
+   '<br><small>'+participacoes(p.opponent_position_individual_defense_player_games_l5)+' participações</small></td>'+
+   '<td><b>'+numero(p.opponent_position_individual_defense_l10_avg)+'</b>'+
+   '<br><small>'+participacoes(p.opponent_position_individual_defense_player_games_l10)+' participações</small></td>'+
    '</tr>';
-});
+  });
+
   html+='</table></div>';
+
+  html+='<p><small>As métricas defensivas exibidas são contextuais. Não alteram a pontuação do candidato.</small></p>';
+
   box.innerHTML=html;
+
  }catch(e){
   box.innerHTML='Erro ao buscar candidatos: '+e.message;
  }
