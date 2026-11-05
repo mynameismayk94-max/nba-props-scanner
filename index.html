@@ -9,7 +9,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:#f1f4f9;color:#172033;font-family:Arial,sans-serif}
 header{background:#172554;color:white;padding:25px}
-main{max-width:1400px;margin:25px auto;padding:0 15px}
+main{max-width:1600px;margin:25px auto;padding:0 15px}
 h1{margin:0}
 .sub{color:#cbd5e1;margin-top:8px}
 .card{background:white;padding:20px;border-radius:12px;margin-bottom:18px;box-shadow:0 2px 8px #0000000c}
@@ -28,6 +28,7 @@ small{color:#64748b}
 .section-title{background:#eaf0f9;font-weight:bold;text-align:center}
 .metric{font-weight:bold;color:#172554}
 .muted{color:#64748b}
+.new-metric{background:#f0f7ff}
 @media(max-width:600px){
  header{padding:18px}
  main{margin:15px auto}
@@ -80,9 +81,11 @@ small{color:#64748b}
 <section class="card">
 <h2>Como interpretar</h2>
 <p>O scanner organiza candidatos com base nas médias recentes e nos minutos em quadra.</p>
-<p><b>Defesa por posição:</b> apresenta a produção total que o adversário permite à posição do jogador e a média individual por participação de jogador.</p>
-<p><b>Participações:</b> quantidade de atuações de jogadores consideradas no cálculo da média individual.</p>
-<p><b>Importante:</b> os resultados são uma triagem estatística, não recomendações garantidas de apostas.</p>
+<p><b>Defesa geral:</b> produção total permitida pelo adversário por jogo.</p>
+<p><b>Defesa por posição:</b> produção total permitida aos jogadores da mesma posição e média individual por participação.</p>
+<p><b>Defesa ajustada à minutagem:</b> considera apenas jogadores da mesma posição que tiveram minutos iguais ou superiores à média L5 do candidato. Apresenta a média por participação, a taxa por minuto e a projeção para os minutos do candidato.</p>
+<p><b>Amostra:</b> quantidade de jogos, participações e minutos considerados no cálculo.</p>
+<p><b>Importante:</b> os resultados são uma triagem estatística, não recomendações garantidas de apostas. As métricas defensivas são contextuais e não alteram a pontuação do candidato.</p>
 <p>Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.</p>
 </section>
 
@@ -154,6 +157,17 @@ async function carregarJogos(){
  }
 }
 
+function celulaAmostra(jogos,participacoes,minutos){
+ return '<br><small>'+
+  participacoesValor(participacoes)+' part. · '+
+  participacoesValor(jogos)+' jogos · '+
+  numero(minutos,0)+' min</small>';
+}
+
+function participacoesValor(valor){
+ return valor===null || valor===undefined ? '—' : valor;
+}
+
 async function buscar(mercado){
  const box=document.getElementById('resultado');
  box.innerHTML='Analisando jogadores...';
@@ -179,9 +193,10 @@ async function buscar(mercado){
   '<th colspan="2">Média do jogador</th>'+
   '<th rowspan="2">Minutos L5</th>'+
   '<th rowspan="2">Pontuação</th>'+
-  '<th colspan="2">Defesa geral - AST</th>'+
-  '<th colspan="2">Defesa por posição - total AST</th>'+
-  '<th colspan="2">Defesa por posição - média individual AST</th>'+
+  '<th colspan="2">Defesa geral</th>'+
+  '<th colspan="2">Defesa por posição - total</th>'+
+  '<th colspan="2">Defesa por posição - média individual</th>'+
+  '<th colspan="3" class="new-metric">Defesa ajustada à minutagem</th>'+
   '</tr>';
 
   html+='<tr>'+
@@ -189,14 +204,37 @@ async function buscar(mercado){
   '<th>L5</th><th>L10</th>'+
   '<th>L5</th><th>L10</th>'+
   '<th>L5</th><th>L10</th>'+
+  '<th class="new-metric">Média AST L5/L10</th>'+
+  '<th class="new-metric">AST/min L5/L10</th>'+
+  '<th class="new-metric">Projeção L5/L10</th>'+
   '</tr>';
 
   r.candidates.forEach(p=>{
+   const d=p.opponent_position_minutes_adjusted_defense || {};
+
+   const avg5=d.l5_avg ?? p.opponent_position_minutes_adjusted_defense_l5_avg;
+   const avg10=d.l10_avg ?? p.opponent_position_minutes_adjusted_defense_l10_avg;
+
+   const rate5=d.l5_per_minute ?? p.opponent_position_minutes_adjusted_defense_l5_per_minute;
+   const rate10=d.l10_per_minute ?? p.opponent_position_minutes_adjusted_defense_l10_per_minute;
+
+   const proj5=d.l5_projected ?? p.opponent_position_minutes_adjusted_defense_l5_projected;
+   const proj10=d.l10_projected ?? p.opponent_position_minutes_adjusted_defense_l10_projected;
+
+   const games5=d.l5_games ?? p.opponent_position_minutes_adjusted_defense_l5_games;
+   const games10=d.l10_games ?? p.opponent_position_minutes_adjusted_defense_l10_games;
+
+   const apps5=d.l5_player_games ?? p.opponent_position_minutes_adjusted_defense_l5_player_games;
+   const apps10=d.l10_player_games ?? p.opponent_position_minutes_adjusted_defense_l10_player_games;
+
+   const minutes5=d.l5_minutes ?? p.opponent_position_minutes_adjusted_defense_l5_minutes;
+   const minutes10=d.l10_minutes ?? p.opponent_position_minutes_adjusted_defense_l10_minutes;
+
    html+='<tr>'+
    '<td><b>'+p.player+'</b></td>'+
    '<td>'+p.team+'</td>'+
-   '<td>'+ (p.position || '—') +'</td>'+
-   '<td>'+ (p.opponent || '—') +'</td>'+
+   '<td>'+(p.position || '—')+'</td>'+
+   '<td>'+(p.opponent || '—')+'</td>'+
    '<td>'+numero(p.last5_avg)+'</td>'+
    '<td>'+numero(p.last10_avg)+'</td>'+
    '<td>'+numero(p.minutes_last5_avg,1)+'</td>'+
@@ -209,12 +247,23 @@ async function buscar(mercado){
    '<br><small>'+participacoes(p.opponent_position_individual_defense_player_games_l5)+' participações</small></td>'+
    '<td><b>'+numero(p.opponent_position_individual_defense_l10_avg)+'</b>'+
    '<br><small>'+participacoes(p.opponent_position_individual_defense_player_games_l10)+' participações</small></td>'+
+
+   '<td class="new-metric"><b>'+numero(avg5)+'</b>'+
+   celulaAmostra(games5,apps5,minutes5)+
+   '<br><small>L10: '+numero(avg10)+'</small>'+
+   celulaAmostra(games10,apps10,minutes10)+'</td>'+
+
+   '<td class="new-metric"><b>'+numero(rate5,4)+'</b>'+
+   '<br><small>L10: '+numero(rate10,4)+'</small></td>'+
+
+   '<td class="new-metric"><b>'+numero(proj5)+'</b>'+
+   '<br><small>L10: '+numero(proj10)+'</small></td>'+
    '</tr>';
   });
 
   html+='</table></div>';
 
-  html+='<p><small>As métricas defensivas exibidas são contextuais. Não alteram a pontuação do candidato.</small></p>';
+  html+='<p><small>As métricas defensivas são contextuais e não alteram a pontuação do candidato. A projeção ajustada é uma referência estatística, não uma previsão garantida.</small></p>';
 
   box.innerHTML=html;
 
