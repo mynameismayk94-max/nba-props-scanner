@@ -392,15 +392,47 @@ async function buscar(mercado){
 
   });
 
-  html+='</table></div>';
+ html+='</table></div>';
 
-  html+='<p><small>'+
-   'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
-   'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
-   'A projeção é uma referência estatística, não uma previsão garantida.'+
-   '</small></p>';
+// DIAGNÓSTICO TEMPORÁRIO
+html+='<details style="margin-top:20px;padding:12px;background:#fff7df;border-radius:8px;">';
+html+='<summary><b>Diagnóstico dos campos da defesa ajustada</b></summary>';
 
-  box.innerHTML=html;
+r.candidates.forEach(p=>{
+
+ html+='<div style="padding:10px;border-bottom:1px solid #ddd;">';
+ html+='<b>'+p.player+'</b><br>';
+
+ const campos=[
+  'opponent_position_minutes_filtered_defense_l5_avg',
+  'opponent_position_minutes_filtered_defense_l10_avg',
+  'opponent_position_minutes_filtered_defense_l5_per_minute',
+  'opponent_position_minutes_filtered_defense_l10_per_minute',
+  'opponent_position_minutes_filtered_defense_l5_projected',
+  'opponent_position_minutes_filtered_defense_l10_projected',
+  'opponent_position_minutes_filtered_defense_games_l5',
+  'opponent_position_minutes_filtered_defense_player_games_l5',
+  'opponent_position_minutes_filtered_defense_minutes_l5'
+ ];
+
+ campos.forEach(campo=>{
+  html+='<small>'+campo+': <b>'+
+   (p[campo]===undefined?'CAMPO AUSENTE':p[campo]===null?'NULL':p[campo])+
+   '</b></small><br>';
+ });
+
+ html+='</div>';
+});
+
+html+='</details>';
+
+html+='<p><small>'+
+ 'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
+ 'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
+ 'A projeção é uma referência estatística, não uma previsão garantida.'+
+ '</small></p>';
+
+box.innerHTML=html;
 
  }catch(e){
 
