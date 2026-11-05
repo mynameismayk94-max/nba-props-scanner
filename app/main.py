@@ -2246,6 +2246,30 @@ def defense_position_check(
         "positions": data["players"]
     }
 
+@app.get("/defense-position-raw-check")
+def defense_position_raw_check(
+    event: str = Query(...),
+    defending_team: str = Query(...)
+):
+    defending_team = defending_team.upper()
+
+    summary = request_json(
+        "https://site.api.espn.com/apis/site/v2/sports/"
+        "basketball/nba/summary",
+        {"event": event}
+    )
+
+    teams = summary.get("boxscore", {}).get("teams", [])
+    players = summary.get("boxscore", {}).get("players", [])
+
+    return {
+        "event": event,
+        "defending_team": defending_team,
+        "teams_count": len(teams),
+        "players_count": len(players),
+        "players_raw": players
+    }
+
 
 @app.get("/schedule-check")
 def schedule_check():
