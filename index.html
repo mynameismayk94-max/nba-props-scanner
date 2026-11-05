@@ -205,20 +205,22 @@ tr:hover td{
 }
 
 /* =========================================================
-   DIFERENÇA VS DEFESA
-   ========================================================= */
+   CONTEXTO DEFENSIVO
+========================================================= */
 
 .difference-value{
  font-size:13px;
  font-weight:bold
 }
 
+/* Gap positivo = resistência */
 .difference-positive{
- color:#15803d
+ color:#b91c1c
 }
 
+/* Gap negativo = favorável */
 .difference-negative{
- color:#b91c1c
+ color:#15803d
 }
 
 .difference-neutral{
@@ -236,7 +238,7 @@ tr:hover td{
 
 /* =========================================================
    FILTROS
-   ========================================================= */
+========================================================= */
 
 .filters{
  display:grid;
@@ -299,7 +301,7 @@ tr:hover td{
 
 /* =========================================================
    MODAL / ANÁLISE
-   ========================================================= */
+========================================================= */
 
 .modal-overlay{
  display:none;
@@ -651,12 +653,17 @@ minutos iguais ou superiores à média L5 do candidato.
 </p>
 
 <p>
-<b>Diferença vs defesa:</b> média do jogador menos a projeção ajustada da defesa.
+<b>Contexto defensivo:</b> compara a média do jogador com a projeção ajustada da defesa.
+Valores positivos indicam resistência do adversário em relação ao nível habitual do jogador;
+valores negativos indicam ambiente favorável.
 </p>
 
 <p>
-Exemplo: se o jogador possui média L5 de <b>8,00 AST</b> e a projeção ajustada
-da defesa é <b>5,16 AST</b>, a diferença será <b>+2,84 AST</b>.
+Exemplo: se o jogador possui média L5 de <b>13,00 REB</b> e a projeção ajustada
+da defesa é <b>7,00 REB</b>, o gap será <b>+6,00 REB</b> e o contexto será
+<b>🔴 Resistência</b>. Se o jogador possui média de <b>7,00 REB</b> e a defesa
+projeta <b>12,00 REB</b>, o gap será <b>-5,00 REB</b> e o contexto será
+<b>🟢 Favorável</b>.
 </p>
 
 <p>
@@ -767,7 +774,6 @@ api.addEventListener(
 
  }
 );
-
 
 data.value=
  new Date().toLocaleDateString('en-CA');
@@ -1016,7 +1022,7 @@ function celulaDupla(
 
 
 /* =========================================================
-   DIFERENÇA VS DEFESA
+   CONTEXTO DEFENSIVO
 ========================================================= */
 
 function diferencaVsDefesa(
@@ -1086,6 +1092,69 @@ function formatarDiferenca(valor){
 }
 
 
+function statusDiferenca(valor){
+
+ if(
+  valor===null ||
+  valor===undefined
+ ){
+
+  return '—';
+
+ }
+
+ const n=Number(valor);
+
+ if(!Number.isFinite(n)){
+
+  return '—';
+
+ }
+
+ if(n>0){
+
+  return '🔴 Resistência';
+
+ }
+
+ if(n<0){
+
+  return '🟢 Favorável';
+
+ }
+
+ return '⚪ Neutro';
+
+}
+
+
+function classeStatusDiferenca(valor){
+
+ if(
+  valor===null ||
+  valor===undefined ||
+  !Number.isFinite(Number(valor))
+ ){
+
+  return 'difference-neutral';
+
+ }
+
+ const n=Number(valor);
+
+ if(n>0){
+  return 'difference-positive';
+ }
+
+ if(n<0){
+  return 'difference-negative';
+ }
+
+ return 'difference-neutral';
+
+}
+
+
 function classeDiferenca(valor){
 
  if(
@@ -1133,27 +1202,27 @@ function celulaDiferenca(
   '<div class="split-metric">'+
 
   '<div class="split-item">'+
-
    '<span class="period-label">L5</span>'+
-
    '<span class="difference-value '+
-   classeDiferenca(valor5)+
-   '">' +
+   classeStatusDiferenca(valor5)+
+   '">'+
+   statusDiferenca(valor5)+
+   '</span>'+
+   '<span class="sample">Gap: '+
    formatarDiferenca(valor5)+
    '</span>'+
-
   '</div>'+
 
   '<div class="split-item">'+
-
    '<span class="period-label">L10</span>'+
-
    '<span class="difference-value '+
-   classeDiferenca(valor10)+
-   '">' +
+   classeStatusDiferenca(valor10)+
+   '">'+
+   statusDiferenca(valor10)+
+   '</span>'+
+   '<span class="sample">Gap: '+
    formatarDiferenca(valor10)+
    '</span>'+
-
   '</div>'+
 
   '</div>'+
@@ -1351,7 +1420,7 @@ function filtrosHtml(){
   <div class="filter-group">
 
    <label for="filtroDiferenca">
-    DIF. VS DEFESA
+    CONTEXTO DEFENSIVO
    </label>
 
    <select id="filtroDiferenca">
@@ -1361,27 +1430,27 @@ function filtrosHtml(){
     </option>
 
     <option value="positive">
-     Positiva
+     Resistência
     </option>
 
     <option value="1">
-     ≥ +1
+     Resistência ≥ +1
     </option>
 
     <option value="2">
-     ≥ +2
+     Resistência ≥ +2
     </option>
 
     <option value="3">
-     ≥ +3
+     Resistência ≥ +3
     </option>
 
     <option value="-1">
-     ≤ -1
+     Favorável ≤ -1
     </option>
 
     <option value="-2">
-     ≤ -2
+     Favorável ≤ -2
     </option>
 
    </select>
@@ -1835,7 +1904,7 @@ function renderizarResultados(){
 
   '<th>Defesa ajustada</th>'+
 
-  '<th>Dif. vs defesa</th>'+
+  '<th>Contexto defensivo</th>'+
 
   '<th>Análise</th>'+
 
@@ -1963,7 +2032,7 @@ function renderizarResultados(){
    '</td>';
 
 
-  /* DIFERENÇA */
+  /* CONTEXTO DEFENSIVO */
 
   html+=
    celulaDiferenca(
@@ -2000,7 +2069,7 @@ function renderizarResultados(){
   '<p><small>'+
   'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
   'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
-  'A diferença vs defesa representa a distância entre a média do jogador e a projeção ajustada da defesa. '+
+  'O contexto defensivo representa a distância entre a média do jogador e a projeção ajustada da defesa. '+
   'A projeção é uma referência estatística, não uma previsão garantida.'+
   '</small></p>';
 
@@ -2259,13 +2328,13 @@ function abrirAnalise(indice){
 
 
  /* =======================================================
-    DIFERENÇA
+    CONTEXTO DEFENSIVO
  ======================================================= */
 
  html+=
   '<div class="analysis-card">'+
 
-  '<h3>🎯 Diferença vs defesa</h3>'+
+  '<h3>🎯 Contexto defensivo</h3>'+
 
   '<table class="analysis-table">'+
 
@@ -2296,20 +2365,24 @@ function abrirAnalise(indice){
   '</tr>'+
 
   '<tr>'+
-  '<td><b>Diferença</b></td>'+
+  '<td><b>Contexto / Gap</b></td>'+
   '<td>'+
   '<span class="highlight '+
   diffClass5+
   '">'+
+  statusDiferenca(difference5)+
+  '</span><br><small>Gap: '+
   diff5Display+
-  '</span>'+
+  '</small>'+
   '</td>'+
   '<td>'+
   '<span class="highlight '+
   diffClass10+
   '">'+
+  statusDiferenca(difference10)+
+  '</span><br><small>Gap: '+
   diff10Display+
-  '</span>'+
+  '</small>'+
   '</td>'+
   '</tr>'+
 
@@ -2517,11 +2590,13 @@ function abrirAnalise(indice){
 
   '<b>Como ler esta análise:</b><br><br>'+
 
-  'A diferença vs defesa compara a média recente do jogador '+
+  'O contexto defensivo compara a média recente do jogador '+
   'com a projeção ajustada da defesa adversária. '+
-  'Valores positivos indicam que a média recente do jogador '+
-  'está acima dessa referência estatística; valores negativos '+
-  'indicam o contrário.<br><br>'+
+  'Um gap positivo significa que a defesa costuma permitir menos '+
+  'do que o nível habitual do jogador, funcionando como um sinal '+
+  'de <b>resistência</b>. Um gap negativo indica que a defesa '+
+  'costuma permitir mais do que o nível habitual do jogador, '+
+  'funcionando como um ambiente <b>favorável</b>.<br><br>'+
 
   '<b>Importante:</b> a diferença não é uma probabilidade de acerto '+
   'e não representa uma recomendação automática. '+
