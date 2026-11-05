@@ -8,33 +8,168 @@
 
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#f1f4f9;color:#172033;font-family:Arial,sans-serif}
-header{background:#172554;color:white;padding:25px}
-main{max-width:1600px;margin:25px auto;padding:0 15px}
+
+body{
+ margin:0;
+ background:#f1f4f9;
+ color:#172033;
+ font-family:Arial,sans-serif
+}
+
+header{
+ background:#172554;
+ color:white;
+ padding:25px
+}
+
+main{
+ max-width:1700px;
+ margin:25px auto;
+ padding:0 15px
+}
+
 h1{margin:0}
-.sub{color:#cbd5e1;margin-top:8px}
-.card{background:white;padding:20px;border-radius:12px;margin-bottom:18px;box-shadow:0 2px 8px #0000000c}
-input,select,button{padding:11px;border:1px solid #ccd3df;border-radius:7px;font-size:14px}
-input{width:100%;margin:7px 0}
-button{background:#172554;color:white;border:0;cursor:pointer;margin:5px 5px 5px 0}
+
+h2{margin-top:0}
+
+.sub{
+ color:#cbd5e1;
+ margin-top:8px
+}
+
+.card{
+ background:white;
+ padding:20px;
+ border-radius:12px;
+ margin-bottom:18px;
+ box-shadow:0 2px 8px #0000000c
+}
+
+input,select,button{
+ padding:11px;
+ border:1px solid #ccd3df;
+ border-radius:7px;
+ font-size:14px
+}
+
+input{
+ width:100%;
+ margin:7px 0
+}
+
+button{
+ background:#172554;
+ color:white;
+ border:0;
+ cursor:pointer;
+ margin:5px 5px 5px 0
+}
+
 button:hover{background:#0f766e}
-.actions{display:flex;flex-wrap:wrap;gap:5px}
-.status{padding:10px;background:#fff7df;border-radius:7px;margin-top:12px;font-size:13px}
-table{width:100%;border-collapse:collapse;margin-top:15px;font-size:13px;white-space:nowrap}
-th,td{padding:10px;text-align:center;border-bottom:1px solid #e5e9f0}
-th{background:#f5f7fb}
-th:first-child,td:first-child{text-align:left}
-.tablewrap{overflow-x:auto}
+
+.actions{
+ display:flex;
+ flex-wrap:wrap;
+ gap:5px
+}
+
+.status{
+ padding:10px;
+ background:#fff7df;
+ border-radius:7px;
+ margin-top:12px;
+ font-size:13px
+}
+
+.tablewrap{
+ overflow-x:auto;
+ width:100%;
+ margin-top:15px;
+ border-radius:8px
+}
+
+table{
+ width:100%;
+ border-collapse:collapse;
+ font-size:12px;
+ white-space:nowrap
+}
+
+th,td{
+ padding:9px 8px;
+ text-align:center;
+ border-bottom:1px solid #e5e9f0
+}
+
+th{
+ background:#f5f7fb;
+ position:sticky;
+ top:0;
+ z-index:1
+}
+
+th:first-child,td:first-child{
+ text-align:left
+}
+
+.metric{
+ font-weight:bold;
+ color:#172554
+}
+
+.new-metric{
+ background:#f0f7ff
+}
+
+.new-header{
+ background:#dceafa
+}
+
+.sample{
+ display:block;
+ color:#64748b;
+ font-size:10px;
+ margin-top:4px;
+ line-height:1.4;
+ white-space:normal;
+ min-width:75px
+}
+
+.metric-value{
+ font-weight:bold;
+ color:#172554;
+ font-size:13px
+}
+
+.period{
+ display:block;
+ color:#64748b;
+ font-size:10px;
+ margin-top:3px
+}
+
+.explanation{
+ line-height:1.6;
+ font-size:14px
+}
+
 small{color:#64748b}
-.metric{font-weight:bold;color:#172554}
-.new-metric{background:#f0f7ff}
-.new-header{background:#dceafa}
+
 @media(max-width:600px){
+
  header{padding:18px}
+
  main{margin:15px auto}
+
  .card{padding:14px}
- table{font-size:12px}
- th,td{padding:8px}
+
+ table{font-size:11px}
+
+ th,td{padding:7px 6px}
+
+ .sample{font-size:9px}
+
+ .metric-value{font-size:12px}
 }
 </style>
 </head>
@@ -43,30 +178,50 @@ small{color:#64748b}
 
 <header>
 <h1>🏀 NBA Props Scanner</h1>
-<div class="sub">Análise estatística pré-jogo · Pontos · Assistências · Rebotes · Arremessos</div>
+<div class="sub">
+Análise estatística pré-jogo · Pontos · Assistências · Rebotes · Arremessos
+</div>
 </header>
 
 <main>
 
 <section class="card">
 <h2>Conexão com a API</h2>
+
 <label>Endereço do servidor</label>
-<input id="api" value="https://nba-props-scanner.onrender.com">
+
+<input
+ id="api"
+ value="https://nba-props-scanner.onrender.com"
+>
+
 <button onclick="testar()">Testar conexão</button>
-<div id="status" class="status">Aguardando conexão com o servidor.</div>
+
+<div id="status" class="status">
+Aguardando conexão com o servidor.
+</div>
 </section>
 
 <section class="card">
 <h2>Agenda de jogos</h2>
+
 <label>Data dos jogos</label>
+
 <input type="date" id="data">
+
 <button onclick="carregarJogos()">Buscar jogos</button>
+
 <div id="jogos"></div>
 </section>
 
 <section class="card">
 <h2>Radar de jogadores</h2>
-<p><small>Selecione o mercado para buscar jogadores com base nas estatísticas recentes.</small></p>
+
+<p>
+<small>
+Selecione o mercado para buscar jogadores com base nas estatísticas recentes.
+</small>
+</p>
 
 <div class="actions">
 <button onclick="buscar('points')">Pontos</button>
@@ -79,26 +234,48 @@ small{color:#64748b}
 <div id="resultado"></div>
 </section>
 
-<section class="card">
+<section class="card explanation">
 <h2>Como interpretar</h2>
 
-<p>O scanner organiza candidatos com base nas médias recentes e nos minutos em quadra.</p>
+<p>
+O scanner organiza candidatos com base nas médias recentes e nos minutos em quadra.
+</p>
 
-<p><b>Defesa geral:</b> produção total permitida pelo adversário por jogo.</p>
+<p>
+<b>Defesa geral:</b> produção total permitida pelo adversário por jogo.
+</p>
 
-<p><b>Defesa por posição:</b> produção total permitida aos jogadores da mesma posição e média individual por participação.</p>
+<p>
+<b>Defesa por posição:</b> produção total permitida aos jogadores da mesma posição e média individual por participação.
+</p>
 
-<p><b>Defesa ajustada à minutagem:</b> considera jogadores da mesma posição que atuaram minutos iguais ou superiores à média L5 do candidato.</p>
+<p>
+<b>Defesa ajustada à minutagem:</b> considera jogadores da mesma posição que atuaram minutos iguais ou superiores à média L5 do candidato.
+</p>
 
-<p><b>AST por minuto:</b> taxa de produção permitida por minuto na amostra filtrada.</p>
+<p>
+<b>Média ajustada:</b> média da produção dos jogadores incluídos na amostra filtrada.
+</p>
 
-<p><b>Projeção ajustada:</b> aplica essa taxa à média de minutos do candidato.</p>
+<p>
+<b>Taxa por minuto:</b> produção permitida por minuto na amostra filtrada.
+</p>
 
-<p><b>Amostra:</b> quantidade de jogos, participações e minutos considerados.</p>
+<p>
+<b>Projeção ajustada:</b> aplica a taxa por minuto à média de minutos do candidato.
+</p>
 
-<p><b>Importante:</b> as métricas defensivas são contextuais e não alteram a pontuação do candidato. A projeção não representa uma previsão garantida.</p>
+<p>
+<b>Amostra:</b> quantidade de jogos, participações e minutos considerados.
+</p>
 
-<p>Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.</p>
+<p>
+<b>Importante:</b> as métricas defensivas são contextuais e não alteram a pontuação do candidato. A projeção não representa uma previsão garantida.
+</p>
+
+<p>
+Antes de qualquer entrada, confira lesões, escalações, confronto defensivo, linha e odd disponíveis na Bet365.
+</p>
 </section>
 
 </main>
@@ -109,7 +286,9 @@ const api=document.getElementById('api');
 const status=document.getElementById('status');
 const data=document.getElementById('data');
 
-api.value=localStorage.getItem('nbaPropsApiBase') || 'https://nba-props-scanner.onrender.com';
+api.value=
+ localStorage.getItem('nbaPropsApiBase') ||
+ 'https://nba-props-scanner.onrender.com';
 
 function endereco(){
  return api.value.trim().replace(/\/$/,'');
@@ -122,6 +301,7 @@ api.addEventListener('change',()=>{
 data.value=new Date().toLocaleDateString('en-CA');
 
 async function requisicao(caminho){
+
  const resposta=await fetch(endereco()+caminho);
 
  if(!resposta.ok){
@@ -132,6 +312,7 @@ async function requisicao(caminho){
 }
 
 function numero(valor,casas=2){
+
  if(valor===null || valor===undefined || valor===''){
   return '—';
  }
@@ -146,6 +327,7 @@ function numero(valor,casas=2){
 }
 
 function participacoes(valor){
+
  if(valor===null || valor===undefined){
   return '—';
  }
@@ -154,10 +336,27 @@ function participacoes(valor){
 }
 
 function amostra(jogos,apps,minutos){
- return '<br><small>'+
- participacoes(jogos)+' jogos · '+
- participacoes(apps)+' participações · '+
- numero(minutos,0)+' min</small>';
+
+ return '<span class="sample">'+
+  participacoes(jogos)+' jogos · '+
+  participacoes(apps)+' participações · '+
+  numero(minutos,0)+' min'+
+ '</span>';
+}
+
+function celulaAjustada(valor,jogos,apps,minutos,casas=2){
+
+ return '<td class="new-metric">'+
+  '<span class="metric-value">'+numero(valor,casas)+'</span>'+
+  amostra(jogos,apps,minutos)+
+ '</td>';
+}
+
+function celulaSimples(valor,casas=2){
+
+ return '<td class="new-metric">'+
+  '<span class="metric-value">'+numero(valor,casas)+'</span>'+
+ '</td>';
 }
 
 async function testar(){
@@ -165,6 +364,7 @@ async function testar(){
  status.innerText='Testando conexão...';
 
  try{
+
   const r=await requisicao('/health');
 
   status.innerText=
@@ -189,19 +389,25 @@ async function carregarJogos(){
   const r=await requisicao('/games?date='+data.value);
 
   if(!r.games || !r.games.length){
+
    box.innerHTML='<p>Nenhum jogo encontrado para esta data.</p>';
    return;
   }
 
   let html='<div class="tablewrap"><table>';
-  html+='<tr><th>Visitante</th><th>Mandante</th><th>Status</th></tr>';
+
+  html+='<tr>'+
+   '<th>Visitante</th>'+
+   '<th>Mandante</th>'+
+   '<th>Status</th>'+
+   '</tr>';
 
   r.games.forEach(j=>{
 
    html+='<tr>'+
-   '<td>'+j.away.abbr+' - '+j.away.name+'</td>'+
-   '<td>'+j.home.abbr+' - '+j.home.name+'</td>'+
-   '<td>'+j.status+'</td>'+
+    '<td>'+j.away.abbr+' - '+j.away.name+'</td>'+
+    '<td>'+j.home.abbr+' - '+j.home.name+'</td>'+
+    '<td>'+j.status+'</td>'+
    '</tr>';
 
   });
@@ -249,40 +455,63 @@ async function buscar(mercado){
   // CABEÇALHO PRINCIPAL
 
   html+='<tr>'+
+
    '<th rowspan="2">Jogador</th>'+
    '<th rowspan="2">Equipe</th>'+
    '<th rowspan="2">Posição</th>'+
    '<th rowspan="2">Adversário</th>'+
+
    '<th colspan="2">Média do jogador</th>'+
+
    '<th rowspan="2">Minutos L5</th>'+
    '<th rowspan="2">Pontuação</th>'+
+
    '<th colspan="2">Defesa geral - '+mercadoLabel+'</th>'+
+
    '<th colspan="2">Defesa por posição - total</th>'+
+
    '<th colspan="2">Defesa por posição - média individual</th>'+
-   '<th colspan="3" class="new-header">Defesa ajustada à minutagem</th>'+
-   '</tr>';
+
+   '<th colspan="2" class="new-header">Média ajustada</th>'+
+
+   '<th colspan="2" class="new-header">Taxa por minuto</th>'+
+
+   '<th colspan="2" class="new-header">Projeção ajustada</th>'+
+
+  '</tr>';
 
   // SUBCABEÇALHO
 
   html+='<tr>'+
+
    '<th>L5</th>'+
    '<th>L10</th>'+
+
    '<th>L5</th>'+
    '<th>L10</th>'+
+
    '<th>L5</th>'+
    '<th>L10</th>'+
+
    '<th>L5</th>'+
    '<th>L10</th>'+
-   '<th class="new-header">Média L5/L10</th>'+
-   '<th class="new-header">Taxa por minuto</th>'+
-   '<th class="new-header">Projeção ajustada</th>'+
-   '</tr>';
+
+   '<th class="new-header">L5</th>'+
+   '<th class="new-header">L10</th>'+
+
+   '<th class="new-header">L5</th>'+
+   '<th class="new-header">L10</th>'+
+
+   '<th class="new-header">L5</th>'+
+   '<th class="new-header">L10</th>'+
+
+  '</tr>';
 
   // JOGADORES
 
   r.candidates.forEach(p=>{
 
-   // CAMPOS REAIS DO JSON
+   // MÉTRICAS DE DEFESA AJUSTADA
 
    const avg5=
     p.opponent_position_minutes_filtered_defense_l5_avg;
@@ -322,117 +551,93 @@ async function buscar(mercado){
 
    html+='<tr>';
 
+   // IDENTIFICAÇÃO
+
    html+='<td><b>'+p.player+'</b></td>';
+
    html+='<td>'+p.team+'</td>';
+
    html+='<td>'+(p.position || '—')+'</td>';
+
    html+='<td>'+(p.opponent || '—')+'</td>';
 
+   // MÉDIA DO JOGADOR
+
    html+='<td>'+numero(p.last5_avg)+'</td>';
+
    html+='<td>'+numero(p.last10_avg)+'</td>';
 
+   // MINUTOS
+
    html+='<td>'+numero(p.minutes_last5_avg,1)+'</td>';
+
+   // PONTUAÇÃO ORIGINAL - NÃO ALTERADA
 
    html+='<td class="metric">'+numero(p.triage_score)+'</td>';
 
    // DEFESA GERAL
 
    html+='<td>'+numero(p.opponent_defense_l5_avg,1)+'</td>';
+
    html+='<td>'+numero(p.opponent_defense_l10_avg,1)+'</td>';
 
    // DEFESA POR POSIÇÃO - TOTAL
 
    html+='<td>'+numero(p.opponent_position_defense_l5_avg,1)+'</td>';
+
    html+='<td>'+numero(p.opponent_position_defense_l10_avg,1)+'</td>';
 
    // DEFESA POR POSIÇÃO - MÉDIA INDIVIDUAL
 
-   html+='<td><b>'+numero(p.opponent_position_individual_defense_l5_avg)+'</b>'+
+   html+='<td>'+
+    '<b>'+numero(p.opponent_position_individual_defense_l5_avg)+'</b>'+
     '<br><small>'+
     participacoes(p.opponent_position_individual_defense_player_games_l5)+
-    ' participações</small></td>';
+    ' participações</small>'+
+   '</td>';
 
-   html+='<td><b>'+numero(p.opponent_position_individual_defense_l10_avg)+'</b>'+
+   html+='<td>'+
+    '<b>'+numero(p.opponent_position_individual_defense_l10_avg)+'</b>'+
     '<br><small>'+
     participacoes(p.opponent_position_individual_defense_player_games_l10)+
-    ' participações</small></td>';
+    ' participações</small>'+
+   '</td>';
 
-   // NOVA MÉTRICA - MÉDIA AJUSTADA
+   // MÉDIA AJUSTADA L5 E L10
 
-   html+='<td class="new-metric">'+
-    '<b>'+numero(avg5)+'</b>'+
-    '<br><small>L5</small>'+
-    amostra(games5,apps5,minutes5)+
-    '<hr>'+
-    '<b>'+numero(avg10)+'</b>'+
-    '<br><small>L10</small>'+
-    amostra(games10,apps10,minutes10)+
-    '</td>';
+   html+=celulaAjustada(
+    avg5,games5,apps5,minutes5
+   );
 
-   // NOVA MÉTRICA - TAXA POR MINUTO
+   html+=celulaAjustada(
+    avg10,games10,apps10,minutes10
+   );
 
-   html+='<td class="new-metric">'+
-    '<b>'+numero(rate5,4)+'</b>'+
-    '<br><small>L5</small>'+
-    '<hr>'+
-    '<b>'+numero(rate10,4)+'</b>'+
-    '<br><small>L10</small>'+
-    '</td>';
+   // TAXA POR MINUTO L5 E L10
 
-   // NOVA MÉTRICA - PROJEÇÃO
+   html+=celulaSimples(rate5,4);
 
-   html+='<td class="new-metric">'+
-    '<b>'+numero(proj5)+'</b>'+
-    '<br><small>L5</small>'+
-    '<hr>'+
-    '<b>'+numero(proj10)+'</b>'+
-    '<br><small>L10</small>'+
-    '</td>';
+   html+=celulaSimples(rate10,4);
+
+   // PROJEÇÃO AJUSTADA L5 E L10
+
+   html+=celulaSimples(proj5);
+
+   html+=celulaSimples(proj10);
 
    html+='</tr>';
 
   });
 
- html+='</table></div>';
+  html+='</table></div>';
 
-// DIAGNÓSTICO TEMPORÁRIO
-html+='<details style="margin-top:20px;padding:12px;background:#fff7df;border-radius:8px;">';
-html+='<summary><b>Diagnóstico dos campos da defesa ajustada</b></summary>';
+  html+='<p><small>'+
+   'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
+   'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
+   'A projeção é uma referência estatística, não uma previsão garantida.'+
+   '</small></p>';
 
-r.candidates.forEach(p=>{
-
- html+='<div style="padding:10px;border-bottom:1px solid #ddd;">';
- html+='<b>'+p.player+'</b><br>';
-
- const campos=[
-  'opponent_position_minutes_filtered_defense_l5_avg',
-  'opponent_position_minutes_filtered_defense_l10_avg',
-  'opponent_position_minutes_filtered_defense_l5_per_minute',
-  'opponent_position_minutes_filtered_defense_l10_per_minute',
-  'opponent_position_minutes_filtered_defense_l5_projected',
-  'opponent_position_minutes_filtered_defense_l10_projected',
-  'opponent_position_minutes_filtered_defense_games_l5',
-  'opponent_position_minutes_filtered_defense_player_games_l5',
-  'opponent_position_minutes_filtered_defense_minutes_l5'
- ];
-
- campos.forEach(campo=>{
-  html+='<small>'+campo+': <b>'+
-   (p[campo]===undefined?'CAMPO AUSENTE':p[campo]===null?'NULL':p[campo])+
-   '</b></small><br>';
- });
-
- html+='</div>';
-});
-
-html+='</details>';
-
-html+='<p><small>'+
- 'As métricas defensivas são contextuais e não alteram a pontuação do candidato. '+
- 'A defesa ajustada considera jogadores da mesma posição com minutagem igual ou superior à média L5 do candidato. '+
- 'A projeção é uma referência estatística, não uma previsão garantida.'+
- '</small></p>';
-
-box.innerHTML=html;
+  box.innerHTML=html;
 
  }catch(e){
 
