@@ -1792,6 +1792,8 @@ def get_athlete_logs(
 
             games[event_id] = {
 
+                "event_id": event_id,
+
                 "date": game_date,
 
                 "team": (
@@ -1834,6 +1836,95 @@ def get_athlete_logs(
     )
 
     return tuple(ordered)
+
+
+# ============================================================
+# PARTICIPAÇÃO DO JOGADOR NOS ÚLTIMOS JOGOS DA EQUIPE
+# ============================================================
+
+@lru_cache(maxsize=60)
+def get_team_regular_season_schedule(
+    team_abbr: str,
+    year: int
+) -> tuple:
+
+    """
+    Retorna o calendário concluído da temporada regular da equipe.
+    O resultado é armazenado em cache para evitar uma consulta por jogador.
+    """
+
+    schedule = request_json(
+        f"https://site.api.espn.com/apis/site/v2/sports/"
+        f"basketball/nba/teams/{team_abbr.lower()}/schedule",
+        {"season": year}
+    )
+
+    games = get_completed_team_games(
+        schedule,
+        team_abbr.upper(),
+        1000
+    )
+
+    return tuple(games)
+
+
+def get_player_team_game_counts(
+    player_games,
+    team_abbr: str,
+    target_date: date,
+    year: int
+) -> dict:
+
+    """
+    Conta em quantos dos últimos 5 e 10 jogos da equipe atual o atleta
+    efetivamente entrou em quadra (minutos maiores que zero).
+
+    O denominador é a quantidade real de jogos concluídos disponíveis,
+    podendo ser menor que 5 ou 10 no início da temporada.
+    """
+
+    team_schedule = [
+        game
+        for game in get_team_regular_season_schedule(
+            team_abbr,
+            year
+        )
+        if (game.get("date") or "")[:10] < target_date.isoformat()
+    ]
+
+    team_schedule.sort(
+        key=lambda game: game.get("date") or "",
+        reverse=True
+    )
+
+    player_appearances = {
+        str(game.get("event_id")): game
+        for game in player_games
+        if game.get("event_id")
+        and parse_minutes(game.get("minutes")) > 0
+    }
+
+    result = {}
+
+    for window in (5, 10):
+
+        sample = team_schedule[:window]
+
+        played = sum(
+            1
+            for team_game in sample
+            if str(team_game.get("game_id")) in player_appearances
+        )
+
+        result[f"team_games_last{window}_played"] = played
+        result[f"team_games_last{window}_total"] = len(sample)
+        result[f"team_games_last{window}_pct"] = (
+            round(played / len(sample) * 100, 1)
+            if sample
+            else None
+        )
+
+    return result
 
 
 # ============================================================
@@ -2110,6 +2201,16 @@ def build_player_result(
             )
         )
 
+    # PARTICIPAÇÃO NOS ÚLTIMOS JOGOS DA EQUIPE ATUAL
+    # Indicador informativo: não altera médias individuais nem triage_score.
+
+    team_game_counts = get_player_team_game_counts(
+        games,
+        player["team"],
+        target_date,
+        season_year(target_date)
+    )
+
     # RESULTADO
 
     return {
@@ -2149,9 +2250,13 @@ def build_player_result(
             2
         ),
 
+        # L5/L10 individual: últimos jogos em que o próprio atleta atuou.
         "games_last5": len(last5),
 
         "games_last10": len(last10),
+
+        # L5/L10 da equipe: participação do atleta nos últimos jogos do time.
+        **team_game_counts,
 
         "opponent_defense_l5_avg": defense_l5,
 
@@ -2545,7 +2650,10 @@ def collect_candidates(
         "method_note": (
             "Triagem estatística baseada exclusivamente na temporada "
             "regular atual da NBA. Médias individuais dos últimos 5 "
-            "e 10 jogos anteriores à data selecionada. Filtro mínimo "
+            "e 10 jogos anteriores à data selecionada. Também informa "
+            "quantos dos últimos 5 e 10 jogos concluídos da equipe atual "
+            "o jogador disputou; esse indicador é informativo e não altera "
+            "a pontuação. Filtro mínimo "
             "de 24 minutos médios nos últimos cinco jogos. Inclui "
             "indicadores defensivos gerais do adversário e indicadores "
             "defensivos por posição nos períodos L5 e L10. Os indicadores "
