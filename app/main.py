@@ -300,11 +300,21 @@ MARKETS = {
         "label": "Tentativas de 3 pontos"
     },
 
+    "two_pa": {
+        "index": 14,
+        "label": "Tentativas de 2 pontos"
+    },
+    "fgm": {
+        "index": 2,
+        "label": "Cestas convertidas"
+    },
     "attempts": {
         "index": 1,
-        "label": "Tentativas totais"
+        "label": "Tentativas totais (histórico)"
     }
 }
+
+ACTIVE_MARKETS = {"points", "assists", "rebounds", "threes", "two_pa", "fgm"}
 
 
 # ============================================================
@@ -432,16 +442,33 @@ def parse_attempts(value) -> float:
         return 0.0
 
     try:
-
         parts = str(value).strip().split("-")
-
         if len(parts) != 2:
             return 0.0
-
         return float(parts[1])
-
     except (ValueError, TypeError):
         return 0.0
+
+
+def parse_made(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if "-" not in text:
+        return parse_optional_number(value)
+    parts = text.split("-")
+    if len(parts) != 2:
+        return None
+    try:
+        return float(parts[0])
+    except (ValueError, TypeError):
+        return None
+
+
+def subtract_stats(total, threes):
+    if total is None or threes is None:
+        return None
+    return max(0.0, float(total) - float(threes))
 
 
 def parse_optional_number(value):
@@ -547,27 +574,16 @@ def extract_team_defense_stats(
         for stat in opponent_stats
     }
 
+    fga_allowed = parse_attempts(stats.get("fieldGoalsMade-fieldGoalsAttempted"))
+    three_pa_allowed = parse_attempts(stats.get("threePointFieldGoalsMade-threePointFieldGoalsAttempted"))
+
     return {
-
-        "fga_allowed": parse_attempts(
-            stats.get(
-                "fieldGoalsMade-fieldGoalsAttempted"
-            )
-        ),
-
-        "three_pa_allowed": parse_attempts(
-            stats.get(
-                "threePointFieldGoalsMade-threePointFieldGoalsAttempted"
-            )
-        ),
-
-        "rebounds_allowed": parse_number(
-            stats.get("totalRebounds")
-        ),
-
-        "assists_allowed": parse_number(
-            stats.get("assists")
-        )
+        "fga_allowed": fga_allowed,
+        "three_pa_allowed": three_pa_allowed,
+        "two_pa_allowed": subtract_stats(fga_allowed, three_pa_allowed),
+        "fgm_allowed": parse_made(stats.get("fieldGoalsMade-fieldGoalsAttempted")),
+        "rebounds_allowed": parse_number(stats.get("totalRebounds")),
+        "assists_allowed": parse_number(stats.get("assists"))
     }
 
 
@@ -873,6 +889,12 @@ def extract_opponent_players_by_position(
                 "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
                 attempt_stat=True
             )
+            fgm = get_player_stat_value(
+                raw_stats,
+                key_indexes,
+                "fieldGoalsMade-fieldGoalsAttempted"
+            )
+            two_pa = subtract_stats(fga, three_pa)
 
             minutes = get_player_stat_value(
                 raw_stats,
@@ -892,7 +914,9 @@ def extract_opponent_players_by_position(
                         assists,
                         rebounds,
                         fga,
-                        three_pa
+                        three_pa,
+                        two_pa,
+                        fgm
                     )
                 )
             ):
@@ -906,7 +930,9 @@ def extract_opponent_players_by_position(
                 "assists": assists,
                 "rebounds": rebounds,
                 "fga": fga,
-                "three_pa": three_pa
+                "three_pa": three_pa,
+                "two_pa": two_pa,
+                "fgm": fgm
             })
 
     return {
@@ -933,7 +959,9 @@ def aggregate_position_game(
         "assists",
         "rebounds",
         "fga",
-        "three_pa"
+        "three_pa",
+        "two_pa",
+        "fgm"
     ]
 
     for position in ("G", "F", "C", "OTHER"):
@@ -950,6 +978,8 @@ def aggregate_position_game(
             "rebounds": None,
             "fga": None,
             "three_pa": None,
+            "two_pa": None,
+            "fgm": None,
             "stat_players_count": {},
             "players": players
         }
@@ -1278,6 +1308,8 @@ def get_team_defense_history(
     stat_keys = [
         "fga_allowed",
         "three_pa_allowed",
+        "two_pa_allowed",
+        "fgm_allowed",
         "rebounds_allowed",
         "assists_allowed"
     ]
@@ -1287,7 +1319,9 @@ def get_team_defense_history(
         "assists",
         "rebounds",
         "fga",
-        "three_pa"
+        "three_pa",
+        "two_pa",
+        "fgm"
     ]
 
     def calculate_averages(sample):
@@ -1810,12 +1844,10 @@ def get_athlete_logs(
                 "minutes": parse_minutes(
                     stats[0]
                 ),
-                "fga": parse_attempts(
-                    stats[1]
-                ),
-                "three_pa": parse_attempts(
-                    stats[3]
-                ),
+                "fga": parse_attempts(stats[1]),
+                "three_pa": parse_attempts(stats[3]),
+                "two_pa": max(0.0, parse_attempts(stats[1]) - parse_attempts(stats[3])),
+                "fgm": parse_number(stats[2]),
                 "rebounds": parse_number(
                     stats[7]
                 ),
@@ -2013,6 +2045,12 @@ def extract_player_game_from_summary(
                     "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
                     attempt_stat=True
                 )
+                two_pa = subtract_stats(fga, three_pa)
+                fgm = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "fieldGoalsMade-fieldGoalsAttempted"
+                )
 
                 return {
                     "player_id": player_id,
@@ -2023,7 +2061,9 @@ def extract_player_game_from_summary(
                     "rebounds": rebounds,
                     "points": points,
                     "fga": fga,
-                    "three_pa": three_pa
+                    "three_pa": three_pa,
+                    "two_pa": two_pa,
+                    "fgm": fgm
                 }
 
     return None
@@ -2177,6 +2217,8 @@ def build_player_result(
         "assists": "assists",
         "rebounds": "rebounds",
         "threes": "three_pa",
+        "two_pa": "two_pa",
+        "fgm": "fgm",
         "attempts": "fga"
     }[market]
 
@@ -2185,6 +2227,8 @@ def build_player_result(
         "assists": "assists_allowed",
         "rebounds": "rebounds_allowed",
         "threes": "three_pa_allowed",
+        "two_pa": "two_pa_allowed",
+        "fgm": "fgm_allowed",
         "attempts": "fga_allowed"
     }[market]
 
@@ -2256,6 +2300,8 @@ def build_player_result(
         "assists": "assists",
         "rebounds": "rebounds",
         "threes": "three_pa",
+        "two_pa": "two_pa",
+        "fgm": "fgm",
         "attempts": "fga"
     }.get(market)
 
@@ -2764,10 +2810,10 @@ def candidates(
     )
 ):
 
-    if market not in MARKETS:
+    if market not in ACTIVE_MARKETS:
         raise HTTPException(
             status_code=400,
-            detail="Mercado inválido."
+            detail="Mercado inválido ou inativo no Scanner."
         )
 
     try:
@@ -2809,6 +2855,8 @@ def collect_results(
         "assists": "assists",
         "rebounds": "rebounds",
         "threes": "three_pa",
+        "two_pa": "two_pa",
+        "fgm": "fgm",
         "attempts": "fga"
     }
 
