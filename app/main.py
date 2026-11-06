@@ -2429,54 +2429,33 @@ def collect_candidates(
     ).date()
 
     year = season_year(target_date)
+
     stage_start = time.perf_counter()
 
     roster_data = get_players_for_date(
         selected_date
     )
 
+    roster_elapsed = time.perf_counter() - stage_start
+
     players = roster_data["players"]
     opponents = get_opponents_for_date(
         roster_data["schedule"]
     )
 
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=rosters jogadores=%s tempo=%.2fs",
+        selected_date,
+        market,
+        len(players),
+        roster_elapsed
+    )
+
+    # Primeiro buscamos os históricos dos jogadores. Isso permite
+    # identificar quem realmente pode virar candidato antes de
+    # consultar o histórico defensivo dos adversários.
     stage_start = time.perf_counter()
-    defense_cache = {}
-    unique_opponents = set(opponents.values())
-
-    def fetch_team_defense(team):
-        defense = get_team_defense_history(
-            team,
-            10,
-            target_date
-        )
-        return team, defense
-
-    with ThreadPoolExecutor(
-        max_workers=3
-    ) as executor:
-
-        futures = [
-            executor.submit(
-                fetch_team_defense,
-                team
-            )
-            for team in unique_opponents
-        ]
-
-        for future in as_completed(futures):
-
-            try:
-                team, defense = future.result()
-                defense_cache[team] = defense
-            except Exception as error:
-                logger.warning(
-                    "Falha ao consultar histórico defensivo: %s",
-                    error
-                )
-
-    stage_start = time.perf_counter()
-    results = []
+    player_logs = {}
     successful_logs = 0
     errors = 0
 
@@ -2504,26 +2483,7 @@ def collect_candidates(
             try:
                 player, logs = future.result()
                 successful_logs += 1
-
-                opponent = opponents.get(
-                    player["team"]
-                )
-
-                defense = defense_cache.get(
-                    opponent
-                )
-
-                result = build_player_result(
-                    player,
-                    logs,
-                    target_date,
-                    market,
-                    defense,
-                    opponent
-                )
-
-                if result:
-                    results.append(result)
+                player_logs[player["id"]] = (player, logs)
 
             except Exception as error:
                 errors += 1
@@ -2532,15 +2492,161 @@ def collect_candidates(
                     error
                 )
 
+    player_logs_elapsed = time.perf_counter() - stage_start
+
+    # Mantém exatamente os mesmos critérios de elegibilidade usados
+    # em build_player_result(): mínimo de 3 jogos anteriores e média
+    # de minutos L5 >= 24. Nenhuma fórmula de score é alterada aqui.
+    eligible_players = []
+
+    for player, logs in player_logs.values():
+
+        previous_games = [
+            game
+            for game in logs
+            if game["date"] < target_date.isoformat()
+        ]
+
+        if len(previous_games) < 3:
+            continue
+
+        last5 = previous_games[:5]
+
+        minutes_avg = (
+            sum(
+                game["minutes"]
+                for game in last5
+            )
+            / len(last5)
+        )
+
+        if minutes_avg < 24:
+            continue
+
+        eligible_players.append(
+            (player, logs)
+        )
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=historico_jogadores jogadores_consultados=%s elegiveis=%s tempo=%.2fs",
+        selected_date,
+        market,
+        successful_logs,
+        len(eligible_players),
+        player_logs_elapsed
+    )
+
+    # Só consultamos defesa para adversários que realmente possuem
+    # pelo menos um jogador elegível para este mercado/data.
+    stage_start = time.perf_counter()
+
+    eligible_opponents = {
+        opponents.get(player["team"])
+        for player, _ in eligible_players
+        if opponents.get(player["team"])
+    }
+
+    defense_cache = {}
+
+    def fetch_team_defense(team):
+        defense = get_team_defense_history(
+            team,
+            10,
+            target_date
+        )
+        return team, defense
+
+    with ThreadPoolExecutor(
+        max_workers=3
+    ) as executor:
+
+        futures = [
+            executor.submit(
+                fetch_team_defense,
+                team
+            )
+            for team in eligible_opponents
+        ]
+
+        for future in as_completed(futures):
+
+            try:
+                team, defense = future.result()
+                defense_cache[team] = defense
+
+            except Exception as error:
+                logger.warning(
+                    "Falha ao consultar histórico defensivo: %s",
+                    error
+                )
+
+    defense_elapsed = time.perf_counter() - stage_start
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s tempo=%.2fs",
+        selected_date,
+        market,
+        len(eligible_opponents),
+        defense_elapsed
+    )
+
+    stage_start = time.perf_counter()
+    results = []
+
+    for player, logs in eligible_players:
+
+        opponent = opponents.get(
+            player["team"]
+        )
+
+        defense = defense_cache.get(
+            opponent
+        )
+
+        result = build_player_result(
+            player,
+            logs,
+            target_date,
+            market,
+            defense,
+            opponent
+        )
+
+        if result:
+            results.append(result)
+
+    calculation_elapsed = time.perf_counter() - stage_start
+
     results.sort(
         key=lambda item: item["triage_score"],
         reverse=True
     )
 
+    stage_start = time.perf_counter()
+
     save_candidate_snapshots(
         selected_date,
         market,
         results
+    )
+
+    database_elapsed = time.perf_counter() - stage_start
+    total_elapsed = time.perf_counter() - total_start
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=calculo resultados=%s tempo=%.2fs",
+        selected_date,
+        market,
+        len(results),
+        calculation_elapsed
+    )
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=banco tempo=%.2fs total=%.2fs",
+        selected_date,
+        market,
+        database_elapsed,
+        total_elapsed
     )
 
     final_limit = min(limit, 10)
