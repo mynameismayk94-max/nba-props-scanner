@@ -95,6 +95,18 @@
   #data { appearance: none; -webkit-appearance: none; display: block; inline-size: 100%; width: 100%; min-inline-size: 0; min-width: 0; max-inline-size: 100%; max-width: 100%; box-sizing: border-box; margin: 0; padding: 7px 8px; overflow: hidden; }
   #data::-webkit-date-and-time-value { min-width: 0; text-align: left; }
   #data::-webkit-calendar-picker-indicator { margin: 0; padding: 0; }
+
+  /* Campo do servidor: contraste alto para leitura */
+  #api { color: #111827; background: #f9fafb; border-color: #9ca3af; font-weight: 500; }
+  #api:focus { color: #111827; background: #ffffff; border-color: #10b981; outline: none; box-shadow: 0 0 0 2px rgba(16, 185, 129, .12); }
+
+  /* Legenda do critério de leitura do GAP */
+  .scanner-legend { display: grid; gap: 5px; margin-top: 8px; padding: 9px 10px; background: rgba(3, 7, 18, .45); border: 1px solid #1f2937; border-radius: 8px; font-size: 10px; line-height: 1.35; color: #9ca3af; }
+  .scanner-legend strong { color: #d1d5db; }
+  .scanner-legend .legend-positive { color: #f87171; font-weight: 600; }
+  .scanner-legend .legend-negative { color: #34d399; font-weight: 600; }
+  .scanner-legend .legend-neutral { color: #9ca3af; font-weight: 600; }
+
   @media (min-width: 640px) {
     .schedule-controls { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
   }
@@ -196,6 +208,13 @@
           <button type="button" class="market-button" data-market="threes" aria-pressed="false" onclick="buscar('threes')">Tentativas de 3 Pontos</button>
           <button type="button" class="market-button" data-market="attempts" aria-pressed="false" onclick="buscar('attempts')">Arremessos Tentados</button>
         </div>
+      </div>
+
+      <div class="scanner-legend" aria-label="Legenda do GAP">
+        <div><strong>Como interpretar o GAP:</strong></div>
+        <div><span class="legend-negative">🟢 Favorável</span> — GAP negativo: a defesa permite mais que a média do jogador.</div>
+        <div><span class="legend-positive">🔴 Não favorável</span> — GAP positivo: a defesa é mais resistente que a média do jogador.</div>
+        <div><span class="legend-neutral">⚪ Neutro</span> — GAP igual a zero.</div>
       </div>
 
       <div id="resultado"></div>
