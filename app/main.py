@@ -2645,11 +2645,21 @@ def collect_results(
     )
 ):
 
-    if market != "assists":
+    if market not in MARKETS:
         raise HTTPException(
             status_code=400,
-            detail="Coleta habilitada para assists."
+            detail="Mercado inválido."
         )
+
+    actual_stat_keys = {
+        "points": "points",
+        "assists": "assists",
+        "rebounds": "rebounds",
+        "threes": "three_pa",
+        "attempts": "fga"
+    }
+
+    actual_stat_key = actual_stat_keys[market]
 
     try:
         target_date = datetime.strptime(
@@ -2791,7 +2801,7 @@ def collect_results(
             pending += 1
             continue
 
-        actual = player_game.get("assists")
+        actual = player_game.get(actual_stat_key)
 
         if actual is None:
             pending += 1
@@ -2808,7 +2818,7 @@ def collect_results(
             game_id,
             Jsonb({
                 "minutes": minutes,
-                "assists": actual,
+                actual_stat_key: actual,
                 "game_date": selected_date
             })
         ))
