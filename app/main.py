@@ -826,6 +826,12 @@ def extract_opponent_players_by_position(
                 athlete
             )
 
+            points = get_player_stat_value(
+                raw_stats,
+                key_indexes,
+                "points"
+            )
+
             assists = get_player_stat_value(
                 raw_stats,
                 key_indexes,
@@ -866,6 +872,7 @@ def extract_opponent_players_by_position(
                 and all(
                     v is None
                     for v in (
+                        points,
                         assists,
                         rebounds,
                         fga,
@@ -879,6 +886,7 @@ def extract_opponent_players_by_position(
                 "player": player_name,
                 "position": position_group,
                 "minutes": minutes,
+                "points": points,
                 "assists": assists,
                 "rebounds": rebounds,
                 "fga": fga,
@@ -905,6 +913,7 @@ def aggregate_position_game(
     result = {}
 
     stat_keys = [
+        "points",
         "assists",
         "rebounds",
         "fga",
@@ -920,6 +929,7 @@ def aggregate_position_game(
 
         position_result = {
             "players_count": len(players),
+            "points": None,
             "assists": None,
             "rebounds": None,
             "fga": None,
@@ -1235,6 +1245,7 @@ def get_team_defense_history(
     ]
 
     position_stat_keys = [
+        "points",
         "assists",
         "rebounds",
         "fga",
@@ -2203,6 +2214,7 @@ def build_player_result(
     )
 
     position_stat_key = {
+        "points": "points",
         "assists": "assists",
         "rebounds": "rebounds",
         "threes": "three_pa",
