@@ -21,7 +21,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.13.0"
+    version="3.14.0"
 )
 
 app.add_middleware(
@@ -2153,7 +2153,6 @@ def get_athlete_logs(
 
 
 # ============================================================
-# NOVO:
 # EXTRAÇÃO DE RESULTADO INDIVIDUAL DIRETAMENTE DO SUMMARY
 # ============================================================
 
@@ -3225,7 +3224,7 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.13.0",
+        "version": "3.14.0",
 
         "source": "ESPN"
     }
@@ -3904,7 +3903,6 @@ def collect_results(
 
 
 # ============================================================
-# NOVO ENDPOINT:
 # VALIDAÇÃO PRÉ-JOGO X RESULTADO REAL
 # ============================================================
 
@@ -3925,9 +3923,6 @@ def validation(
     em candidate_results.
 
     Este endpoint NÃO calcula green/red.
-
-    Ele mede a capacidade da triagem em relação ao
-    resultado real da partida.
     """
 
     if market not in MARKETS:
@@ -3962,10 +3957,6 @@ def validation(
             status_code=503,
             detail="Banco de dados não configurado."
         )
-
-    # --------------------------------------------------------
-    # BUSCA SNAPSHOTS E RESULTADOS
-    # --------------------------------------------------------
 
     with get_database_connection() as connection:
 
@@ -4024,10 +4015,6 @@ def validation(
 
             result_rows = cursor.fetchall()
 
-    # --------------------------------------------------------
-    # INDEXA RESULTADOS PELO PLAYER_ID
-    # --------------------------------------------------------
-
     results_by_player = {}
 
     for row in result_rows:
@@ -4073,10 +4060,6 @@ def validation(
                 payload or {}
         }
 
-    # --------------------------------------------------------
-    # MONTA A VALIDAÇÃO INDIVIDUAL
-    # --------------------------------------------------------
-
     items = []
 
     completed_count = 0
@@ -4089,20 +4072,14 @@ def validation(
 
     l10_errors = []
 
-    score_values = []
-
     score_actual_pairs = []
 
     above_l5 = 0
-
     below_l5 = 0
-
     equal_l5 = 0
 
     above_l10 = 0
-
     below_l10 = 0
-
     equal_l10 = 0
 
     for snapshot in snapshots:
@@ -4166,19 +4143,16 @@ def validation(
                 if actual > float(last5_avg):
 
                     above_l5 += 1
-
                     relation_l5 = "above"
 
                 elif actual < float(last5_avg):
 
                     below_l5 += 1
-
                     relation_l5 = "below"
 
                 else:
 
                     equal_l5 += 1
-
                     relation_l5 = "equal"
 
             else:
@@ -4205,19 +4179,16 @@ def validation(
                 if actual > float(last10_avg):
 
                     above_l10 += 1
-
                     relation_l10 = "above"
 
                 elif actual < float(last10_avg):
 
                     below_l10 += 1
-
                     relation_l10 = "below"
 
                 else:
 
                     equal_l10 += 1
-
                     relation_l10 = "equal"
 
             else:
@@ -4247,10 +4218,6 @@ def validation(
             )
 
             if triage_score is not None:
-
-                score_values.append(
-                    float(triage_score)
-                )
 
                 score_actual_pairs.append(
                     (
@@ -4372,10 +4339,6 @@ def validation(
                 )
         })
 
-    # --------------------------------------------------------
-    # ESTATÍSTICAS GERAIS
-    # --------------------------------------------------------
-
     def safe_average(values):
 
         if not values:
@@ -4467,14 +4430,6 @@ def validation(
             4
         )
 
-    mae_l5 = safe_average(
-        l5_errors
-    )
-
-    mae_l10 = safe_average(
-        l10_errors
-    )
-
     summary = {
 
         "snapshots_found":
@@ -4512,10 +4467,14 @@ def validation(
             ),
 
         "l5_mean_absolute_error":
-            mae_l5,
+            safe_average(
+                l5_errors
+            ),
 
         "l10_mean_absolute_error":
-            mae_l10,
+            safe_average(
+                l10_errors
+            ),
 
         "l5_above_count":
             above_l5,
@@ -4540,10 +4499,6 @@ def validation(
                 score_actual_pairs
             )
     }
-
-    # --------------------------------------------------------
-    # RETORNO
-    # --------------------------------------------------------
 
     return {
 
@@ -4582,6 +4537,669 @@ def validation(
 
 
 # ============================================================
+# NOVO:
+# VALIDAÇÃO HISTÓRICA ACUMULADA
+# ============================================================
+
+@app.get("/validation-history")
+def validation_history(
+    market: str = Query(
+        default="assists"
+    ),
+
+    date_from: Optional[str] = Query(
+        default=None
+    ),
+
+    date_to: Optional[str] = Query(
+        default=None
+    )
+):
+
+    """
+    Analisa cumulativamente todos os snapshots/resultados
+    disponíveis no banco.
+
+    Não altera o score.
+
+    O objetivo é descobrir, com uma amostra crescente:
+
+    - se o score realmente ordena melhor os jogadores;
+    - se L5 ou L10 apresenta menor erro;
+    - como cada faixa de score se comporta;
+    - se scores mais altos realmente produzem resultados maiores;
+    - como esses indicadores evoluem ao longo do tempo.
+
+    Não utiliza linhas de casas, odds ou green/red.
+    """
+
+    if market not in MARKETS:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Mercado inválido: "
+                + ", ".join(
+                    MARKETS.keys()
+                )
+            )
+        )
+
+    parsed_from = None
+    parsed_to = None
+
+    if date_from:
+
+        try:
+
+            parsed_from = datetime.strptime(
+                date_from,
+                "%Y-%m-%d"
+            ).date()
+
+        except ValueError:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "date_from inválida. Utilize AAAA-MM-DD."
+                )
+            )
+
+    if date_to:
+
+        try:
+
+            parsed_to = datetime.strptime(
+                date_to,
+                "%Y-%m-%d"
+            ).date()
+
+        except ValueError:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "date_to inválida. Utilize AAAA-MM-DD."
+                )
+            )
+
+    if (
+        parsed_from
+        and parsed_to
+        and parsed_from > parsed_to
+    ):
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "date_from não pode ser maior que date_to."
+            )
+        )
+
+    if not DATABASE_URL:
+
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    # --------------------------------------------------------
+    # BUSCA HISTÓRICO
+    # --------------------------------------------------------
+
+    with get_database_connection() as connection:
+
+        with connection.cursor() as cursor:
+
+            query = """
+                SELECT
+                    s.selected_date,
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    s.position,
+                    s.triage_score,
+                    s.last5_avg,
+                    s.last10_avg,
+                    s.minutes_last5_avg,
+                    r.actual_value
+                FROM candidate_snapshots s
+                INNER JOIN candidate_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                WHERE
+                    s.market = %s
+            """
+
+            params = [
+                market
+            ]
+
+            if parsed_from:
+
+                query += """
+                    AND s.selected_date >= %s
+                """
+
+                params.append(
+                    parsed_from
+                )
+
+            if parsed_to:
+
+                query += """
+                    AND s.selected_date <= %s
+                """
+
+                params.append(
+                    parsed_to
+                )
+
+            query += """
+                ORDER BY
+                    s.selected_date ASC,
+                    s.triage_score DESC NULLS LAST
+            """
+
+            cursor.execute(
+                query,
+                params
+            )
+
+            completed_rows = cursor.fetchall()
+
+            # Também contamos snapshots totais,
+            # incluindo os que ainda não possuem resultado.
+            snapshot_query = """
+                SELECT
+                    COUNT(*)
+                FROM candidate_snapshots
+                WHERE
+                    market = %s
+            """
+
+            snapshot_params = [
+                market
+            ]
+
+            if parsed_from:
+
+                snapshot_query += """
+                    AND selected_date >= %s
+                """
+
+                snapshot_params.append(
+                    parsed_from
+                )
+
+            if parsed_to:
+
+                snapshot_query += """
+                    AND selected_date <= %s
+                """
+
+                snapshot_params.append(
+                    parsed_to
+                )
+
+            cursor.execute(
+                snapshot_query,
+                snapshot_params
+            )
+
+            snapshots_total = (
+                cursor.fetchone()[0]
+            )
+
+    # --------------------------------------------------------
+    # FUNÇÕES ESTATÍSTICAS
+    # --------------------------------------------------------
+
+    def safe_average(values):
+
+        if not values:
+            return None
+
+        return round(
+            sum(values) / len(values),
+            2
+        )
+
+    def calculate_pearson(pairs):
+
+        if len(pairs) < 2:
+            return None
+
+        xs = [
+            pair[0]
+            for pair in pairs
+        ]
+
+        ys = [
+            pair[1]
+            for pair in pairs
+        ]
+
+        x_mean = sum(xs) / len(xs)
+        y_mean = sum(ys) / len(ys)
+
+        numerator = sum(
+            (
+                x - x_mean
+            )
+            * (
+                y - y_mean
+            )
+            for x, y in pairs
+        )
+
+        denominator_x = sum(
+            (
+                x - x_mean
+            ) ** 2
+            for x in xs
+        )
+
+        denominator_y = sum(
+            (
+                y - y_mean
+            ) ** 2
+            for y in ys
+        )
+
+        denominator = (
+            denominator_x
+            * denominator_y
+        ) ** 0.5
+
+        if denominator == 0:
+            return None
+
+        return round(
+            numerator / denominator,
+            4
+        )
+
+    def build_metrics(rows):
+
+        if not rows:
+
+            return {
+
+                "games":
+                    0,
+
+                "actual_average":
+                    None,
+
+                "l5_mae":
+                    None,
+
+                "l10_mae":
+                    None,
+
+                "score_actual_pearson":
+                    None
+            }
+
+        actual_values = []
+
+        l5_errors = []
+
+        l10_errors = []
+
+        pairs = []
+
+        for row in rows:
+
+            (
+                selected_date,
+                player_id,
+                player_name,
+                team,
+                opponent,
+                position,
+                triage_score,
+                last5_avg,
+                last10_avg,
+                minutes_last5_avg,
+                actual_value
+            ) = row
+
+            actual = float(
+                actual_value
+            )
+
+            actual_values.append(
+                actual
+            )
+
+            if last5_avg is not None:
+
+                l5_errors.append(
+                    abs(
+                        actual
+                        - float(last5_avg)
+                    )
+                )
+
+            if last10_avg is not None:
+
+                l10_errors.append(
+                    abs(
+                        actual
+                        - float(last10_avg)
+                    )
+                )
+
+            if triage_score is not None:
+
+                pairs.append(
+                    (
+                        float(triage_score),
+                        actual
+                    )
+                )
+
+        return {
+
+            "games":
+                len(rows),
+
+            "actual_average":
+                safe_average(
+                    actual_values
+                ),
+
+            "l5_mae":
+                safe_average(
+                    l5_errors
+                ),
+
+            "l10_mae":
+                safe_average(
+                    l10_errors
+                ),
+
+            "score_actual_pearson":
+                calculate_pearson(
+                    pairs
+                )
+        }
+
+    # --------------------------------------------------------
+    # FAIXAS DE SCORE
+    # --------------------------------------------------------
+
+    score_bands = [
+
+        {
+            "label": "7+",
+            "min": 7.0,
+            "max": None
+        },
+
+        {
+            "label": "6-6.99",
+            "min": 6.0,
+            "max": 7.0
+        },
+
+        {
+            "label": "5-5.99",
+            "min": 5.0,
+            "max": 6.0
+        },
+
+        {
+            "label": "4-4.99",
+            "min": 4.0,
+            "max": 5.0
+        },
+
+        {
+            "label": "<4",
+            "min": None,
+            "max": 4.0
+        }
+    ]
+
+    bands_output = []
+
+    for band in score_bands:
+
+        band_rows = []
+
+        for row in completed_rows:
+
+            score = row[6]
+
+            if score is None:
+                continue
+
+            score = float(score)
+
+            if band["min"] is not None:
+                if score < band["min"]:
+                    continue
+
+            if band["max"] is not None:
+                if score >= band["max"]:
+                    continue
+
+            band_rows.append(
+                row
+            )
+
+        metrics = build_metrics(
+            band_rows
+        )
+
+        bands_output.append({
+
+            "band":
+                band["label"],
+
+            **metrics
+        })
+
+    # --------------------------------------------------------
+    # MÉTRICAS GERAIS
+    # --------------------------------------------------------
+
+    overall_metrics = build_metrics(
+        completed_rows
+    )
+
+    # --------------------------------------------------------
+    # DISTRIBUIÇÃO DO RESULTADO POR RELAÇÃO AO L5/L10
+    # --------------------------------------------------------
+
+    l5_above = 0
+    l5_below = 0
+    l5_equal = 0
+
+    l10_above = 0
+    l10_below = 0
+    l10_equal = 0
+
+    for row in completed_rows:
+
+        last5_avg = row[7]
+        last10_avg = row[8]
+        actual = float(row[10])
+
+        if last5_avg is not None:
+
+            l5 = float(
+                last5_avg
+            )
+
+            if actual > l5:
+                l5_above += 1
+
+            elif actual < l5:
+                l5_below += 1
+
+            else:
+                l5_equal += 1
+
+        if last10_avg is not None:
+
+            l10 = float(
+                last10_avg
+            )
+
+            if actual > l10:
+                l10_above += 1
+
+            elif actual < l10:
+                l10_below += 1
+
+            else:
+                l10_equal += 1
+
+    # --------------------------------------------------------
+    # EVOLUÇÃO POR DATA
+    # --------------------------------------------------------
+
+    by_date = {}
+
+    for row in completed_rows:
+
+        selected_date = (
+            row[0].isoformat()
+            if row[0]
+            else None
+        )
+
+        if selected_date not in by_date:
+
+            by_date[selected_date] = []
+
+        by_date[selected_date].append(
+            row
+        )
+
+    daily_output = []
+
+    for selected_date in sorted(
+        by_date.keys()
+    ):
+
+        daily_metrics = build_metrics(
+            by_date[selected_date]
+        )
+
+        daily_output.append({
+
+            "date":
+                selected_date,
+
+            **daily_metrics
+        })
+
+    completed_count = len(
+        completed_rows
+    )
+
+    pending_count = max(
+        snapshots_total
+        - completed_count,
+        0
+    )
+
+    completion_rate = (
+        round(
+            completed_count
+            / snapshots_total
+            * 100,
+            2
+        )
+        if snapshots_total
+        else 0
+    )
+
+    return {
+
+        "status":
+            "ok",
+
+        "market":
+            market,
+
+        "market_label":
+            MARKETS[market]["label"],
+
+        "filters": {
+
+            "date_from":
+                date_from,
+
+            "date_to":
+                date_to
+        },
+
+        "summary": {
+
+            "snapshots_total":
+                snapshots_total,
+
+            "completed_results":
+                completed_count,
+
+            "pending_results":
+                pending_count,
+
+            "completion_rate_pct":
+                completion_rate,
+
+            **overall_metrics,
+
+            "l5_above_count":
+                l5_above,
+
+            "l5_below_count":
+                l5_below,
+
+            "l5_equal_count":
+                l5_equal,
+
+            "l10_above_count":
+                l10_above,
+
+            "l10_below_count":
+                l10_below,
+
+            "l10_equal_count":
+                l10_equal
+        },
+
+        "score_bands":
+            bands_output,
+
+        "daily":
+            daily_output,
+
+        "method_note": (
+            "A validação histórica considera somente registros "
+            "que possuem snapshot pré-jogo e resultado real "
+            "posteriormente coletado. Os snapshots são preservados "
+            "sem sobrescrita. A análise por faixa mostra se scores "
+            "mais altos estão associados a resultados reais maiores "
+            "e qual o erro médio das referências L5 e L10 em cada "
+            "faixa. O score_actual_pearson mede correlação linear "
+            "entre o triage_score e o resultado real. Nenhuma "
+            "linha de aposta, odd ou classificação green/red é "
+            "utilizada nesta etapa."
+        )
+    }
+
+
+# ============================================================
 # ENDPOINT DE DIAGNÓSTICO DO GAMELOG
 # ============================================================
 
@@ -4600,8 +5218,7 @@ def debug_gamelog(
     """
     Diagnóstico real do gamelog de um jogador.
 
-    Antes este endpoint estava fixado em athlete_id=1966.
-    Agora ele utiliza o player_id informado na URL.
+    Utiliza o player_id informado na URL.
     """
 
     if not player_id:
