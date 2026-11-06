@@ -818,6 +818,19 @@ function renderDailyChart(dailyData) {
   });
 }
 
+function limparResultadosAoMudarData(){
+  candidatosAtuais = [];
+  resultadoAtual = null;
+  mercadoAtual = '';
+  atualizarMercadoSelecionado();
+  const box = document.getElementById('resultado');
+  if(box){
+    box.innerHTML = '<div class="status">Selecione um mercado para consultar os dados desta data.</div>';
+  }
+}
+
+data.addEventListener('change', limparResultadosAoMudarData);
+
 document.addEventListener('DOMContentLoaded', () => {
   testar();
 });
