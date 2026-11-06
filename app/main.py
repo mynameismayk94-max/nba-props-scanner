@@ -7,11 +7,13 @@ from datetime import datetime, date
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
+from pathlib import Path
 
 import requests
 import psycopg
 from psycopg.types.json import Jsonb
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -3107,3 +3109,14 @@ def validation_history(
             "L5 vs L10 através de MAE e calibração de produção real."
         )
     }
+
+
+# Página inicial do Scanner, servida pelo mesmo domínio da API no Render.
+INDEX_FILE = Path(__file__).resolve().parent.parent / "index.html"
+
+
+@app.get("/", include_in_schema=False)
+def home():
+    if not INDEX_FILE.is_file():
+        raise HTTPException(status_code=404, detail="Arquivo index.html não encontrado.")
+    return FileResponse(INDEX_FILE, media_type="text/html")
