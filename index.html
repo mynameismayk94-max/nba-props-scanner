@@ -77,12 +77,16 @@
   button.secondary { background: #374151; color: #f3f4f6; }
   button.analisar { background: #059669; color: white; padding: 4px 8px; font-size: 11px; height: auto; }
 
-  .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+  /* Moldura visual para seleção de estatísticas */
+  .market-box { background: rgba(3, 7, 18, 0.6); border: 1px solid #1f2937; border-radius: 8px; padding: 10px; margin-top: 6px; }
+
+  .actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
   @media (min-width: 640px) {
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   }
 
-  .status { padding: 8px; background: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 6px; margin-top: 8px; font-size: 11px; color: #e2e8f0; }
+  /* Status do servidor com contraste legível */
+  .status { padding: 8px; background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; border-radius: 6px; margin-top: 8px; font-size: 11px; color: #34d399; font-weight: 500; }
 
   /* Modais com proporção perfeita no celular */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.85); z-index: 1000; padding: 8px; overflow-y: auto; }
@@ -149,15 +153,15 @@
       <div id="status" class="status mt-1">Aguardando verificação...</div>
     </div>
 
-    <!-- Agenda de Jogos -->
+    <!-- Agenda de Jogos (Ajustado para caber na caixa perfeitamente) -->
     <div class="glass-panel p-3">
       <h2 class="text-xs font-bold text-white mb-2 uppercase tracking-wide">📅 Agenda de Jogos</h2>
-      <div class="flex gap-2 items-end">
-        <div class="flex-grow">
+      <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end w-full">
+        <div class="w-full sm:flex-grow">
           <label class="block text-[10px] font-medium text-gray-400 mb-1">Data</label>
-          <input type="date" id="data">
+          <input type="date" id="data" class="w-full max-w-full">
         </div>
-        <button onclick="carregarJogos()" class="whitespace-nowrap px-3 text-xs">Buscar Jogos</button>
+        <button onclick="carregarJogos()" class="whitespace-nowrap px-3 text-xs w-full sm:w-auto">Buscar Jogos</button>
       </div>
       <div id="jogos" class="mt-2"></div>
     </div>
@@ -169,12 +173,15 @@
         <p class="text-[10px] text-gray-400">Escolha o mercado para executar a triagem.</p>
       </div>
 
-      <div class="actions">
-        <button onclick="buscar('points')" class="text-xs h-9">Pontos</button>
-        <button onclick="buscar('assists')" class="text-xs h-9">Assistências</button>
-        <button onclick="buscar('rebounds')" class="text-xs h-9">Rebotes</button>
-        <button onclick="buscar('threes')" class="text-xs h-9">3 Pontos</button>
-        <button onclick="buscar('attempts')" class="text-xs h-9 col-span-2">Tentativas</button>
+      <!-- Moldura visual envolvendo os botões -->
+      <div class="market-box">
+        <div class="actions">
+          <button onclick="buscar('points')" class="text-xs h-9">Pontos</button>
+          <button onclick="buscar('assists')" class="text-xs h-9">Assistências</button>
+          <button onclick="buscar('rebounds')" class="text-xs h-9">Rebotes</button>
+          <button onclick="buscar('threes')" class="text-xs h-9">Tentativas de 3 Pontos</button>
+          <button onclick="buscar('attempts')" class="text-xs h-9 col-span-2 sm:col-span-1">Arremessos Tentados</button>
+        </div>
       </div>
 
       <div id="resultado"></div>
@@ -198,7 +205,7 @@
           <option value="assists">Assistências</option>
           <option value="points">Pontos</option>
           <option value="rebounds">Rebotes</option>
-          <option value="threes">3 Pontos</option>
+          <option value="threes">Tentativas de 3 Pontos</option>
         </select>
       </div>
       <div class="text-[10px] text-gray-400 text-right">Amostra: <span id="hist-sample-count" class="font-bold text-white">0</span></div>
