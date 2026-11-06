@@ -453,6 +453,10 @@ def parse_attempts(value) -> float:
 def parse_made(value):
     if value is None:
         return None
+    if isinstance(value, dict):
+        value = value.get("displayValue", value.get("value"))
+        if value is None:
+            return None
     text = str(value).strip()
     if "-" not in text:
         return parse_optional_number(value)
@@ -644,7 +648,8 @@ def get_player_stat_value(
     raw_stats,
     key_indexes,
     stat_key,
-    attempt_stat=False
+    attempt_stat=False,
+    made_stat=False
 ):
 
     normalized_key = normalize_stat_key(
@@ -695,6 +700,9 @@ def get_player_stat_value(
 
     if attempt_stat:
         return parse_optional_attempts(value)
+
+    if made_stat:
+        return parse_made(value)
 
     return parse_optional_number(value)
 
@@ -892,7 +900,8 @@ def extract_opponent_players_by_position(
             fgm = get_player_stat_value(
                 raw_stats,
                 key_indexes,
-                "fieldGoalsMade-fieldGoalsAttempted"
+                "fieldGoalsMade-fieldGoalsAttempted",
+                made_stat=True
             )
             two_pa = subtract_stats(fga, three_pa)
 
@@ -1847,7 +1856,7 @@ def get_athlete_logs(
                 "fga": parse_attempts(stats[1]),
                 "three_pa": parse_attempts(stats[3]),
                 "two_pa": max(0.0, parse_attempts(stats[1]) - parse_attempts(stats[3])),
-                "fgm": parse_number(stats[2]),
+                "fgm": parse_made(stats[1]),
                 "rebounds": parse_number(
                     stats[7]
                 ),
@@ -2049,7 +2058,8 @@ def extract_player_game_from_summary(
                 fgm = get_player_stat_value(
                     raw_stats,
                     key_indexes,
-                    "fieldGoalsMade-fieldGoalsAttempted"
+                    "fieldGoalsMade-fieldGoalsAttempted",
+                    made_stat=True
                 )
 
                 return {
