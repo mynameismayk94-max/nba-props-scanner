@@ -70,7 +70,7 @@
 
   .filter-group { display: flex; flex-direction: column; width: 100%; }
   .filter-group label { font-size: 10px; font-weight: bold; color: #9ca3af; margin-bottom: 3px; }
-  .filter-group select, input[type="date"], input[type="text"] { width: 100%; background: #030712; border: 1px solid #374151; color: #f3f4f6; padding: 7px; border-radius: 6px; font-size: 12px; height: 36px; }
+  .filter-group select, input[type="date"], input[type="text"] { width: 100%; min-width: 0; max-width: 100%; background: #030712; border: 1px solid #374151; color: #f3f4f6; padding: 7px; border-radius: 6px; font-size: 12px; height: 36px; }
   
   button { padding: 6px 12px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: #2563eb; color: white; height: 36px; }
   button:hover { background: #1d4ed8; }
@@ -80,9 +80,12 @@
   /* Moldura visual para seleção de estatísticas */
   .market-box { background: rgba(3, 7, 18, 0.6); border: 1px solid #1f2937; border-radius: 8px; padding: 10px; margin-top: 6px; }
 
-  .actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+  .market-button { width: 100%; min-width: 0; height: 40px; padding: 8px 10px; background: #111827; border: 1px solid #374151; color: #d1d5db; white-space: normal; line-height: 1.25; transition: background .15s, border-color .15s, color .15s; }
+  .market-button:hover { background: #1f2937; border-color: #4b5563; }
+  .market-button.active, .market-button.active:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
   @media (min-width: 640px) {
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 
   /* Status do servidor com contraste legível */
@@ -157,9 +160,9 @@
     <div class="glass-panel p-3">
       <h2 class="text-xs font-bold text-white mb-2 uppercase tracking-wide">📅 Agenda de Jogos</h2>
       <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end w-full">
-        <div class="w-full sm:flex-grow">
+        <div class="w-full min-w-0 sm:flex-grow">
           <label class="block text-[10px] font-medium text-gray-400 mb-1">Data</label>
-          <input type="date" id="data" class="w-full max-w-full">
+          <input type="date" id="data" class="w-full min-w-0 max-w-full">
         </div>
         <button onclick="carregarJogos()" class="whitespace-nowrap px-3 text-xs w-full sm:w-auto">Buscar Jogos</button>
       </div>
@@ -176,11 +179,11 @@
       <!-- Moldura visual envolvendo os botões -->
       <div class="market-box">
         <div class="actions">
-          <button onclick="buscar('points')" class="text-xs h-9">Pontos</button>
-          <button onclick="buscar('assists')" class="text-xs h-9">Assistências</button>
-          <button onclick="buscar('rebounds')" class="text-xs h-9">Rebotes</button>
-          <button onclick="buscar('threes')" class="text-xs h-9">Tentativas de 3 Pontos</button>
-          <button onclick="buscar('attempts')" class="text-xs h-9 col-span-2 sm:col-span-1">Arremessos Tentados</button>
+          <button type="button" class="market-button" data-market="points" aria-pressed="false" onclick="buscar('points')">Pontos</button>
+          <button type="button" class="market-button" data-market="assists" aria-pressed="false" onclick="buscar('assists')">Assistências</button>
+          <button type="button" class="market-button" data-market="rebounds" aria-pressed="false" onclick="buscar('rebounds')">Rebotes</button>
+          <button type="button" class="market-button" data-market="threes" aria-pressed="false" onclick="buscar('threes')">Tentativas de 3 Pontos</button>
+          <button type="button" class="market-button" data-market="attempts" aria-pressed="false" onclick="buscar('attempts')">Arremessos Tentados</button>
         </div>
       </div>
 
@@ -647,8 +650,18 @@ function fecharModalFora(event){
 
 document.addEventListener('keydown', e => { if(e.key === 'Escape') fecharModal(); });
 
+function atualizarMercadoSelecionado(){
+  document.querySelectorAll('.market-button').forEach(botao => {
+    const selecionado = botao.dataset.market === mercadoAtual;
+    botao.classList.toggle('active', selecionado);
+    botao.setAttribute('aria-pressed', selecionado ? 'true' : 'false');
+  });
+}
+
 async function buscar(mercado){
   const box = document.getElementById('resultado');
+  mercadoAtual = mercado;
+  atualizarMercadoSelecionado();
   box.innerHTML = '<div class="status">Consultando dados...</div>';
   try{
     const r = await requisicao('/candidates?date=' + data.value + '&market=' + mercado + '&limit=20');
@@ -657,7 +670,6 @@ async function buscar(mercado){
       return;
     }
     candidatosAtuais = r.candidates;
-    mercadoAtual = mercado;
     resultadoAtual = r;
 
     let html = '<div class="space-y-2 mt-2">';
