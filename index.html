@@ -39,7 +39,7 @@
   ::-webkit-scrollbar-track { background: #090d16; }
   ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
 
-  /* Correção para tabelas */
+  /* Correção rígida para tabelas não desenquadrarem */
   .tablewrap { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #1f2937; -webkit-overflow-scrolling: touch; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
   th, td { padding: 8px 6px; text-align: center; border-bottom: 1px solid #1f2937; }
@@ -62,7 +62,7 @@
   .difference-neutral { color: #9ca3af; }
   .difference-cell { background: rgba(6, 78, 59, 0.2); min-width: 90px; }
 
-  /* Filtros responsivos */
+  /* Filtros responsivos limpos */
   .filters { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
   @media (min-width: 768px) {
     .filters { grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 12px; }
@@ -77,23 +77,14 @@
   button.secondary { background: #374151; color: #f3f4f6; }
   button.analisar { background: #059669; color: white; padding: 4px 8px; font-size: 11px; height: auto; }
 
-  /* Seletor de estatísticas com limitação visual em volta */
-  .market-selector-card {
-    background: rgba(3, 7, 18, 0.5);
-    border: 1px solid #1f2937;
-    border-radius: 10px;
-    padding: 12px;
+  .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+  @media (min-width: 640px) {
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   }
 
-  .actions { display: grid; grid-template-columns: repeat(1, 1fr); gap: 6px; margin-top: 8px; }
-  @media (min-width: 480px) {
-    .actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
-  }
+  .status { padding: 8px; background: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 6px; margin-top: 8px; font-size: 11px; color: #e2e8f0; }
 
-  /* Status do servidor com texto legível */
-  .status { padding: 8px; background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; border-radius: 6px; margin-top: 8px; font-size: 11px; color: #34d399; font-weight: 500; }
-
-  /* Modais */
+  /* Modais com proporção perfeita no celular */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.85); z-index: 1000; padding: 8px; overflow-y: auto; }
   .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
   .modal { width: 100%; max-width: 900px; background: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 12px; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
@@ -158,35 +149,32 @@
       <div id="status" class="status mt-1">Aguardando verificação...</div>
     </div>
 
-    <!-- Agenda de Jogos (Corrigido o card da data para não estourar) -->
+    <!-- Agenda de Jogos -->
     <div class="glass-panel p-3">
       <h2 class="text-xs font-bold text-white mb-2 uppercase tracking-wide">📅 Agenda de Jogos</h2>
-      <div class="flex flex-col gap-2">
-        <div class="w-full">
+      <div class="flex gap-2 items-end">
+        <div class="flex-grow">
           <label class="block text-[10px] font-medium text-gray-400 mb-1">Data</label>
-          <input type="date" id="data" class="w-full">
+          <input type="date" id="data">
         </div>
-        <button onclick="carregarJogos()" class="w-full text-xs h-8">Buscar Jogos</button>
+        <button onclick="carregarJogos()" class="whitespace-nowrap px-3 text-xs">Buscar Jogos</button>
       </div>
       <div id="jogos" class="mt-2"></div>
     </div>
 
-    <!-- Scanner de Jogadores (Com limitação visual em volta e nomenclaturas ajustadas) -->
+    <!-- Scanner de Jogadores -->
     <div class="glass-panel p-3 space-y-2">
       <div>
         <h2 class="text-xs font-bold text-white uppercase tracking-wide">🔎 Scanner Estatístico</h2>
-        <p class="text-[10px] text-gray-400">Escolha o mercado estatístico para executar a triagem.</p>
+        <p class="text-[10px] text-gray-400">Escolha o mercado para executar a triagem.</p>
       </div>
 
-      <div class="market-selector-card">
-        <div class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-2">Selecione o Mercado:</div>
-        <div class="actions">
-          <button onclick="buscar('points')" class="text-xs h-9">Pontos</button>
-          <button onclick="buscar('assists')" class="text-xs h-9">Assistências</button>
-          <button onclick="buscar('rebounds')" class="text-xs h-9">Rebotes</button>
-          <button onclick="buscar('threes')" class="text-xs h-9">Tentativas de 3 Pontos</button>
-          <button onclick="buscar('attempts')" class="text-xs h-9">Arremessos Tentados</button>
-        </div>
+      <div class="actions">
+        <button onclick="buscar('points')" class="text-xs h-9">Pontos</button>
+        <button onclick="buscar('assists')" class="text-xs h-9">Assistências</button>
+        <button onclick="buscar('rebounds')" class="text-xs h-9">Rebotes</button>
+        <button onclick="buscar('threes')" class="text-xs h-9">3 Pontos</button>
+        <button onclick="buscar('attempts')" class="text-xs h-9 col-span-2">Tentativas</button>
       </div>
 
       <div id="resultado"></div>
@@ -210,7 +198,7 @@
           <option value="assists">Assistências</option>
           <option value="points">Pontos</option>
           <option value="rebounds">Rebotes</option>
-          <option value="threes">Tentativas de 3 Pontos</option>
+          <option value="threes">3 Pontos</option>
         </select>
       </div>
       <div class="text-[10px] text-gray-400 text-right">Amostra: <span id="hist-sample-count" class="font-bold text-white">0</span></div>
