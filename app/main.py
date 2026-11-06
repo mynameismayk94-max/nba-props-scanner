@@ -21,7 +21,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.12.0"
+    version="3.13.0"
 )
 
 app.add_middleware(
@@ -3225,7 +3225,7 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.12.0",
+        "version": "3.13.0",
 
         "source": "ESPN"
     }
@@ -3461,10 +3461,6 @@ def collect_results(
             detail="Banco de dados não configurado."
         )
 
-    # --------------------------------------------------------
-    # 1. IDENTIFICA PARTIDAS FINALIZADAS
-    # --------------------------------------------------------
-
     schedule = fetch_espn_games(
         selected_date
     )
@@ -3523,10 +3519,6 @@ def collect_results(
         completed_game_ids
     )
 
-    # --------------------------------------------------------
-    # 2. BUSCA SNAPSHOTS PRÉ-JOGO
-    # --------------------------------------------------------
-
     with get_database_connection() as connection:
 
         with connection.cursor() as cursor:
@@ -3578,10 +3570,6 @@ def collect_results(
                 "para registrar a fotografia."
             )
         }
-
-    # --------------------------------------------------------
-    # 3. CARREGA OS SUMMARIES DAS PARTIDAS FINALIZADAS
-    # --------------------------------------------------------
 
     summary_cache = {}
 
@@ -3637,10 +3625,6 @@ def collect_results(
         len(summary_cache),
         len(completed_game_ids)
     )
-
-    # --------------------------------------------------------
-    # 4. LOCALIZA CADA JOGADOR PELO PLAYER_ID
-    # --------------------------------------------------------
 
     results_to_save = []
 
@@ -3770,10 +3754,6 @@ def collect_results(
             row
         )
 
-    # --------------------------------------------------------
-    # 5. PROCESSAMENTO PARALELO
-    # --------------------------------------------------------
-
     with ThreadPoolExecutor(
         max_workers=8
     ) as executor:
@@ -3815,10 +3795,6 @@ def collect_results(
                     error
                 )
 
-    # --------------------------------------------------------
-    # 6. SALVA RESULTADOS
-    # --------------------------------------------------------
-
     inserted = 0
 
     if results_to_save:
@@ -3859,10 +3835,6 @@ def collect_results(
                     if cursor.fetchone():
 
                         inserted += 1
-
-    # --------------------------------------------------------
-    # 7. CONTAGEM TOTAL
-    # --------------------------------------------------------
 
     with get_database_connection() as connection:
 
@@ -3927,6 +3899,684 @@ def collect_results(
             "são gravados. Ausência de registro não é "
             "convertida em zero; candidatos pendentes "
             "podem ser consultados novamente."
+        )
+    }
+
+
+# ============================================================
+# NOVO ENDPOINT:
+# VALIDAÇÃO PRÉ-JOGO X RESULTADO REAL
+# ============================================================
+
+@app.get("/validation")
+def validation(
+    selected_date: str = Query(
+        alias="date"
+    ),
+
+    market: str = Query(
+        default="assists"
+    )
+):
+
+    """
+    Cruza a fotografia pré-jogo armazenada em
+    candidate_snapshots com o resultado real armazenado
+    em candidate_results.
+
+    Este endpoint NÃO calcula green/red.
+
+    Ele mede a capacidade da triagem em relação ao
+    resultado real da partida.
+    """
+
+    if market not in MARKETS:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Mercado inválido: "
+                + ", ".join(
+                    MARKETS.keys()
+                )
+            )
+        )
+
+    try:
+
+        target_date = datetime.strptime(
+            selected_date,
+            "%Y-%m-%d"
+        ).date()
+
+    except ValueError:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize AAAA-MM-DD."
+        )
+
+    if not DATABASE_URL:
+
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    # --------------------------------------------------------
+    # BUSCA SNAPSHOTS E RESULTADOS
+    # --------------------------------------------------------
+
+    with get_database_connection() as connection:
+
+        with connection.cursor() as cursor:
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    player_id,
+                    player_name,
+                    team,
+                    opponent,
+                    position,
+                    triage_score,
+                    last5_avg,
+                    last10_avg,
+                    minutes_last5_avg,
+                    payload,
+                    captured_at
+                FROM candidate_snapshots
+                WHERE
+                    selected_date = %s
+                    AND market = %s
+                ORDER BY triage_score DESC NULLS LAST
+                """,
+                (
+                    target_date,
+                    market
+                )
+            )
+
+            snapshots = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT
+                    player_id,
+                    player_name,
+                    team,
+                    opponent,
+                    actual_value,
+                    game_id,
+                    collected_at,
+                    payload
+                FROM candidate_results
+                WHERE
+                    selected_date = %s
+                    AND market = %s
+                """,
+                (
+                    target_date,
+                    market
+                )
+            )
+
+            result_rows = cursor.fetchall()
+
+    # --------------------------------------------------------
+    # INDEXA RESULTADOS PELO PLAYER_ID
+    # --------------------------------------------------------
+
+    results_by_player = {}
+
+    for row in result_rows:
+
+        (
+            player_id,
+            player_name,
+            team,
+            opponent,
+            actual_value,
+            game_id,
+            collected_at,
+            payload
+        ) = row
+
+        results_by_player[
+            str(player_id)
+        ] = {
+
+            "player_name":
+                player_name,
+
+            "team":
+                team,
+
+            "opponent":
+                opponent,
+
+            "actual_value":
+                float(actual_value)
+                if actual_value is not None
+                else None,
+
+            "game_id":
+                game_id,
+
+            "collected_at":
+                collected_at.isoformat()
+                if collected_at
+                else None,
+
+            "payload":
+                payload or {}
+        }
+
+    # --------------------------------------------------------
+    # MONTA A VALIDAÇÃO INDIVIDUAL
+    # --------------------------------------------------------
+
+    items = []
+
+    completed_count = 0
+
+    pending_count = 0
+
+    actual_values = []
+
+    l5_errors = []
+
+    l10_errors = []
+
+    score_values = []
+
+    score_actual_pairs = []
+
+    above_l5 = 0
+
+    below_l5 = 0
+
+    equal_l5 = 0
+
+    above_l10 = 0
+
+    below_l10 = 0
+
+    equal_l10 = 0
+
+    for snapshot in snapshots:
+
+        (
+            snapshot_id,
+            player_id,
+            player_name,
+            team,
+            opponent,
+            position,
+            triage_score,
+            last5_avg,
+            last10_avg,
+            minutes_last5_avg,
+            payload,
+            captured_at
+        ) = snapshot
+
+        player_id = str(
+            player_id
+        )
+
+        result = results_by_player.get(
+            player_id
+        )
+
+        snapshot_payload = (
+            payload or {}
+        )
+
+        if result:
+
+            actual = result["actual_value"]
+
+            status = "completed"
+
+            diff_l5 = None
+            diff_l10 = None
+
+            pct_l5 = None
+            pct_l10 = None
+
+            if last5_avg is not None:
+
+                diff_l5 = round(
+                    actual - float(last5_avg),
+                    2
+                )
+
+                if float(last5_avg) != 0:
+
+                    pct_l5 = round(
+                        (
+                            diff_l5
+                            / float(last5_avg)
+                        ) * 100,
+                        2
+                    )
+
+                if actual > float(last5_avg):
+
+                    above_l5 += 1
+
+                    relation_l5 = "above"
+
+                elif actual < float(last5_avg):
+
+                    below_l5 += 1
+
+                    relation_l5 = "below"
+
+                else:
+
+                    equal_l5 += 1
+
+                    relation_l5 = "equal"
+
+            else:
+
+                relation_l5 = None
+
+            if last10_avg is not None:
+
+                diff_l10 = round(
+                    actual - float(last10_avg),
+                    2
+                )
+
+                if float(last10_avg) != 0:
+
+                    pct_l10 = round(
+                        (
+                            diff_l10
+                            / float(last10_avg)
+                        ) * 100,
+                        2
+                    )
+
+                if actual > float(last10_avg):
+
+                    above_l10 += 1
+
+                    relation_l10 = "above"
+
+                elif actual < float(last10_avg):
+
+                    below_l10 += 1
+
+                    relation_l10 = "below"
+
+                else:
+
+                    equal_l10 += 1
+
+                    relation_l10 = "equal"
+
+            else:
+
+                relation_l10 = None
+
+            if last5_avg is not None:
+
+                l5_errors.append(
+                    abs(
+                        actual
+                        - float(last5_avg)
+                    )
+                )
+
+            if last10_avg is not None:
+
+                l10_errors.append(
+                    abs(
+                        actual
+                        - float(last10_avg)
+                    )
+                )
+
+            actual_values.append(
+                actual
+            )
+
+            if triage_score is not None:
+
+                score_values.append(
+                    float(triage_score)
+                )
+
+                score_actual_pairs.append(
+                    (
+                        float(triage_score),
+                        actual
+                    )
+                )
+
+            completed_count += 1
+
+        else:
+
+            status = "pending"
+
+            pending_count += 1
+
+            actual = None
+
+            diff_l5 = None
+            diff_l10 = None
+
+            pct_l5 = None
+            pct_l10 = None
+
+            relation_l5 = None
+            relation_l10 = None
+
+        items.append({
+
+            "player_id":
+                player_id,
+
+            "player":
+                player_name,
+
+            "team":
+                team,
+
+            "opponent":
+                opponent,
+
+            "position":
+                position,
+
+            "triage_score":
+                (
+                    float(triage_score)
+                    if triage_score is not None
+                    else None
+                ),
+
+            "last5_avg":
+                (
+                    float(last5_avg)
+                    if last5_avg is not None
+                    else None
+                ),
+
+            "last10_avg":
+                (
+                    float(last10_avg)
+                    if last10_avg is not None
+                    else None
+                ),
+
+            "minutes_last5_avg":
+                (
+                    float(minutes_last5_avg)
+                    if minutes_last5_avg is not None
+                    else None
+                ),
+
+            "actual_value":
+                actual,
+
+            "difference_vs_l5":
+                diff_l5,
+
+            "difference_vs_l10":
+                diff_l10,
+
+            "difference_pct_vs_l5":
+                pct_l5,
+
+            "difference_pct_vs_l10":
+                pct_l10,
+
+            "relation_vs_l5":
+                relation_l5,
+
+            "relation_vs_l10":
+                relation_l10,
+
+            "status":
+                status,
+
+            "game_id":
+                (
+                    result["game_id"]
+                    if result
+                    else None
+                ),
+
+            "result_payload":
+                (
+                    result["payload"]
+                    if result
+                    else None
+                ),
+
+            "snapshot_payload":
+                snapshot_payload,
+
+            "captured_at":
+                (
+                    captured_at.isoformat()
+                    if captured_at
+                    else None
+                )
+        })
+
+    # --------------------------------------------------------
+    # ESTATÍSTICAS GERAIS
+    # --------------------------------------------------------
+
+    def safe_average(values):
+
+        if not values:
+            return None
+
+        return round(
+            sum(values) / len(values),
+            2
+        )
+
+    def safe_median(values):
+
+        if not values:
+            return None
+
+        ordered = sorted(values)
+
+        size = len(ordered)
+
+        middle = size // 2
+
+        if size % 2:
+
+            return round(
+                ordered[middle],
+                2
+            )
+
+        return round(
+            (
+                ordered[middle - 1]
+                + ordered[middle]
+            ) / 2,
+            2
+        )
+
+    def calculate_pearson(pairs):
+
+        if len(pairs) < 2:
+            return None
+
+        xs = [
+            pair[0]
+            for pair in pairs
+        ]
+
+        ys = [
+            pair[1]
+            for pair in pairs
+        ]
+
+        x_mean = sum(xs) / len(xs)
+        y_mean = sum(ys) / len(ys)
+
+        numerator = sum(
+            (
+                x - x_mean
+            )
+            * (
+                y - y_mean
+            )
+            for x, y in pairs
+        )
+
+        denominator_x = sum(
+            (
+                x - x_mean
+            ) ** 2
+            for x in xs
+        )
+
+        denominator_y = sum(
+            (
+                y - y_mean
+            ) ** 2
+            for y in ys
+        )
+
+        denominator = (
+            denominator_x
+            * denominator_y
+        ) ** 0.5
+
+        if denominator == 0:
+            return None
+
+        return round(
+            numerator / denominator,
+            4
+        )
+
+    mae_l5 = safe_average(
+        l5_errors
+    )
+
+    mae_l10 = safe_average(
+        l10_errors
+    )
+
+    summary = {
+
+        "snapshots_found":
+            len(snapshots),
+
+        "results_found":
+            len(result_rows),
+
+        "completed":
+            completed_count,
+
+        "pending":
+            pending_count,
+
+        "completion_rate_pct":
+            (
+                round(
+                    completed_count
+                    / len(snapshots)
+                    * 100,
+                    2
+                )
+                if snapshots
+                else 0
+            ),
+
+        "actual_average":
+            safe_average(
+                actual_values
+            ),
+
+        "actual_median":
+            safe_median(
+                actual_values
+            ),
+
+        "l5_mean_absolute_error":
+            mae_l5,
+
+        "l10_mean_absolute_error":
+            mae_l10,
+
+        "l5_above_count":
+            above_l5,
+
+        "l5_below_count":
+            below_l5,
+
+        "l5_equal_count":
+            equal_l5,
+
+        "l10_above_count":
+            above_l10,
+
+        "l10_below_count":
+            below_l10,
+
+        "l10_equal_count":
+            equal_l10,
+
+        "score_actual_pearson":
+            calculate_pearson(
+                score_actual_pairs
+            )
+    }
+
+    # --------------------------------------------------------
+    # RETORNO
+    # --------------------------------------------------------
+
+    return {
+
+        "date":
+            selected_date,
+
+        "market":
+            market,
+
+        "market_label":
+            MARKETS[market]["label"],
+
+        "status":
+            "ok",
+
+        "summary":
+            summary,
+
+        "items":
+            items,
+
+        "method_note": (
+            "Esta validação cruza a fotografia pré-jogo "
+            "preservada em candidate_snapshots com o resultado "
+            "real armazenado em candidate_results. "
+            "O endpoint não utiliza linhas de casas de apostas "
+            "e não classifica green/red. Diferenças positivas "
+            "indicam que o jogador produziu acima da média "
+            "histórica usada na análise; diferenças negativas "
+            "indicam produção abaixo dessa média. "
+            "O campo score_actual_pearson representa apenas "
+            "a correlação linear entre triage_score e resultado "
+            "real dentro da amostra disponível."
         )
     }
 
