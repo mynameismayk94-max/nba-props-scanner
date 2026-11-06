@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>NBA Props Analytics — Pro & Auditoria</title>
 
 <!-- Tailwind CSS & Inter Font -->
@@ -30,70 +30,81 @@
 </script>
 
 <style>
-  body { background-color: #090d16; color: #f3f4f6; font-family: 'Inter', sans-serif; }
-  .glass-panel { background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+  body { background-color: #090d16; color: #f3f4f6; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+  .glass-panel { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
   .badge-score { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #030712; font-weight: 700; }
   
   /* Custom Scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: #090d16; }
   ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
 
-  /* Mantendo estilos originais adaptados para o tema escuro moderno */
-  .tablewrap { overflow-x: auto; width: 100%; margin-top: 15px; border-radius: 8px; border: 1px solid #1f2937; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
-  th, td { padding: 10px 10px; text-align: center; border-bottom: 1px solid #1f2937; }
-  th { background: #111827; color: #9ca3af; position: sticky; top: 0; z-index: 1; font-weight: 600; }
+  /* Estilos de Tabelas e Componentes Otimizados para Telemóvel */
+  .tablewrap { overflow-x: auto; width: 100%; margin-top: 10px; border-radius: 8px; border: 1px solid #1f2937; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
+  th, td { padding: 8px 6px; text-align: center; border-bottom: 1px solid #1f2937; }
+  th { background: #111827; color: #9ca3af; position: sticky; top: 0; z-index: 1; font-weight: 600; font-size: 10px; text-transform: uppercase; }
   th:first-child, td:first-child { text-align: left; }
   tr:hover td { background: rgba(31, 41, 55, 0.4); }
 
   .metric { font-weight: bold; color: #34d399; }
-  .period-label { font-size: 10px; color: #9ca3af; font-weight: bold; margin-bottom: 2px; }
-  .metric-value { font-size: 13px; font-weight: bold; color: #f3f4f6; }
-  .sample { display: block; font-size: 9px; color: #9ca3af; line-height: 1.3; margin-top: 2px; white-space: nowrap; }
-  .split-metric { display: flex; flex-direction: column; gap: 7px; }
+  .period-label { font-size: 9px; color: #9ca3af; font-weight: bold; margin-bottom: 1px; }
+  .metric-value { font-size: 12px; font-weight: bold; color: #f3f4f6; }
+  .sample { display: block; font-size: 8.5px; color: #9ca3af; line-height: 1.2; margin-top: 1px; white-space: nowrap; }
+  .split-metric { display: flex; flex-direction: column; gap: 4px; }
   .split-item { display: flex; flex-direction: column; align-items: center; }
-  .split-item + .split-item { border-top: 1px solid #374151; padding-top: 6px; }
-  .new-metric { background: rgba(17, 24, 39, 0.4); min-width: 115px; }
+  .split-item + .split-item { border-top: 1px solid #374151; padding-top: 4px; }
+  .new-metric { background: rgba(17, 24, 39, 0.4); min-width: 95px; }
 
-  .difference-value { font-size: 13px; font-weight: bold; }
+  .difference-value { font-size: 11px; font-weight: bold; }
   .difference-positive { color: #f87171; font-weight: 600; }
   .difference-negative { color: #34d399; font-weight: 600; }
   .difference-neutral { color: #9ca3af; }
-  .difference-cell { background: rgba(6, 78, 59, 0.2); min-width: 115px; }
+  .difference-cell { background: rgba(6, 78, 59, 0.2); min-width: 95px; }
 
-  .filters { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 12px; margin-top: 15px; }
+  /* Filtros responsivos (Mobile Vertical: 2 colunas | Desktop: 6 colunas) */
+  .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  @media (min-width: 768px) {
+    .filters { grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 12px; margin-top: 15px; }
+  }
+
   .filter-group { display: flex; flex-direction: column; }
-  .filter-group label { font-size: 11px; font-weight: bold; color: #9ca3af; margin-bottom: 5px; }
-  .filter-group select, input[type="date"], input[type="text"] { width: 100%; background: #030712; border: 1px solid #374151; color: #f3f4f6; padding: 10px; border-radius: 8px; font-size: 13px; }
+  .filter-group label { font-size: 10px; font-weight: bold; color: #9ca3af; margin-bottom: 3px; }
+  .filter-group select, input[type="date"], input[type="text"] { width: 100%; background: #030712; border: 1px solid #374151; color: #f3f4f6; padding: 8px; border-radius: 8px; font-size: 12px; height: 38px; }
   
-  button { padding: 10px 16px; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: #2563eb; color: white; }
+  button { padding: 8px 12px; border: 0; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: #2563eb; color: white; height: 38px; }
   button:hover { background: #1d4ed8; }
   button.secondary { background: #374151; color: #f3f4f6; }
   button.secondary:hover { background: #4b5563; }
-  button.analisar { background: #059669; color: white; padding: 6px 10px; font-size: 12px; }
+  button.analisar { background: #059669; color: white; padding: 4px 8px; font-size: 11px; height: auto; }
   button.analisar:hover { background: #047857; }
 
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .status { padding: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 8px; margin-top: 12px; font-size: 13px; color: #e2e8f0; }
+  .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+  @media (min-width: 640px) {
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  }
 
-  /* Modais com design moderno */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.8); z-index: 1000; padding: 20px; overflow-y: auto; }
+  .status { padding: 10px; background: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 8px; margin-top: 10px; font-size: 12px; color: #e2e8f0; }
+
+  /* Modais com otimização Mobile Vertical */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.85); z-index: 1000; padding: 10px; overflow-y: auto; }
   .modal-overlay.active { display: flex; align-items: flex-start; justify-content: center; }
-  .modal { width: min(1050px, 100%); background: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); margin: 20px auto; overflow: hidden; }
-  .modal-header { background: #1f2937; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #374151; }
-  .modal-header h2 { margin: 0 0 5px; font-size: 18px; }
-  .modal-header .player-meta { color: #9ca3af; font-size: 13px; }
-  .close-modal { background: transparent; border: 1px solid #4b5563; color: white; font-size: 18px; padding: 4px 10px; border-radius: 6px; }
-  .close-modal:hover { background: rgba(255,255,255,0.1); }
-  .modal-body { padding: 22px; background: #0b0f19; }
-  .analysis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
-  .analysis-card { border: 1px solid #1f2937; border-radius: 12px; padding: 16px; background: #111827; }
-  .analysis-card h3 { color: #34d399; font-size: 14px; margin-top: 0; margin-bottom: 10px; }
-  .analysis-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .analysis-table th, .analysis-table td { padding: 8px; border-bottom: 1px solid #1f2937; text-align: left; }
-  .analysis-table th { background: #1f2937; color: #9ca3af; }
-  .analysis-note { margin-top: 15px; padding: 14px; background: #111827; border-left: 4px solid #10b981; border-radius: 8px; font-size: 13px; line-height: 1.6; color: #9ca3af; }
+  .modal { width: 100%; max-width: 1050px; background: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); margin: 5px auto; overflow: hidden; }
+  .modal-header { background: #1f2937; color: white; padding: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #374151; }
+  .modal-header h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .modal-header .player-meta { color: #9ca3af; font-size: 11px; }
+  .close-modal { background: transparent; border: 1px solid #4b5563; color: white; font-size: 18px; padding: 2px 8px; border-radius: 6px; height: 30px; }
+  .modal-body { padding: 12px; background: #0b0f19; }
+  .analysis-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 768px) {
+    .analysis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+  }
+  .analysis-card { border: 1px solid #1f2937; border-radius: 10px; padding: 12px; background: #111827; }
+  .analysis-card h3 { color: #34d399; font-size: 12px; margin-top: 0; margin-bottom: 8px; font-weight: 700; }
+  .analysis-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .analysis-table th, .analysis-table td { padding: 6px; border-bottom: 1px solid #1f2937; text-align: left; }
+  .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 10px; }
+  .analysis-note { margin-top: 10px; padding: 10px; background: #111827; border-left: 3px solid #10b981; border-radius: 6px; font-size: 11px; line-height: 1.4; color: #9ca3af; }
 </style>
 </head>
 
@@ -101,151 +112,145 @@
 
 <!-- SaaS Top Header -->
 <header class="glass-panel sticky top-0 z-50 border-b border-gray-800">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-    <div class="flex items-center space-x-3">
-      <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-bold text-gray-950 shadow-lg shadow-emerald-500/20">
+  <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+    <div class="flex items-center space-x-2">
+      <div class="h-8 w-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-bold text-gray-950 text-sm shadow">
         🏀
       </div>
       <div>
-        <span class="font-bold text-lg tracking-tight text-white">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
-        <span class="ml-2 text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">PRO SaaS</span>
+        <span class="font-bold text-sm sm:text-base tracking-tight text-white">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
       </div>
     </div>
 
     <!-- Navegação por Abas -->
-    <nav class="flex space-x-2 bg-gray-900/90 p-1 rounded-xl border border-gray-800">
-      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="px-4 py-1.5 rounded-lg text-sm font-medium transition-all bg-emerald-500 text-gray-950 font-semibold shadow">
-        Live Scanner
+    <nav class="flex space-x-1 bg-gray-900/90 p-0.5 rounded-lg border border-gray-800">
+      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="px-2.5 py-1 rounded-md text-xs font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-7">
+        Scanner
       </button>
-      <button id="tab-history-btn" onclick="switchTab('history')" class="px-4 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition-all">
-        Auditoria Histórica
+      <button id="tab-history-btn" onclick="switchTab('history')" class="px-2.5 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-all h-7">
+        Auditoria
       </button>
     </nav>
 
-    <div class="hidden md:flex items-center space-x-3">
-      <span class="text-xs text-gray-400">Status API: <span id="api-status-dot" class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span></span>
+    <div class="hidden sm:flex items-center space-x-2">
+      <span class="text-[10px] text-gray-400">API: <span id="api-status-dot" class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span></span>
     </div>
   </div>
 </header>
 
-<main class="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full space-y-8">
+<main class="max-w-[1800px] mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8 flex-grow w-full space-y-4 sm:space-y-6">
 
-  <!-- ==================== TAB 1: LIVE SCANNER (O Core Original + Visual Moderno) ==================== -->
-  <section id="tab-scanner" class="space-y-6">
+  <!-- ==================== TAB 1: LIVE SCANNER ==================== -->
+  <section id="tab-scanner" class="space-y-4">
 
-    <!-- Configuração de Conexão (Compacta e Ocultável/Limpa) -->
-    <div class="glass-panel p-5 rounded-2xl">
-      <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+    <!-- Configuração de Conexão -->
+    <div class="glass-panel p-3 sm:p-5 rounded-xl sm:rounded-2xl">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
         <div>
-          <h3 class="text-sm font-bold text-white uppercase tracking-wider">Configuração do Servidor API</h3>
-          <p class="text-xs text-gray-400">Endereço atual do backend hospedado no Render.</p>
+          <h3 class="text-xs font-bold text-white uppercase tracking-wider">Servidor API</h3>
         </div>
-        <div class="flex items-center gap-2 w-full md:w-auto">
-          <input id="api" class="max-w-md" value="https://nba-props-scanner.onrender.com">
-          <button onclick="testar()" class="secondary whitespace-nowrap">Testar conexão</button>
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <input id="api" class="text-xs" value="https://nba-props-scanner.onrender.com">
+          <button onclick="testar()" class="secondary whitespace-nowrap text-xs h-9">Testar</button>
         </div>
       </div>
-      <div id="status" class="status mt-3">Aguardando verificação do servidor.</div>
+      <div id="status" class="status mt-2 text-[11px]">Aguardando verificação...</div>
     </div>
 
     <!-- Agenda de Jogos -->
-    <div class="glass-panel p-5 rounded-2xl">
-      <h2 class="text-lg font-bold text-white mb-3">📅 Agenda de Jogos</h2>
-      <div class="flex flex-col sm:flex-row gap-3 items-end">
+    <div class="glass-panel p-3 sm:p-5 rounded-xl sm:rounded-2xl">
+      <h2 class="text-sm sm:text-lg font-bold text-white mb-2">📅 Agenda de Jogos</h2>
+      <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
         <div class="w-full sm:w-64">
-          <label class="block text-xs font-medium text-gray-400 mb-1">Data dos jogos</label>
+          <label class="block text-[10px] sm:text-xs font-medium text-gray-400 mb-1">Data</label>
           <input type="date" id="data">
         </div>
-        <button onclick="carregarJogos()">Buscar jogos do dia</button>
+        <button onclick="carregarJogos()" class="w-full sm:w-auto">Buscar Jogos</button>
       </div>
-      <div id="jogos" class="mt-4"></div>
+      <div id="jogos" class="mt-2"></div>
     </div>
 
     <!-- Scanner de Jogadores -->
-    <div class="glass-panel p-5 rounded-2xl space-y-4">
+    <div class="glass-panel p-3 sm:p-5 rounded-xl sm:rounded-2xl space-y-3">
       <div>
-        <h2 class="text-lg font-bold text-white">🔎 Scanner Estatístico de Jogadores</h2>
-        <p class="text-xs text-gray-400 mt-0.5">Selecione o mercado desejado para executar a triagem baseada em desempenho recente, minutagem e contexto defensivo.</p>
+        <h2 class="text-sm sm:text-lg font-bold text-white">🔎 Scanner Estatístico</h2>
+        <p class="text-[11px] text-gray-400 mt-0.5">Selecione o mercado para triagem estatística.</p>
       </div>
 
       <div class="actions">
         <button onclick="buscar('points')">Pontos</button>
         <button onclick="buscar('assists')">Assistências</button>
         <button onclick="buscar('rebounds')">Rebotes</button>
-        <button onclick="buscar('threes')">Tentativas de 3 pontos</button>
-        <button onclick="buscar('attempts')">Tentativas totais</button>
+        <button onclick="buscar('threes')">3 Pontos</button>
+        <button onclick="buscar('attempts')" class="col-span-2 sm:col-span-1">Chutes Tentados</button>
       </div>
 
       <div id="resultado"></div>
     </div>
 
-    <!-- Seção explicativa original mantida -->
-    <div class="glass-panel p-6 rounded-2xl text-sm text-gray-400 space-y-3">
-      <h3 class="text-white font-bold text-base">Como interpretar as métricas</h3>
-      <p>O Scanner organiza candidatos com base nas médias recentes e nos minutos em quadra. A <b>defesa ajustada</b> cruza a minutagem do atleta com o comportamento do adversário por posição. Valores positivos indicam <span class="text-red-400 font-semibold">Resistência</span> e negativos indicam <span class="text-emerald-400 font-semibold">Favorável</span>.</p>
+    <!-- Explicação -->
+    <div class="glass-panel p-4 rounded-xl text-xs text-gray-400 space-y-2">
+      <h3 class="text-white font-bold text-xs">Como interpretar</h3>
+      <p class="text-[11px] leading-relaxed">A <b>defesa ajustada</b> cruza a minutagem do atleta com o comportamento defensivo do adversário por posição. <span class="text-red-400 font-semibold">Resistência (+)</span> indica média do jogador acima da defesa; <span class="text-emerald-400 font-semibold">Favorável (-)</span> indica oportunidade.</p>
     </div>
 
   </section>
 
 
-  <!-- ==================== TAB 2: AUDITORIA HISTÓRICA (Novo Painel de Validação) ==================== -->
-  <section id="tab-history" class="space-y-6 hidden">
+  <!-- ==================== TAB 2: AUDITORIA HISTÓRICA ==================== -->
+  <section id="tab-history" class="space-y-4 hidden">
     
-    <div class="glass-panel p-6 rounded-2xl border-l-4 border-l-emerald-500">
-      <h2 class="text-xl font-bold text-white mb-1">Painel Transparente de Auditoria Histórica</h2>
-      <p class="text-sm text-gray-400">Avaliação do desempenho acumulado do modelo, erro absoluto médio (MAE L5 vs L10) e calibração por faixa de score, sem alteração na fórmula base.</p>
+    <div class="glass-panel p-4 rounded-xl border-l-4 border-l-emerald-500">
+      <h2 class="text-sm sm:text-xl font-bold text-white mb-0.5">Auditoria Histórica</h2>
+      <p class="text-[11px] sm:text-sm text-gray-400">Avaliação acumulada da precisão do modelo (MAE L5 vs L10) sem alterações de fórmula.</p>
     </div>
 
-    <div class="flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1">Mercado de Auditoria</label>
-        <select id="hist-market" onchange="fetchHistoryValidation()" class="bg-darkbg border border-gray-700 rounded-xl px-4 py-2 text-sm text-white">
+    <div class="flex items-center justify-between gap-2">
+      <div class="w-1/2 sm:w-auto">
+        <label class="block text-[10px] font-medium text-gray-400 mb-1">Mercado</label>
+        <select id="hist-market" onchange="fetchHistoryValidation()" class="bg-darkbg border border-gray-700 rounded-lg px-2 py-1 text-xs text-white">
           <option value="assists">Assistências</option>
           <option value="points">Pontos</option>
           <option value="rebounds">Rebotes</option>
-          <option value="threes">3 Pontos Tentados</option>
+          <option value="threes">3 Pontos</option>
         </select>
       </div>
-      <div class="text-xs text-gray-400">Amostra auditada: <span id="hist-sample-count" class="font-bold text-white">0</span> resultados</div>
+      <div class="text-[11px] text-gray-400">Amostra: <span id="hist-sample-count" class="font-bold text-white">0</span></div>
     </div>
 
     <!-- 4 KPIs Principais -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="glass-panel p-5 rounded-2xl">
-        <span class="text-xs font-medium text-gray-400 uppercase">Erro Médio (L5 MAE)</span>
-        <div class="text-2xl font-bold text-emerald-400 mt-2" id="kpi-l5-mae">--</div>
-        <span class="text-xs text-gray-500">Desvio absoluto L5</span>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+      <div class="glass-panel p-3 rounded-xl">
+        <span class="text-[10px] font-medium text-gray-400 uppercase">Erro L5 (MAE)</span>
+        <div class="text-lg sm:text-2xl font-bold text-emerald-400 mt-1" id="kpi-l5-mae">--</div>
       </div>
-      <div class="glass-panel p-5 rounded-2xl">
-        <span class="text-xs font-medium text-gray-400 uppercase">Erro Médio (L10 MAE)</span>
-        <div class="text-2xl font-bold text-teal-400 mt-2" id="kpi-l10-mae">--</div>
-        <span class="text-xs text-gray-500">Desvio absoluto L10</span>
+      <div class="glass-panel p-3 rounded-xl">
+        <span class="text-[10px] font-medium text-gray-400 uppercase">Erro L10 (MAE)</span>
+        <div class="text-lg sm:text-2xl font-bold text-teal-400 mt-1" id="kpi-l10-mae">--</div>
       </div>
-      <div class="glass-panel p-5 rounded-2xl">
-        <span class="text-xs font-medium text-gray-400 uppercase">Correlação Pearson</span>
-        <div class="text-2xl font-bold text-indigo-400 mt-2" id="kpi-pearson">--</div>
-        <span class="text-xs text-gray-500">Score vs Realidade</span>
+      <div class="glass-panel p-3 rounded-xl">
+        <span class="text-[10px] font-medium text-gray-400 uppercase">Pearson</span>
+        <div class="text-lg sm:text-2xl font-bold text-indigo-400 mt-1" id="kpi-pearson">--</div>
       </div>
-      <div class="glass-panel p-5 rounded-2xl">
-        <span class="text-xs font-medium text-gray-400 uppercase">Taxa de Conclusão</span>
-        <div class="text-2xl font-bold text-gray-200 mt-2" id="kpi-completion">--%</div>
-        <span class="text-xs text-gray-500">Snapshots auditados</span>
+      <div class="glass-panel p-3 rounded-xl">
+        <span class="text-[10px] font-medium text-gray-400 uppercase">Conclusão</span>
+        <div class="text-lg sm:text-2xl font-bold text-gray-200 mt-1" id="kpi-completion">--%</div>
       </div>
     </div>
 
-    <!-- Tabela de Calibração por Faixa de Score -->
-    <div class="glass-panel p-6 rounded-2xl space-y-4">
-      <h3 class="text-md font-semibold text-white">📊 Calibração e Desempenho Real por Faixa de Score</h3>
+    <!-- Tabela de Calibração -->
+    <div class="glass-panel p-3 sm:p-5 rounded-xl space-y-2">
+      <h3 class="text-xs sm:text-md font-semibold text-white">📊 Calibração por Faixa de Score</h3>
       <div class="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Faixa de Score</th>
-              <th>Amostra (Jogos)</th>
-              <th>Média Real Produzida</th>
-              <th>Erro MAE (L5)</th>
-              <th>Erro MAE (L10)</th>
-              <th>Correlação (Pearson)</th>
+              <th>Faixa</th>
+              <th>Jogos</th>
+              <th>Média Real</th>
+              <th>MAE L5</th>
+              <th>MAE L10</th>
+              <th>Pearson</th>
             </tr>
           </thead>
           <tbody id="score-bands-table" class="text-gray-300">
@@ -255,10 +260,10 @@
       </div>
     </div>
 
-    <!-- Gráfico de Evolução Diária -->
-    <div class="glass-panel p-6 rounded-2xl space-y-4">
-      <h3 class="text-md font-semibold text-white">Evolução Diária do Erro Médio (MAE)</h3>
-      <div class="h-64 w-full">
+    <!-- Gráfico de Evolução -->
+    <div class="glass-panel p-3 sm:p-5 rounded-xl space-y-2">
+      <h3 class="text-xs sm:text-md font-semibold text-white">Evolução do Erro Médio (MAE)</h3>
+      <div class="h-48 sm:h-64 w-full">
         <canvas id="dailyErrorChart"></canvas>
       </div>
     </div>
@@ -268,14 +273,13 @@
 </main>
 
 <!-- Footer -->
-<footer class="glass-panel border-t border-gray-800 py-6 text-center text-xs text-gray-500 mt-12">
-  <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
-    <p>© 2026 NBA Props Analytics Pro. Todos os direitos reservados.</p>
-    <p class="text-gray-600">Ferramenta estatística de apoio à tomada de decisão.</p>
+<footer class="glass-panel border-t border-gray-800 py-4 text-center text-[10px] text-gray-500 mt-6">
+  <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-1">
+    <p>© 2026 NBA Props Analytics Pro</p>
   </div>
 </footer>
 
-<!-- MODAL DE ANÁLISE DETALHADA (Mantido 100% fiel à sua lógica original) -->
+<!-- MODAL DE ANÁLISE DETALHADA -->
 <div id="analysisModal" class="modal-overlay" onclick="fecharModalFora(event)">
   <div class="modal">
     <div class="modal-header">
@@ -313,7 +317,6 @@ let mercadoAtual = '';
 let resultadoAtual = null;
 let chartInstance = null;
 
-// Alternância de Abas (Live Scanner vs Auditoria)
 function switchTab(tab) {
   const scannerTab = document.getElementById('tab-scanner');
   const historyTab = document.getElementById('tab-history');
@@ -323,13 +326,13 @@ function switchTab(tab) {
   if (tab === 'scanner') {
     scannerTab.classList.remove('hidden');
     historyTab.classList.add('hidden');
-    scannerBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium transition-all bg-emerald-500 text-gray-950 font-semibold shadow";
-    historyBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition-all";
+    scannerBtn.className = "px-2.5 py-1 rounded-md text-xs font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-7";
+    historyBtn.className = "px-2.5 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-all h-7";
   } else {
     scannerTab.classList.add('hidden');
     historyTab.classList.remove('hidden');
-    historyBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium transition-all bg-emerald-500 text-gray-950 font-semibold shadow";
-    scannerBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition-all";
+    historyBtn.className = "px-2.5 py-1 rounded-md text-xs font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-7";
+    scannerBtn.className = "px-2.5 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-all h-7";
     fetchHistoryValidation();
   }
 }
@@ -368,7 +371,7 @@ function blocoPeriodo(valor, periodo, jogos=null, apps=null, minutos=null, casas
   html += '<span class="period-label">' + periodo + '</span>';
   html += '<span class="metric-value">' + numero(valor, casas) + '</span>';
   if(jogos !== null || apps !== null || minutos !== null){
-    html += '<span class="sample">' + participacoes(jogos) + ' jogos · ' + participacoes(apps) + ' part. · ' + numero(minutos, 0) + ' min</span>';
+    html += '<span class="sample">' + participacoes(jogos) + ' jg · ' + participacoes(apps) + ' part. · ' + numero(minutos, 0) + 'm</span>';
   }
   html += '</div>';
   return html;
@@ -382,17 +385,9 @@ function participacaoEquipe(jogos, total, percentual){
 
 function celulaParticipacaoEquipe(p){
   return '<td class="new-metric"><div class="split-metric">' +
-    '<div class="split-item"><span class="period-label">L5 equipe</span><span class="metric-value">' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</span></div>' +
-    '<div class="split-item"><span class="period-label">L10 equipe</span><span class="metric-value">' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</span></div>' +
+    '<div class="split-item"><span class="period-label">L5 eq</span><span class="metric-value">' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</span></div>' +
+    '<div class="split-item"><span class="period-label">L10 eq</span><span class="metric-value">' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</span></div>' +
     '</div></td>';
-}
-
-function celulaAjustada(v5, v10, j5, j10, a5, a10, m5, m10){
-  return '<td class="new-metric"><div class="split-metric">' + blocoPeriodo(v5, 'L5', j5, a5, m5, 2) + blocoPeriodo(v10, 'L10', j10, a10, m10, 2) + '</div></td>';
-}
-
-function celulaDupla(v5, v10, casas=2){
-  return '<td class="new-metric"><div class="split-metric">' + blocoPeriodo(v5, 'L5', null, null, null, casas) + blocoPeriodo(v10, 'L10', null, null, null, casas) + '</div></td>';
 }
 
 function diferencaVsDefesa(vJogador, pDefesa){
@@ -423,8 +418,8 @@ function statusDiferenca(valor){
   if(valor === null || valor === undefined) return '—';
   const n = Number(valor);
   if(!Number.isFinite(n)) return '—';
-  if(n > 0) return '🔴 Resistência';
-  if(n < 0) return '🟢 Favorável';
+  if(n > 0) return '🔴 Resis.';
+  if(n < 0) return '🟢 Favor.';
   return '⚪ Neutro';
 }
 
@@ -445,14 +440,16 @@ function celulaDiferenca(v5, v10){
 }
 
 async function testar(){
-  status.innerText = 'Testando conexão com a API...';
+  status.innerText = 'Testando conexão...';
   try{
     const r = await requisicao('/health');
-    status.innerText = '✅ Conectado com sucesso! Servidor: ' + r.service + ' | Versão: ' + (r.version || 'N/A');
-    document.getElementById('api-status-dot').className = "inline-block w-2 h-2 rounded-full bg-emerald-400";
+    status.innerText = '✅ Conectado: ' + r.service + ' (v' + (r.version || '1.0') + ')';
+    const dot = document.getElementById('api-status-dot');
+    if(dot) dot.className = "inline-block w-2 h-2 rounded-full bg-emerald-400";
   }catch(e){
-    status.innerText = '❌ Falha ao conectar: ' + e.message;
-    document.getElementById('api-status-dot').className = "inline-block w-2 h-2 rounded-full bg-red-500";
+    status.innerText = '❌ Erro: ' + e.message;
+    const dot = document.getElementById('api-status-dot');
+    if(dot) dot.className = "inline-block w-2 h-2 rounded-full bg-red-500";
   }
 }
 
@@ -462,7 +459,7 @@ async function carregarJogos(){
   try{
     const r = await requisicao('/games?date=' + data.value);
     if(!r.games || !r.games.length){
-      box.innerHTML = '<p class="text-sm text-gray-400">Nenhum jogo encontrado para esta data.</p>';
+      box.innerHTML = '<p class="text-xs text-gray-400">Nenhum jogo encontrado.</p>';
       return;
     }
     let html = '<div class="tablewrap"><table>';
@@ -475,7 +472,7 @@ async function carregarJogos(){
     html += '</table></div>';
     box.innerHTML = html;
   }catch(e){
-    box.innerHTML = '<p class="text-sm text-red-400">Erro ao buscar jogos: ' + escapeHtml(e.message) + '</p>';
+    box.innerHTML = '<p class="text-xs text-red-400">Erro: ' + escapeHtml(e.message) + '</p>';
   }
 }
 
@@ -503,7 +500,7 @@ function filtrosHtml(){
       </select>
     </div>
     <div class="filter-group">
-      <label for="filtroDiferenca">CONTEXTO DEFENSIVO</label>
+      <label for="filtroDiferenca">DEFESA</label>
       <select id="filtroDiferenca">
         <option value="all">Todos</option>
         <option value="positive">Positiva</option>
@@ -523,7 +520,7 @@ function filtrosHtml(){
         <option value="C">C</option>
       </select>
     </div>
-    <div class="filter-group">
+    <div class="filter-group col-span-2 sm:col-span-1">
       <label for="filtroOrdenacao">ORDENAR POR</label>
       <select id="filtroOrdenacao">
         <option value="score">Score ↓</option>
@@ -533,9 +530,9 @@ function filtrosHtml(){
         <option value="minutes">Minutos L5 ↓</option>
       </select>
     </div>
-    <div class="filter-group flex justify-end">
+    <div class="filter-group col-span-2 sm:col-span-1 flex justify-end">
       <label>&nbsp;</label>
-      <button onclick="limparFiltros()" class="secondary w-full">Limpar filtros</button>
+      <button onclick="limparFiltros()" class="secondary w-full">Limpar</button>
     </div>
   </div>`;
 }
@@ -590,18 +587,18 @@ function renderizarResultados(){
   if(!box) return;
   const filtrados = filtrarCandidatos();
 
-  let html = '<div class="flex flex-wrap items-center justify-between gap-2 my-4 p-3 bg-gray-900 border border-gray-800 rounded-xl text-sm">';
-  html += '<div class="font-bold text-white">' + filtrados.length + ' de ' + candidatosAtuais.length + ' jogadores exibidos</div>';
-  html += '<div class="text-gray-400 text-xs">Filtros dinâmicos aplicados com sucesso.</div></div>';
+  let html = '<div class="flex items-center justify-between gap-2 my-2 p-2 bg-gray-900 border border-gray-800 rounded-lg text-xs">';
+  html += '<div class="font-bold text-white">' + filtrados.length + ' de ' + candidatosAtuais.length + ' exibidos</div>';
+  html += '<div class="text-gray-400 text-[10px]">Deslize a tabela ➔</div></div>';
 
   if(!filtrados.length){
-    html += '<div class="glass-panel p-8 text-center text-gray-400 rounded-xl"><b>Nenhum jogador atende aos critérios selecionados.</b><br><small>Tente flexibilizar os filtros.</small></div>';
+    html += '<div class="glass-panel p-6 text-center text-gray-400 rounded-xl text-xs"><b>Nenhum jogador encontrado.</b><br><small>Ajuste os filtros.</small></div>';
     box.innerHTML = html;
     return;
   }
 
   html += '<div class="tablewrap"><table>';
-  html += '<tr><th>Jogador</th><th>Equipe</th><th>Posição</th><th>Adversário</th><th>L5</th><th>L10</th><th>Minutos L5</th><th>Presença na equipe</th><th>Score</th><th>Defesa ajustada</th><th>Dif. vs defesa</th><th>Análise</th></tr>';
+  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min L5</th><th>Presença</th><th>Score</th><th>Defesa ajustada</th><th>Dif. vs defesa</th><th>Ação</th></tr>';
 
   filtrados.forEach(p => {
     const proj5 = p.opponent_position_minutes_filtered_defense_l5_projected;
@@ -651,7 +648,7 @@ function abrirAnalise(indice){
 
   const modal = document.getElementById('analysisModal');
   document.getElementById('modalPlayer').innerText = p.player || 'Jogador';
-  document.getElementById('modalMeta').innerText = (p.team || '—') + ' · ' + (p.position || '—') + ' · vs ' + (p.opponent || '—') + ' · ' + (resultadoAtual?.market_label || mercadoAtual);
+  document.getElementById('modalMeta').innerText = (p.team || '—') + ' · ' + (p.position || '—') + ' vs ' + (p.opponent || '—');
 
   const proj5 = p.opponent_position_minutes_filtered_defense_l5_projected;
   const proj10 = p.opponent_position_minutes_filtered_defense_l10_projected;
@@ -668,7 +665,7 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>🛡️ Defesa Ajustada</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média ajustada</td><td>' + numero(p.opponent_position_minutes_filtered_defense_l5_avg) + '</td><td>' + numero(p.opponent_position_minutes_filtered_defense_l10_avg) + '</td></tr><tr><td>Taxa/minuto</td><td>' + numero(p.opponent_position_minutes_filtered_defense_l5_per_minute, 4) + '</td><td>' + numero(p.opponent_position_minutes_filtered_defense_l10_per_minute, 4) + '</td></tr><tr><td>Projeção</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr></table></div>';
   html += '</div>';
 
-  html += '<div class="analysis-note"><b>Como ler esta análise:</b> Compara a média do atleta com o volume permitido pela defesa defensiva por posição com minutagem equivalente. Valores positivos apontam resistência e negativos apontam cenários favoráveis.</div>';
+  html += '<div class="analysis-note"><b>Legenda:</b> Diferença positiva (+) indica resistência. Diferença negativa (-) indica cenário favorável.</div>';
 
   document.getElementById('modalBody').innerHTML = html;
   modal.classList.add('active');
@@ -688,20 +685,20 @@ document.addEventListener('keydown', e => { if(e.key === 'Escape') fecharModal()
 
 async function buscar(mercado){
   const box = document.getElementById('resultado');
-  box.innerHTML = '<div class="status">Analisando dados estatísticos na ESPN...</div>';
+  box.innerHTML = '<div class="status">Consultando estatísticas...</div>';
   try{
     const r = await requisicao('/candidates?date=' + data.value + '&market=' + mercado + '&limit=20');
     if(!r.candidates || !r.candidates.length){
-      box.innerHTML = '<p class="text-sm text-gray-400 mt-2">Nenhum candidato retornado para este mercado na data selecionada.</p>';
+      box.innerHTML = '<p class="text-xs text-gray-400 mt-2">Nenhum candidato retornado.</p>';
       return;
     }
     candidatosAtuais = r.candidates;
     mercadoAtual = mercado;
     resultadoAtual = r;
 
-    let html = '<div class="space-y-4 mt-4">';
-    html += '<div class="flex justify-between items-center"><h3 class="text-md font-bold text-emerald-400">' + escapeHtml(r.market_label) + ' — ' + escapeHtml(r.date) + '</h3></div>';
-    html += '<div class="glass-panel p-4 rounded-xl">' + filtrosHtml() + '</div>';
+    let html = '<div class="space-y-3 mt-3">';
+    html += '<div class="flex justify-between items-center"><h3 class="text-xs font-bold text-emerald-400 uppercase tracking-wider">' + escapeHtml(r.market_label) + ' — ' + escapeHtml(r.date) + '</h3></div>';
+    html += '<div class="glass-panel p-3 rounded-xl">' + filtrosHtml() + '</div>';
     html += '<div id="resultadosLista"></div>';
     html += '</div>';
 
@@ -709,11 +706,10 @@ async function buscar(mercado){
     ativarFiltros();
     renderizarResultados();
   }catch(e){
-    box.innerHTML = '<div class="status text-red-400">❌ Erro ao buscar candidatos: ' + escapeHtml(e.message) + '</div>';
+    box.innerHTML = '<div class="status text-red-400">❌ Erro ao buscar: ' + escapeHtml(e.message) + '</div>';
   }
 }
 
-// 2. BUSCAR DADOS DE AUDITORIA HISTÓRICA DO NOVO ENDPOINT
 async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
   try {
@@ -741,7 +737,7 @@ async function fetchHistoryValidation() {
 
     renderDailyChart(res.daily);
   } catch (e) {
-    console.error('Erro ao buscar auditoria histórica:', e);
+    console.error('Erro na auditoria:', e);
   }
 }
 
@@ -758,17 +754,17 @@ function renderDailyChart(dailyData) {
     data: {
       labels: labels,
       datasets: [
-        { label: 'Erro L5 (MAE)', data: l5Data, borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', tension: 0.3, fill: true },
-        { label: 'Erro L10 (MAE)', data: l10Data, borderColor: '#2dd4bf', borderDash: [5,5], tension: 0.3, fill: false }
+        { label: 'Erro L5', data: l5Data, borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', tension: 0.3, fill: true },
+        { label: 'Erro L10', data: l10Data, borderColor: '#2dd4bf', borderDash: [5,5], tension: 0.3, fill: false }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#9ca3af' } } },
+      plugins: { legend: { labels: { color: '#9ca3af', font: { size: 10 } } } },
       scales: {
-        x: { ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } },
-        y: { ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } }
+        x: { ticks: { color: '#6b7280', font: { size: 9 } }, grid: { color: '#1f2937' } },
+        y: { ticks: { color: '#6b7280', font: { size: 9 } }, grid: { color: '#1f2937' } }
       }
     }
   });
