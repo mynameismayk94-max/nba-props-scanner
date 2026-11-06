@@ -2573,7 +2573,7 @@ def collect_candidates(
         return team, defense
 
     with ThreadPoolExecutor(
-        max_workers=3
+        max_workers=4
     ) as executor:
 
         futures = [
