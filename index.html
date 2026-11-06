@@ -86,6 +86,26 @@
   .market-button:hover { background: #1f2937; border-color: #4b5563; }
   .market-button.active, .market-button.active:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
   .schedule-search-button { min-height: 36px; height: 36px; padding: 6px 12px; }
+
+  /* Cards de confronto da agenda */
+  .games-list { display: grid; gap: 8px; margin-top: 8px; }
+  .game-card { background: rgba(3, 7, 18, 0.62); border: 1px solid #1f2937; border-radius: 10px; padding: 10px; }
+  .game-card:hover { border-color: #374151; background: rgba(17, 24, 39, 0.82); }
+  .game-status { font-size: 9px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; text-align: center; margin-bottom: 8px; }
+  .game-matchup { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
+  .game-team { min-width: 0; text-align: center; }
+  .game-team-name { font-size: 11px; font-weight: 700; color: #f3f4f6; line-height: 1.2; }
+  .game-team-abbr { display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px; min-width: 38px; height: 26px; padding: 0 8px; border-radius: 7px; background: #111827; border: 1px solid #374151; color: #d1d5db; font-size: 11px; font-weight: 800; letter-spacing: .03em; }
+  .game-team-label { display: block; font-size: 8px; color: #6b7280; margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; }
+  .game-vs { color: #6b7280; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+  .games-empty { font-size: 10px; color: #9ca3af; padding: 6px 2px; }
+  @media (min-width: 640px) {
+    .games-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (min-width: 1024px) {
+    .games-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
   @media (min-width: 640px) {
     .actions { grid-template-columns: repeat(6, minmax(0, 1fr)); }
     .market-button:nth-child(5) { grid-column: 4 / span 2; }
@@ -467,22 +487,43 @@ async function testar(){
 
 async function carregarJogos(){
   const box = document.getElementById('jogos');
-  box.innerHTML = 'Carregando...';
+  box.innerHTML = '<div class="games-empty">Carregando jogos...</div>';
   try{
     const r = await requisicao('/games?date=' + data.value);
     if(!r.games || !r.games.length){
-      box.innerHTML = '<p class="text-[10px] text-gray-400">Nenhum jogo.</p>';
+      box.innerHTML = '<div class="games-empty">Nenhum jogo encontrado para esta data.</div>';
       return;
     }
-    let html = '<div class="tablewrap"><table>';
-    html += '<tr><th>Visitante</th><th>Mandante</th><th>Status</th></tr>';
+
+    let html = '<div class="games-list">';
     r.games.forEach(j => {
-      html += '<tr><td>' + escapeHtml(j.away.abbr) + '</td><td>' + escapeHtml(j.home.abbr) + '</td><td>' + escapeHtml(j.status) + '</td></tr>';
+      const awayAbbr = escapeHtml(j.away?.abbr || '—');
+      const awayName = escapeHtml(j.away?.name || 'Visitante');
+      const homeAbbr = escapeHtml(j.home?.abbr || '—');
+      const homeName = escapeHtml(j.home?.name || 'Mandante');
+      const status = escapeHtml(j.status || 'Não informado');
+
+      html += '<div class="game-card">';
+      html += '<div class="game-status">' + status + '</div>';
+      html += '<div class="game-matchup">';
+      html += '<div class="game-team">';
+      html += '<span class="game-team-abbr">' + homeAbbr + '</span>';
+      html += '<div class="game-team-name">' + homeName + '</div>';
+      html += '<span class="game-team-label">Casa</span>';
+      html += '</div>';
+      html += '<div class="game-vs">VS</div>';
+      html += '<div class="game-team">';
+      html += '<span class="game-team-abbr">' + awayAbbr + '</span>';
+      html += '<div class="game-team-name">' + awayName + '</div>';
+      html += '<span class="game-team-label">Fora</span>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
     });
-    html += '</table></div>';
+    html += '</div>';
     box.innerHTML = html;
   }catch(e){
-    box.innerHTML = '<p class="text-[10px] text-red-400">Erro ao carregar jogos.</p>';
+    box.innerHTML = '<div class="games-empty text-red-400">Erro ao carregar jogos.</div>';
   }
 }
 
