@@ -1152,7 +1152,7 @@ def get_completed_team_games(
 
 
 @lru_cache(maxsize=500)
-def get_game_summary(
+def _get_cached_game_summary(
     event_id: str
 ) -> dict:
 
@@ -1160,6 +1160,28 @@ def get_game_summary(
         SUMMARY_URL,
         {"event": event_id}
     )
+
+
+# Evita que equipes diferentes disparem simultaneamente a mesma consulta
+# antes que o resultado seja armazenado no cache. Locks por faixa mantêm
+# o controle de memória limitado, sem serializar todas as partidas.
+_GAME_SUMMARY_LOCKS = tuple(
+    threading.Lock()
+    for _ in range(64)
+)
+
+
+def get_game_summary(
+    event_id: str
+) -> dict:
+
+    event_id = str(event_id)
+    lock = _GAME_SUMMARY_LOCKS[
+        hash(event_id) % len(_GAME_SUMMARY_LOCKS)
+    ]
+
+    with lock:
+        return _get_cached_game_summary(event_id)
 
 
 @lru_cache(maxsize=60)
