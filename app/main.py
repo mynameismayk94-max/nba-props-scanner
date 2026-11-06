@@ -2,6 +2,7 @@ import logging
 import time
 import re
 import os
+import threading
 
 from datetime import datetime, date
 from functools import lru_cache
@@ -336,6 +337,22 @@ def season_year(selected_date: date) -> int:
 # CONSULTA ESPN
 # ============================================================
 
+# Cada thread mantém sua própria sessão HTTP para reutilizar conexões
+# sem compartilhar requests.Session entre threads.
+_http_local = threading.local()
+
+
+def get_http_session():
+    session = getattr(_http_local, "session", None)
+
+    if session is None:
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        _http_local.session = session
+
+    return session
+
+
 def request_json(
     url: str,
     params=None
@@ -343,10 +360,9 @@ def request_json(
 
     try:
 
-        response = requests.get(
+        response = get_http_session().get(
             url,
             params=params,
-            headers=HEADERS,
             timeout=(8, 25)
         )
 
