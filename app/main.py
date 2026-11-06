@@ -21,7 +21,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.11.0"
+    version="3.12.0"
 )
 
 app.add_middleware(
@@ -64,6 +64,7 @@ def initialize_database():
     try:
         with get_database_connection() as connection:
             with connection.cursor() as cursor:
+
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS candidate_snapshots (
@@ -86,12 +87,14 @@ def initialize_database():
                     )
                     """
                 )
+
                 cursor.execute(
                     """
                     CREATE INDEX IF NOT EXISTS idx_candidate_snapshots_date_market
                     ON candidate_snapshots (selected_date, market)
                     """
                 )
+
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS candidate_results (
@@ -111,6 +114,7 @@ def initialize_database():
                     )
                     """
                 )
+
                 cursor.execute(
                     """
                     CREATE INDEX IF NOT EXISTS idx_candidate_results_date_market
@@ -118,27 +122,43 @@ def initialize_database():
                     """
                 )
 
-        logger.info("Banco Neon inicializado. Tabela candidate_snapshots disponível.")
+        logger.info(
+            "Banco Neon inicializado. Tabela candidate_snapshots disponível."
+        )
+
         return True
 
     except Exception as error:
-        logger.exception("Não foi possível inicializar o banco Neon: %s", error)
+        logger.exception(
+            "Não foi possível inicializar o banco Neon: %s",
+            error
+        )
         return False
 
 
-def save_candidate_snapshots(selected_date, market, candidates):
-    """Salva todos os candidatos antes do limite de exibição, sem sobrescrever."""
+def save_candidate_snapshots(
+    selected_date,
+    market,
+    candidates
+):
+    """
+    Salva todos os candidatos antes do limite de exibição,
+    sem sobrescrever a fotografia original.
+    """
 
     if not candidates:
         return 0
 
     if not DATABASE_URL:
-        logger.warning("Histórico não salvo: DATABASE_URL não configurada.")
+        logger.warning(
+            "Histórico não salvo: DATABASE_URL não configurada."
+        )
         return 0
 
     rows = []
 
     for candidate in candidates:
+
         player_id = candidate.get("player_id")
 
         if not player_id:
@@ -148,48 +168,77 @@ def save_candidate_snapshots(selected_date, market, candidates):
             )
             continue
 
-        rows.append((
-            selected_date,
-            market,
-            str(player_id),
-            candidate.get("player", ""),
-            candidate.get("team"),
-            candidate.get("opponent"),
-            candidate.get("position"),
-            candidate.get("triage_score"),
-            candidate.get("last5_avg"),
-            candidate.get("last10_avg"),
-            candidate.get("minutes_last5_avg"),
-            Jsonb(candidate)
-        ))
+        rows.append(
+            (
+                selected_date,
+                market,
+                str(player_id),
+                candidate.get("player", ""),
+                candidate.get("team"),
+                candidate.get("opponent"),
+                candidate.get("position"),
+                candidate.get("triage_score"),
+                candidate.get("last5_avg"),
+                candidate.get("last10_avg"),
+                candidate.get("minutes_last5_avg"),
+                Jsonb(candidate)
+            )
+        )
 
     if not rows:
         return 0
 
     try:
+
         with get_database_connection() as connection:
+
             with connection.cursor() as cursor:
+
                 cursor.executemany(
                     """
                     INSERT INTO candidate_snapshots (
-                        selected_date, market, player_id, player_name,
-                        team, opponent, position, triage_score,
-                        last5_avg, last10_avg, minutes_last5_avg, payload
+                        selected_date,
+                        market,
+                        player_id,
+                        player_name,
+                        team,
+                        opponent,
+                        position,
+                        triage_score,
+                        last5_avg,
+                        last10_avg,
+                        minutes_last5_avg,
+                        payload
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (selected_date, market, player_id) DO NOTHING
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (
+                        selected_date,
+                        market,
+                        player_id
+                    ) DO NOTHING
                     """,
                     rows
                 )
 
         logger.info(
             "Histórico processado: %s candidatos enviados para %s/%s.",
-            len(rows), selected_date, market
+            len(rows),
+            selected_date,
+            market
         )
+
         return len(rows)
 
     except Exception as error:
-        logger.exception("Falha ao salvar histórico de candidatos: %s", error)
+
+        logger.exception(
+            "Falha ao salvar histórico de candidatos: %s",
+            error
+        )
+
         return 0
 
 
@@ -197,34 +246,61 @@ def save_candidate_snapshots(selected_date, market, candidates):
 def startup_database():
     initialize_database()
 
-HEADERS = {"User-Agent": "Mozilla/5.0 NBA Props Scanner"}
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 NBA Props Scanner"
+}
+
 
 SCOREBOARD_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/"
     "basketball/nba/scoreboard"
 )
 
+
 ROSTER_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/"
     "basketball/nba/teams/{team}/roster"
 )
+
 
 GAMELOG_URL = (
     "https://site.web.api.espn.com/apis/common/v3/sports/"
     "basketball/nba/athletes/{athlete}/gamelog"
 )
 
+
 SUMMARY_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/"
     "basketball/nba/summary"
 )
 
+
 MARKETS = {
-    "points": {"index": 13, "label": "Pontos"},
-    "assists": {"index": 8, "label": "Assistências"},
-    "rebounds": {"index": 7, "label": "Rebotes"},
-    "threes": {"index": 3, "label": "Tentativas de 3 pontos"},
-    "attempts": {"index": 1, "label": "Tentativas totais"}
+    "points": {
+        "index": 13,
+        "label": "Pontos"
+    },
+
+    "assists": {
+        "index": 8,
+        "label": "Assistências"
+    },
+
+    "rebounds": {
+        "index": 7,
+        "label": "Rebotes"
+    },
+
+    "threes": {
+        "index": 3,
+        "label": "Tentativas de 3 pontos"
+    },
+
+    "attempts": {
+        "index": 1,
+        "label": "Tentativas totais"
+    }
 }
 
 
@@ -240,7 +316,9 @@ def season_for(selected_date: date) -> str:
         else selected_date.year - 1
     )
 
-    return f"{start_year}-{str(start_year + 1)[-2:]}"
+    return (
+        f"{start_year}-{str(start_year + 1)[-2:]}"
+    )
 
 
 def season_year(selected_date: date) -> int:
@@ -256,7 +334,10 @@ def season_year(selected_date: date) -> int:
 # CONSULTA ESPN
 # ============================================================
 
-def request_json(url: str, params=None) -> dict:
+def request_json(
+    url: str,
+    params=None
+) -> dict:
 
     try:
 
@@ -418,7 +499,10 @@ def parse_optional_attempts(value):
 # ESTATÍSTICAS DEFENSIVAS DE UMA PARTIDA
 # ============================================================
 
-def extract_team_defense_stats(summary, defending_team):
+def extract_team_defense_stats(
+    summary,
+    defending_team
+):
 
     teams = (
         summary.get("boxscore", {})
@@ -457,6 +541,7 @@ def extract_team_defense_stats(summary, defending_team):
     }
 
     return {
+
         "fga_allowed": parse_attempts(
             stats.get(
                 "fieldGoalsMade-fieldGoalsAttempted"
@@ -500,13 +585,26 @@ def normalize_position(position_data):
 
     position = str(position).strip().upper()
 
-    if position in ("G", "PG", "SG", "GUARD"):
+    if position in (
+        "G",
+        "PG",
+        "SG",
+        "GUARD"
+    ):
         return "G"
 
-    if position in ("F", "SF", "PF", "FORWARD"):
+    if position in (
+        "F",
+        "SF",
+        "PF",
+        "FORWARD"
+    ):
         return "F"
 
-    if position in ("C", "CENTER"):
+    if position in (
+        "C",
+        "CENTER"
+    ):
         return "C"
 
     return "OTHER"
@@ -520,12 +618,24 @@ def normalize_stat_key(key):
     key = str(key).strip()
 
     aliases = {
-        "FG": "fieldGoalsMade-fieldGoalsAttempted",
-        "3PT": "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
-        "REB": "rebounds",
-        "AST": "assists",
-        "MIN": "minutes",
-        "PTS": "points"
+
+        "FG":
+            "fieldGoalsMade-fieldGoalsAttempted",
+
+        "3PT":
+            "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+
+        "REB":
+            "rebounds",
+
+        "AST":
+            "assists",
+
+        "MIN":
+            "minutes",
+
+        "PTS":
+            "points"
     }
 
     upper_key = key.upper()
@@ -586,8 +696,6 @@ def get_player_stat_value(
 
         value = raw_stats[index]
 
-    # TRATAMENTO ESPECIAL PARA MINUTAGEM
-
     if normalized_key == "minutes":
 
         if isinstance(value, dict):
@@ -598,7 +706,12 @@ def get_player_stat_value(
                 else value.get("value")
             )
 
-        if value in ("", "--", "-", "N/A"):
+        if value in (
+            "",
+            "--",
+            "-",
+            "N/A"
+        ):
             return None
 
         if value is None:
@@ -674,8 +787,6 @@ def extract_opponent_players_by_position(
         defending_team or ""
     ).upper()
 
-    # IDENTIFICA O ADVERSÁRIO
-
     opponent_team = None
 
     for team in teams:
@@ -701,8 +812,6 @@ def extract_opponent_players_by_position(
             "players": result
         }
 
-    # LOCALIZA O BLOCO DE JOGADORES DO ADVERSÁRIO
-
     opponent_players_block = None
 
     for block in players_blocks:
@@ -716,6 +825,7 @@ def extract_opponent_players_by_position(
         if team_abbr == opponent_team:
 
             opponent_players_block = block
+
             break
 
     if not opponent_players_block:
@@ -725,31 +835,38 @@ def extract_opponent_players_by_position(
             "players": result
         }
 
-    # LOCALIZA OS BLOCOS DE ESTATÍSTICAS
-
-    statistics_blocks = opponent_players_block.get(
-        "statistics",
-        []
+    statistics_blocks = (
+        opponent_players_block.get(
+            "statistics",
+            []
+        )
     )
 
-    if isinstance(statistics_blocks, dict):
+    if isinstance(
+        statistics_blocks,
+        dict
+    ):
 
         statistics_blocks = [
             statistics_blocks
         ]
 
-    if not isinstance(statistics_blocks, list):
+    if not isinstance(
+        statistics_blocks,
+        list
+    ):
 
         return {
             "opponent": opponent_team,
             "players": result
         }
 
-    # PERCORRE OS BLOCOS
-
     for statistics_block in statistics_blocks:
 
-        if not isinstance(statistics_block, dict):
+        if not isinstance(
+            statistics_block,
+            dict
+        ):
             continue
 
         keys = (
@@ -768,21 +885,28 @@ def extract_opponent_players_by_position(
             )
 
             if normalized_key:
-                key_indexes[normalized_key] = index
+
+                key_indexes[
+                    normalized_key
+                ] = index
 
         athletes = statistics_block.get(
             "athletes",
             []
         )
 
-        if not isinstance(athletes, list):
+        if not isinstance(
+            athletes,
+            list
+        ):
             continue
-
-        # PERCORRE OS JOGADORES
 
         for athlete_entry in athletes:
 
-            if not isinstance(athlete_entry, dict):
+            if not isinstance(
+                athlete_entry,
+                dict
+            ):
                 continue
 
             athlete = athlete_entry.get(
@@ -790,7 +914,10 @@ def extract_opponent_players_by_position(
                 {}
             )
 
-            if not isinstance(athlete, dict):
+            if not isinstance(
+                athlete,
+                dict
+            ):
                 continue
 
             player_name = (
@@ -807,6 +934,7 @@ def extract_opponent_players_by_position(
             )
 
             if raw_stats is None:
+
                 raw_stats = athlete_entry.get(
                     "statistics"
                 )
@@ -888,7 +1016,9 @@ def extract_opponent_players_by_position(
             })
 
     return {
+
         "opponent": opponent_team,
+
         "players": result
     }
 
@@ -901,17 +1031,6 @@ def aggregate_position_game(
     summary,
     defending_team
 ):
-
-    """
-    Soma as estatísticas dos jogadores adversários
-    por posição dentro de uma partida.
-
-    Mantém os totais e as contagens anteriores.
-
-    Também preserva os dados individuais de cada jogador,
-    incluindo minutagem, para permitir filtros posteriores
-    de minutagem compatível com o jogador analisado.
-    """
 
     extracted = extract_opponent_players_by_position(
         summary,
@@ -929,7 +1048,12 @@ def aggregate_position_game(
         "three_pa"
     ]
 
-    for position in ("G", "F", "C", "OTHER"):
+    for position in (
+        "G",
+        "F",
+        "C",
+        "OTHER"
+    ):
 
         players = players_by_position.get(
             position,
@@ -950,7 +1074,6 @@ def aggregate_position_game(
 
             "stat_players_count": {},
 
-            # NOVO: DADOS INDIVIDUAIS PRESERVADOS
             "players": players
         }
 
@@ -962,9 +1085,9 @@ def aggregate_position_game(
                 if player.get(stat_key) is not None
             ]
 
-            position_result["stat_players_count"][
-                stat_key
-            ] = len(values)
+            position_result[
+                "stat_players_count"
+            ][stat_key] = len(values)
 
             if values:
 
@@ -993,25 +1116,6 @@ def calculate_minutes_filtered_position_defense(
     stat_key,
     minutes_threshold
 ):
-
-    """
-    Calcula a defesa do adversário considerando somente
-    jogadores da posição selecionada que tenham atuado
-    minutos iguais ou superiores à minutagem média do
-    jogador analisado nos seus últimos cinco jogos.
-
-    Métricas calculadas:
-
-    - Média da estatística por participação individual.
-    - Estatística concedida por minuto.
-    - Projeção para a minutagem do jogador analisado.
-    - Quantidade de partidas utilizadas.
-    - Quantidade de participações individuais.
-    - Total de minutos considerados.
-
-    A taxa por minuto é calculada sobre o total da estatística
-    dividido pelo total de minutos dos jogadores selecionados.
-    """
 
     total_stat = 0.0
 
@@ -1045,20 +1149,11 @@ def calculate_minutes_filtered_position_defense(
                 stat_key
             )
 
-            # Não é possível validar a minutagem
-            # quando o dado está ausente.
-
             if player_minutes is None:
                 continue
 
-            # Aplica o limite inclusivo:
-            # minutos iguais ou superiores à média do candidato.
-
             if player_minutes < minutes_threshold:
                 continue
-
-            # Só contabiliza a participação quando
-            # a estatística também está disponível.
 
             if stat_value is None:
                 continue
@@ -1074,8 +1169,6 @@ def calculate_minutes_filtered_position_defense(
         if game_has_valid_player:
             games_analyzed += 1
 
-    # MÉDIA POR PARTICIPAÇÃO INDIVIDUAL
-
     average_per_player = (
         round(
             total_stat / player_appearances,
@@ -1085,8 +1178,6 @@ def calculate_minutes_filtered_position_defense(
         else None
     )
 
-    # ESTATÍSTICA CONCEDIDA POR MINUTO
-
     per_minute = (
         round(
             total_stat / total_minutes,
@@ -1095,8 +1186,6 @@ def calculate_minutes_filtered_position_defense(
         if total_minutes > 0
         else None
     )
-
-    # PROJEÇÃO AJUSTADA À MINUTAGEM DO JOGADOR
 
     projected_value = (
         round(
@@ -1192,6 +1281,7 @@ def get_completed_team_games(
             if competitor_team != team_abbr:
 
                 opponent = competitor_team
+
                 break
 
         if not opponent:
@@ -1217,19 +1307,13 @@ def get_completed_team_games(
 
 
 # ============================================================
-# HISTÓRICO DEFENSIVO L5 / L10
-# ============================================================
-
-# ============================================================
 # CACHE DE RESUMOS DE PARTIDAS ESPN
 # ============================================================
 
 @lru_cache(maxsize=500)
-def get_game_summary(event_id: str) -> dict:
-    """
-    Armazena o resumo de cada partida pelo ID do evento.
-    Datas diferentes podem reutilizar resumos de jogos já consultados.
-    """
+def get_game_summary(
+    event_id: str
+) -> dict:
 
     return request_json(
         SUMMARY_URL,
@@ -1254,15 +1338,15 @@ def get_team_defense_history(
         limit
     )
 
-    # Reutiliza o calendário já armazenado em cache pela equipe/temporada.
-    # Isso evita baixar novamente a agenda ao consultar outra data ou mercado.
     games = [
         game
         for game in get_team_regular_season_schedule(
             team_abbr.upper(),
             season_year(target_date)
         )
-        if (game.get("date") or "")[:10] < target_date.isoformat()
+        if (
+            game.get("date") or ""
+        )[:10] < target_date.isoformat()
     ]
 
     games.sort(
@@ -1314,7 +1398,9 @@ def get_team_defense_history(
             for game in games
         }
 
-        for future in as_completed(futures):
+        for future in as_completed(
+            futures
+        ):
 
             game = futures[future]
 
@@ -1353,8 +1439,6 @@ def get_team_defense_history(
         "three_pa"
     ]
 
-    # MÉDIAS DEFENSIVAS GERAIS
-
     def calculate_averages(sample):
 
         averages = {}
@@ -1378,13 +1462,16 @@ def get_team_defense_history(
 
         return averages
 
-    # MÉDIAS DEFENSIVAS POR POSIÇÃO
-
     def calculate_position_averages(sample):
 
         position_results = {}
 
-        for position in ("G", "F", "C", "OTHER"):
+        for position in (
+            "G",
+            "F",
+            "C",
+            "OTHER"
+        ):
 
             position_games = [
                 game
@@ -1406,15 +1493,7 @@ def get_team_defense_history(
 
             for stat_key in position_stat_keys:
 
-                # --------------------------------------------
-                # TOTAL PRODUZIDO POR JOGO
-                # --------------------------------------------
-
                 game_values = []
-
-                # --------------------------------------------
-                # TOTAL PRODUZIDO POR JOGADOR
-                # --------------------------------------------
 
                 individual_total = 0.0
 
@@ -1432,7 +1511,10 @@ def get_team_defense_history(
                     )
 
                     if value is not None:
-                        game_values.append(value)
+
+                        game_values.append(
+                            value
+                        )
 
                         individual_total += value
 
@@ -1442,32 +1524,34 @@ def get_team_defense_history(
                         .get(stat_key, 0)
                     )
 
-                    individual_appearances += player_count
+                    individual_appearances += (
+                        player_count
+                    )
 
-                # Média do total por partida
-
-                stat_games_analyzed[stat_key] = len(
-                    game_values
-                )
+                stat_games_analyzed[
+                    stat_key
+                ] = len(game_values)
 
                 averages[stat_key] = (
                     round(
-                        sum(game_values) / len(game_values),
+                        sum(game_values)
+                        / len(game_values),
                         1
                     )
                     if game_values
                     else None
                 )
 
-                # Média por participação individual
+                stat_player_appearances[
+                    stat_key
+                ] = individual_appearances
 
-                stat_player_appearances[stat_key] = (
-                    individual_appearances
-                )
-
-                individual_averages[stat_key] = (
+                individual_averages[
+                    stat_key
+                ] = (
                     round(
-                        individual_total / individual_appearances,
+                        individual_total
+                        / individual_appearances,
                         2
                     )
                     if individual_appearances > 0
@@ -1476,11 +1560,14 @@ def get_team_defense_history(
 
             players_per_game = [
                 game.get(
-                    "positions", {}
+                    "positions",
+                    {}
                 ).get(
-                    position, {}
+                    position,
+                    {}
                 ).get(
-                    "players_count", 0
+                    "players_count",
+                    0
                 )
                 for game in position_games
             ]
@@ -1518,8 +1605,6 @@ def get_team_defense_history(
 
         return position_results
 
-    # HISTÓRICO COMPLETO
-
     history = {
 
         "team": team_abbr,
@@ -1537,9 +1622,10 @@ def get_team_defense_history(
         )
     }
 
-    # L5 / L10
-
-    for window in (5, 10):
+    for window in (
+        5,
+        10
+    ):
 
         sample = results[:window]
 
@@ -1593,12 +1679,18 @@ def fetch_espn_games(
 
         raise HTTPException(
             status_code=503,
-            detail="Não foi possível consultar a agenda da ESPN."
+            detail=(
+                "Não foi possível consultar "
+                "a agenda da ESPN."
+            )
         )
 
     games = []
 
-    for event in data.get("events", []):
+    for event in data.get(
+        "events",
+        []
+    ):
 
         competitions = event.get(
             "competitions",
@@ -1634,11 +1726,15 @@ def fetch_espn_games(
                 )
             }
 
-            if competitor.get("homeAway") == "home":
+            if competitor.get(
+                "homeAway"
+            ) == "home":
 
                 home = item
 
-            elif competitor.get("homeAway") == "away":
+            elif competitor.get(
+                "homeAway"
+            ) == "away":
 
                 away = item
 
@@ -1655,13 +1751,19 @@ def fetch_espn_games(
                 "status": (
                     event.get("status", {})
                     .get("type", {})
-                    .get("description", "Não informado")
+                    .get(
+                        "description",
+                        "Não informado"
+                    )
                 ),
 
                 "completed": bool(
                     event.get("status", {})
                     .get("type", {})
-                    .get("completed", False)
+                    .get(
+                        "completed",
+                        False
+                    )
                 )
             })
 
@@ -1686,7 +1788,10 @@ def collect_roster_players(
     players
 ):
 
-    if isinstance(node, dict):
+    if isinstance(
+        node,
+        dict
+    ):
 
         athlete_id = node.get("id")
 
@@ -1694,7 +1799,9 @@ def collect_roster_players(
 
         if athlete_id and name:
 
-            athlete_id = str(athlete_id)
+            athlete_id = str(
+                athlete_id
+            )
 
             position = get_athlete_position(
                 node
@@ -1716,7 +1823,8 @@ def collect_roster_players(
                 }
 
             elif (
-                existing.get("position") == "OTHER"
+                existing.get("position")
+                == "OTHER"
                 and position != "OTHER"
             ):
 
@@ -1729,7 +1837,10 @@ def collect_roster_players(
                 players
             )
 
-    elif isinstance(node, list):
+    elif isinstance(
+        node,
+        list
+    ):
 
         for value in node:
 
@@ -1800,7 +1911,9 @@ def get_players_for_date(
             for team in teams
         }
 
-        for future in as_completed(futures):
+        for future in as_completed(
+            futures
+        ):
 
             team = futures[future]
 
@@ -1822,16 +1935,24 @@ def get_players_for_date(
                         }
                     )
 
-                    entry["teams"].add(team)
+                    entry["teams"].add(
+                        team
+                    )
 
                     if (
-                        entry["player"].get("position") == "OTHER"
-                        and player.get("position") != "OTHER"
+                        entry["player"].get(
+                            "position"
+                        ) == "OTHER"
+                        and player.get(
+                            "position"
+                        ) != "OTHER"
                     ):
 
-                        entry["player"]["position"] = (
-                            player["position"]
-                        )
+                        entry["player"][
+                            "position"
+                        ] = player[
+                            "position"
+                        ]
 
             except Exception as error:
 
@@ -1919,9 +2040,13 @@ def get_athlete_logs(
             ""
         )
 
-        if display_name.strip().lower() == season_label.lower():
+        if (
+            display_name.strip().lower()
+            == season_label.lower()
+        ):
 
             season_category = season_type
+
             break
 
     if not season_category:
@@ -1972,7 +2097,9 @@ def get_athlete_logs(
             if not game_date:
                 continue
 
-            game_date = str(game_date)[:10]
+            game_date = str(
+                game_date
+            )[:10]
 
             if len(game_date) != 10:
                 continue
@@ -2026,6 +2153,228 @@ def get_athlete_logs(
 
 
 # ============================================================
+# NOVO:
+# EXTRAÇÃO DE RESULTADO INDIVIDUAL DIRETAMENTE DO SUMMARY
+# ============================================================
+
+def extract_player_game_from_summary(
+    summary,
+    player_id
+):
+
+    """
+    Localiza um jogador dentro do boxscore da partida
+    pelo ID ESPN e retorna suas estatísticas.
+
+    Essa função é usada na validação pós-jogo porque
+    o Summary pertence diretamente à partida encerrada.
+    """
+
+    player_id = str(
+        player_id
+    ).strip()
+
+    players_blocks = (
+        summary.get("boxscore", {})
+        .get("players", [])
+    )
+
+    if not isinstance(
+        players_blocks,
+        list
+    ):
+        return None
+
+    for team_block in players_blocks:
+
+        if not isinstance(
+            team_block,
+            dict
+        ):
+            continue
+
+        team_data = team_block.get(
+            "team",
+            {}
+        )
+
+        team_abbr = (
+            team_data.get("abbreviation")
+            or ""
+        ).upper()
+
+        statistics_blocks = (
+            team_block.get(
+                "statistics",
+                []
+            )
+        )
+
+        if isinstance(
+            statistics_blocks,
+            dict
+        ):
+            statistics_blocks = [
+                statistics_blocks
+            ]
+
+        if not isinstance(
+            statistics_blocks,
+            list
+        ):
+            continue
+
+        for statistics_block in statistics_blocks:
+
+            if not isinstance(
+                statistics_block,
+                dict
+            ):
+                continue
+
+            keys = (
+                statistics_block.get("keys")
+                or statistics_block.get("names")
+                or statistics_block.get("labels")
+                or []
+            )
+
+            key_indexes = {}
+
+            for index, key in enumerate(keys):
+
+                normalized_key = normalize_stat_key(
+                    key
+                )
+
+                if normalized_key:
+                    key_indexes[
+                        normalized_key
+                    ] = index
+
+            athletes = statistics_block.get(
+                "athletes",
+                []
+            )
+
+            if not isinstance(
+                athletes,
+                list
+            ):
+                continue
+
+            for athlete_entry in athletes:
+
+                if not isinstance(
+                    athlete_entry,
+                    dict
+                ):
+                    continue
+
+                athlete = athlete_entry.get(
+                    "athlete",
+                    {}
+                )
+
+                if not isinstance(
+                    athlete,
+                    dict
+                ):
+                    continue
+
+                athlete_espn_id = str(
+                    athlete.get("id", "")
+                ).strip()
+
+                if (
+                    not athlete_espn_id
+                    or athlete_espn_id != player_id
+                ):
+                    continue
+
+                player_name = (
+                    athlete.get("displayName")
+                    or athlete.get("fullName")
+                    or athlete.get("shortName")
+                    or ""
+                )
+
+                raw_stats = (
+                    athlete_entry.get("stats")
+                )
+
+                if raw_stats is None:
+
+                    raw_stats = athlete_entry.get(
+                        "statistics"
+                    )
+
+                if raw_stats is None:
+                    return None
+
+                minutes = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "minutes"
+                )
+
+                assists = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "assists"
+                )
+
+                rebounds = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "rebounds"
+                )
+
+                points = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "points"
+                )
+
+                fga = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "fieldGoalsMade-fieldGoalsAttempted",
+                    attempt_stat=True
+                )
+
+                three_pa = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+                    attempt_stat=True
+                )
+
+                return {
+
+                    "player_id": player_id,
+
+                    "player": player_name,
+
+                    "team": team_abbr,
+
+                    "minutes": minutes,
+
+                    "assists": assists,
+
+                    "rebounds": rebounds,
+
+                    "points": points,
+
+                    "fga": fga,
+
+                    "three_pa": three_pa
+                }
+
+    return None
+
+
+# ============================================================
 # PARTICIPAÇÃO DO JOGADOR NOS ÚLTIMOS JOGOS DA EQUIPE
 # ============================================================
 
@@ -2034,11 +2383,6 @@ def get_team_regular_season_schedule(
     team_abbr: str,
     year: int
 ) -> tuple:
-
-    """
-    Retorna o calendário concluído da temporada regular da equipe.
-    O resultado é armazenado em cache para evitar uma consulta por jogador.
-    """
 
     schedule = request_json(
         f"https://site.api.espn.com/apis/site/v2/sports/"
@@ -2062,21 +2406,15 @@ def get_player_team_game_counts(
     year: int
 ) -> dict:
 
-    """
-    Conta em quantos dos últimos 5 e 10 jogos da equipe atual o atleta
-    efetivamente entrou em quadra (minutos maiores que zero).
-
-    O denominador é a quantidade real de jogos concluídos disponíveis,
-    podendo ser menor que 5 ou 10 no início da temporada.
-    """
-
     team_schedule = [
         game
         for game in get_team_regular_season_schedule(
             team_abbr,
             year
         )
-        if (game.get("date") or "")[:10] < target_date.isoformat()
+        if (
+            game.get("date") or ""
+        )[:10] < target_date.isoformat()
     ]
 
     team_schedule.sort(
@@ -2087,26 +2425,46 @@ def get_player_team_game_counts(
     player_appearances = {
         str(game.get("event_id")): game
         for game in player_games
-        if game.get("event_id")
-        and parse_minutes(game.get("minutes")) > 0
+        if (
+            game.get("event_id")
+            and parse_minutes(
+                game.get("minutes")
+            ) > 0
+        )
     }
 
     result = {}
 
-    for window in (5, 10):
+    for window in (
+        5,
+        10
+    ):
 
         sample = team_schedule[:window]
 
         played = sum(
             1
             for team_game in sample
-            if str(team_game.get("game_id")) in player_appearances
+            if str(
+                team_game.get("game_id")
+            ) in player_appearances
         )
 
-        result[f"team_games_last{window}_played"] = played
-        result[f"team_games_last{window}_total"] = len(sample)
-        result[f"team_games_last{window}_pct"] = (
-            round(played / len(sample) * 100, 1)
+        result[
+            f"team_games_last{window}_played"
+        ] = played
+
+        result[
+            f"team_games_last{window}_total"
+        ] = len(sample)
+
+        result[
+            f"team_games_last{window}_pct"
+        ] = (
+            round(
+                played / len(sample) * 100,
+                1
+            )
             if sample
             else None
         )
@@ -2118,11 +2476,16 @@ def get_player_team_game_counts(
 # IDENTIFICA ADVERSÁRIOS DA DATA
 # ============================================================
 
-def get_opponents_for_date(schedule):
+def get_opponents_for_date(
+    schedule
+):
 
     opponents = {}
 
-    for game in schedule.get("games", []):
+    for game in schedule.get(
+        "games",
+        []
+    ):
 
         home = game["home"]["abbr"]
 
@@ -2163,10 +2526,13 @@ def build_player_result(
 
     last10 = previous_games[:10]
 
-    minutes_avg = sum(
-        game["minutes"]
-        for game in last5
-    ) / len(last5)
+    minutes_avg = (
+        sum(
+            game["minutes"]
+            for game in last5
+        )
+        / len(last5)
+    )
 
     if minutes_avg < 24:
         return None
@@ -2187,8 +2553,6 @@ def build_player_result(
         "attempts": "fga_allowed"
     }[market]
 
-    # MÉDIAS INDIVIDUAIS
-
     def average(sample):
 
         if not sample:
@@ -2203,12 +2567,13 @@ def build_player_result(
 
     avg10 = average(last10)
 
-    consistency = sum(
-        game[stat_key] >= avg5
-        for game in last5
-    ) / len(last5)
-
-    # SCORE ORIGINAL - MANTIDO SEM ALTERAÇÕES
+    consistency = (
+        sum(
+            game[stat_key] >= avg5
+            for game in last5
+        )
+        / len(last5)
+    )
 
     score = (
         avg5 * 0.60
@@ -2217,8 +2582,6 @@ def build_player_result(
         0.80
         + consistency * 0.20
     )
-
-    # DEFESA GERAL DO ADVERSÁRIO
 
     defense_l5 = (
         defense.get("L5", {})
@@ -2250,8 +2613,6 @@ def build_player_result(
         else 0
     )
 
-    # DEFESA DO ADVERSÁRIO POR POSIÇÃO
-
     position = normalize_position(
         player.get("position")
     )
@@ -2275,14 +2636,16 @@ def build_player_result(
     position_player_games_l5 = 0
     position_player_games_l10 = 0
 
-    # NOVOS INDICADORES COM MINUTAGEM COMPATÍVEL
-
     position_filtered_l5 = None
     position_filtered_l10 = None
 
     if (
         defense
-        and position in ("G", "F", "C")
+        and position in (
+            "G",
+            "F",
+            "C"
+        )
         and position_stat_key
     ):
 
@@ -2298,10 +2661,6 @@ def build_player_result(
             .get(position, {})
         )
 
-        # --------------------------------------------
-        # MÉDIA TOTAL POR JOGO
-        # --------------------------------------------
-
         position_defense_l5 = (
             position_data_l5
             .get("averages", {})
@@ -2313,8 +2672,6 @@ def build_player_result(
             .get("averages", {})
             .get(position_stat_key)
         )
-
-        # QUANTIDADE DE JOGOS UTILIZADOS NA MÉDIA TOTAL
 
         position_games_l5 = (
             position_data_l5
@@ -2328,8 +2685,6 @@ def build_player_result(
             .get(position_stat_key, 0)
         )
 
-        # MÉDIA INDIVIDUAL POR PARTICIPAÇÃO
-
         position_individual_l5 = (
             position_data_l5
             .get("individual_averages", {})
@@ -2342,8 +2697,6 @@ def build_player_result(
             .get(position_stat_key)
         )
 
-        # QUANTIDADE DE PARTICIPAÇÕES INDIVIDUAIS
-
         position_player_games_l5 = (
             position_data_l5
             .get("stat_player_appearances", {})
@@ -2355,10 +2708,6 @@ def build_player_result(
             .get("stat_player_appearances", {})
             .get(position_stat_key, 0)
         )
-
-        # --------------------------------------------
-        # NOVA MÉTRICA: FILTRO POR MINUTAGEM
-        # --------------------------------------------
 
         defense_games_sample_l5 = (
             defense.get("L5", {})
@@ -2388,9 +2737,6 @@ def build_player_result(
             )
         )
 
-    # PARTICIPAÇÃO NOS ÚLTIMOS JOGOS DA EQUIPE ATUAL
-    # Indicador informativo: não altera médias individuais nem triage_score.
-
     team_game_counts = get_player_team_game_counts(
         games,
         player["team"],
@@ -2398,11 +2744,11 @@ def build_player_result(
         season_year(target_date)
     )
 
-    # RESULTADO
-
     return {
 
-        "player_id": str(player["id"]),
+        "player_id": str(
+            player["id"]
+        ),
 
         "player": player["player"],
 
@@ -2412,7 +2758,9 @@ def build_player_result(
 
         "opponent": opponent,
 
-        "last_game_team": last5[0].get("team"),
+        "last_game_team": last5[0].get(
+            "team"
+        ),
 
         "team_changed": bool(
             last5[0].get("team")
@@ -2439,179 +2787,167 @@ def build_player_result(
             2
         ),
 
-        # L5/L10 individual: últimos jogos em que o próprio atleta atuou.
         "games_last5": len(last5),
 
         "games_last10": len(last10),
 
-        # L5/L10 da equipe: participação do atleta nos últimos jogos do time.
         **team_game_counts,
 
-        "opponent_defense_l5_avg": defense_l5,
+        "opponent_defense_l5_avg":
+            defense_l5,
 
-        "opponent_defense_l10_avg": defense_l10,
+        "opponent_defense_l10_avg":
+            defense_l10,
 
-        "opponent_defense_games_l5": defense_games_l5,
+        "opponent_defense_games_l5":
+            defense_games_l5,
 
-        "opponent_defense_games_l10": defense_games_l10,
+        "opponent_defense_games_l10":
+            defense_games_l10,
 
-        # --------------------------------------------
-        # INDICADORES DEFENSIVOS ORIGINAIS POR POSIÇÃO
-        # --------------------------------------------
+        "opponent_position_defense_l5_avg":
+            position_defense_l5,
 
-        "opponent_position_defense_l5_avg": (
-            position_defense_l5
-        ),
+        "opponent_position_defense_l10_avg":
+            position_defense_l10,
 
-        "opponent_position_defense_l10_avg": (
-            position_defense_l10
-        ),
+        "opponent_position_defense_games_l5":
+            position_games_l5,
 
-        "opponent_position_defense_games_l5": (
-            position_games_l5
-        ),
+        "opponent_position_defense_games_l10":
+            position_games_l10,
 
-        "opponent_position_defense_games_l10": (
-            position_games_l10
-        ),
+        "opponent_position_individual_defense_l5_avg":
+            position_individual_l5,
 
-        "opponent_position_individual_defense_l5_avg": (
-            position_individual_l5
-        ),
+        "opponent_position_individual_defense_l10_avg":
+            position_individual_l10,
 
-        "opponent_position_individual_defense_l10_avg": (
-            position_individual_l10
-        ),
+        "opponent_position_individual_defense_player_games_l5":
+            position_player_games_l5,
 
-        "opponent_position_individual_defense_player_games_l5": (
-            position_player_games_l5
-        ),
+        "opponent_position_individual_defense_player_games_l10":
+            position_player_games_l10,
 
-        "opponent_position_individual_defense_player_games_l10": (
-            position_player_games_l10
-        ),
+        "opponent_position_minutes_filtered_threshold":
+            round(
+                minutes_avg,
+                1
+            ),
 
-        # --------------------------------------------
-        # NOVOS INDICADORES COM MINUTAGEM COMPATÍVEL
-        # --------------------------------------------
+        "opponent_position_minutes_filtered_defense_l5_avg":
+            (
+                position_filtered_l5.get(
+                    "average_per_player_appearance"
+                )
+                if position_filtered_l5
+                else None
+            ),
 
-        "opponent_position_minutes_filtered_threshold": (
-            round(minutes_avg, 1)
-        ),
+        "opponent_position_minutes_filtered_defense_l10_avg":
+            (
+                position_filtered_l10.get(
+                    "average_per_player_appearance"
+                )
+                if position_filtered_l10
+                else None
+            ),
 
-        # Média da estatística por participação
+        "opponent_position_minutes_filtered_defense_l5_per_minute":
+            (
+                position_filtered_l5.get(
+                    "per_minute"
+                )
+                if position_filtered_l5
+                else None
+            ),
 
-        "opponent_position_minutes_filtered_defense_l5_avg": (
-            position_filtered_l5.get(
-                "average_per_player_appearance"
+        "opponent_position_minutes_filtered_defense_l10_per_minute":
+            (
+                position_filtered_l10.get(
+                    "per_minute"
+                )
+                if position_filtered_l10
+                else None
+            ),
+
+        "opponent_position_minutes_filtered_defense_l5_projected":
+            (
+                position_filtered_l5.get(
+                    "projected_at_player_minutes"
+                )
+                if position_filtered_l5
+                else None
+            ),
+
+        "opponent_position_minutes_filtered_defense_l10_projected":
+            (
+                position_filtered_l10.get(
+                    "projected_at_player_minutes"
+                )
+                if position_filtered_l10
+                else None
+            ),
+
+        "opponent_position_minutes_filtered_defense_games_l5":
+            (
+                position_filtered_l5.get(
+                    "games_analyzed",
+                    0
+                )
+                if position_filtered_l5
+                else 0
+            ),
+
+        "opponent_position_minutes_filtered_defense_games_l10":
+            (
+                position_filtered_l10.get(
+                    "games_analyzed",
+                    0
+                )
+                if position_filtered_l10
+                else 0
+            ),
+
+        "opponent_position_minutes_filtered_defense_player_games_l5":
+            (
+                position_filtered_l5.get(
+                    "player_appearances",
+                    0
+                )
+                if position_filtered_l5
+                else 0
+            ),
+
+        "opponent_position_minutes_filtered_defense_player_games_l10":
+            (
+                position_filtered_l10.get(
+                    "player_appearances",
+                    0
+                )
+                if position_filtered_l10
+                else 0
+            ),
+
+        "opponent_position_minutes_filtered_defense_minutes_l5":
+            (
+                position_filtered_l5.get(
+                    "total_minutes",
+                    0
+                )
+                if position_filtered_l5
+                else 0
+            ),
+
+        "opponent_position_minutes_filtered_defense_minutes_l10":
+            (
+                position_filtered_l10.get(
+                    "total_minutes",
+                    0
+                )
+                if position_filtered_l10
+                else 0
             )
-            if position_filtered_l5
-            else None
-        ),
-
-        "opponent_position_minutes_filtered_defense_l10_avg": (
-            position_filtered_l10.get(
-                "average_per_player_appearance"
-            )
-            if position_filtered_l10
-            else None
-        ),
-
-        # Estatística concedida por minuto
-
-        "opponent_position_minutes_filtered_defense_l5_per_minute": (
-            position_filtered_l5.get(
-                "per_minute"
-            )
-            if position_filtered_l5
-            else None
-        ),
-
-        "opponent_position_minutes_filtered_defense_l10_per_minute": (
-            position_filtered_l10.get(
-                "per_minute"
-            )
-            if position_filtered_l10
-            else None
-        ),
-
-        # Projeção ajustada à minutagem do candidato
-
-        "opponent_position_minutes_filtered_defense_l5_projected": (
-            position_filtered_l5.get(
-                "projected_at_player_minutes"
-            )
-            if position_filtered_l5
-            else None
-        ),
-
-        "opponent_position_minutes_filtered_defense_l10_projected": (
-            position_filtered_l10.get(
-                "projected_at_player_minutes"
-            )
-            if position_filtered_l10
-            else None
-        ),
-
-        # Quantidade de partidas consideradas
-
-        "opponent_position_minutes_filtered_defense_games_l5": (
-            position_filtered_l5.get(
-                "games_analyzed",
-                0
-            )
-            if position_filtered_l5
-            else 0
-        ),
-
-        "opponent_position_minutes_filtered_defense_games_l10": (
-            position_filtered_l10.get(
-                "games_analyzed",
-                0
-            )
-            if position_filtered_l10
-            else 0
-        ),
-
-        # Quantidade de participações individuais
-
-        "opponent_position_minutes_filtered_defense_player_games_l5": (
-            position_filtered_l5.get(
-                "player_appearances",
-                0
-            )
-            if position_filtered_l5
-            else 0
-        ),
-
-        "opponent_position_minutes_filtered_defense_player_games_l10": (
-            position_filtered_l10.get(
-                "player_appearances",
-                0
-            )
-            if position_filtered_l10
-            else 0
-        ),
-
-        # Total de minutos que compõem a amostra filtrada
-
-        "opponent_position_minutes_filtered_defense_minutes_l5": (
-            position_filtered_l5.get(
-                "total_minutes",
-                0
-            )
-            if position_filtered_l5
-            else 0
-        ),
-
-        "opponent_position_minutes_filtered_defense_minutes_l10": (
-            position_filtered_l10.get(
-                "total_minutes",
-                0
-            )
-            if position_filtered_l10
-            else 0
-        )
     }
 
 
@@ -2636,8 +2972,6 @@ def collect_candidates(
         target_date
     )
 
-    # ELENCOS E AGENDA
-
     stage_start = time.perf_counter()
 
     roster_data = get_players_for_date(
@@ -2657,8 +2991,6 @@ def collect_candidates(
         len(players),
         time.perf_counter() - stage_start
     )
-
-    # HISTÓRICO DEFENSIVO
 
     stage_start = time.perf_counter()
 
@@ -2690,7 +3022,9 @@ def collect_candidates(
             for team in unique_opponents
         ]
 
-        for future in as_completed(futures):
+        for future in as_completed(
+            futures
+        ):
 
             try:
 
@@ -2712,8 +3046,6 @@ def collect_candidates(
         len(unique_opponents),
         time.perf_counter() - stage_start
     )
-
-    # HISTÓRICO INDIVIDUAL DOS JOGADORES
 
     stage_start = time.perf_counter()
 
@@ -2744,7 +3076,9 @@ def collect_candidates(
             for player in players
         ]
 
-        for future in as_completed(futures):
+        for future in as_completed(
+            futures
+        ):
 
             try:
 
@@ -2795,8 +3129,6 @@ def collect_candidates(
         reverse=True
     )
 
-    # Registra TODOS os candidatos elegíveis, antes do limite de exibição.
-    # O banco preserva a primeira fotografia para cada data/mercado/jogador.
     save_candidate_snapshots(
         selected_date,
         market,
@@ -2823,7 +3155,8 @@ def collect_candidates(
 
         "market": market,
 
-        "market_label": MARKETS[market]["label"],
+        "market_label":
+            MARKETS[market]["label"],
 
         "count": min(
             len(results),
@@ -2832,17 +3165,24 @@ def collect_candidates(
 
         "source": "ESPN",
 
-        "season": season_for(target_date),
+        "season": season_for(
+            target_date
+        ),
 
-        "teams_found": roster_data["teams_found"],
+        "teams_found":
+            roster_data["teams_found"],
 
-        "players_found": len(players),
+        "players_found":
+            len(players),
 
-        "players_consulted": successful_logs,
+        "players_consulted":
+            successful_logs,
 
-        "players_with_errors": errors,
+        "players_with_errors":
+            errors,
 
-        "updated_at": datetime.now().isoformat(),
+        "updated_at":
+            datetime.now().isoformat(),
 
         "method_note": (
             "Triagem estatística baseada exclusivamente na temporada "
@@ -2850,26 +3190,25 @@ def collect_candidates(
             "e 10 jogos anteriores à data selecionada. Também informa "
             "quantos dos últimos 5 e 10 jogos concluídos da equipe atual "
             "o jogador disputou; esse indicador é informativo e não altera "
-            "a pontuação. Filtro mínimo "
-            "de 24 minutos médios nos últimos cinco jogos. Inclui "
-            "indicadores defensivos gerais do adversário e indicadores "
-            "defensivos por posição nos períodos L5 e L10. Os indicadores "
-            "por posição apresentam a produção total média por jogo "
-            "e a média individual por participação de jogador. Também "
-            "incluem uma análise adicional filtrada pela minutagem: "
-            "considera somente jogadores da mesma posição que tenham "
-            "atuado minutos iguais ou superiores à média de minutos "
-            "do candidato nos últimos cinco jogos. Para esse grupo, "
-            "calcula a média por participação, a taxa por minuto e "
-            "uma projeção ajustada à minutagem do candidato. A amostra "
-            "filtrada informa partidas, participações e minutos "
-            "considerados. Esses indicadores são contexto complementar "
-            "e não fazem parte da pontuação. Não considera linhas, odds, "
-            "lesões ou escalações. A pontuação não representa "
-            "probabilidade de acerto."
+            "a pontuação. Filtro mínimo de 24 minutos médios nos últimos "
+            "cinco jogos. Inclui indicadores defensivos gerais do "
+            "adversário e indicadores defensivos por posição nos períodos "
+            "L5 e L10. Os indicadores por posição apresentam a produção "
+            "total média por jogo e a média individual por participação "
+            "de jogador. Também incluem uma análise adicional filtrada "
+            "pela minutagem: considera somente jogadores da mesma posição "
+            "que tenham atuado minutos iguais ou superiores à média de "
+            "minutos do candidato nos últimos cinco jogos. Para esse grupo, "
+            "calcula a média por participação, a taxa por minuto e uma "
+            "projeção ajustada à minutagem do candidato. A amostra filtrada "
+            "informa partidas, participações e minutos considerados. "
+            "Esses indicadores são contexto complementar e não fazem parte "
+            "da pontuação. Não considera linhas, odds, lesões ou escalações. "
+            "A pontuação não representa probabilidade de acerto."
         ),
 
-        "candidates": results[:final_limit]
+        "candidates":
+            results[:final_limit]
     }
 
 
@@ -2886,7 +3225,7 @@ def health():
 
         "service": "NBA Props Scanner",
 
-        "version": "3.11.0",
+        "version": "3.12.0",
 
         "source": "ESPN"
     }
@@ -2896,39 +3235,66 @@ def health():
 def database_health():
 
     if not DATABASE_URL:
+
         return {
+
             "status": "not_configured",
+
             "database": "Neon PostgreSQL",
+
             "history_enabled": False
         }
 
     try:
+
         with get_database_connection() as connection:
+
             with connection.cursor() as cursor:
+
                 cursor.execute(
                     "SELECT COUNT(*) FROM candidate_snapshots"
                 )
+
                 total_snapshots = cursor.fetchone()[0]
+
                 cursor.execute(
                     "SELECT COUNT(*) FROM candidate_results"
                 )
+
                 total_results = cursor.fetchone()[0]
 
         return {
+
             "status": "connected",
+
             "database": "Neon PostgreSQL",
+
             "history_enabled": True,
-            "total_snapshots": total_snapshots,
-            "total_results": total_results
+
+            "total_snapshots":
+                total_snapshots,
+
+            "total_results":
+                total_results
         }
 
     except Exception as error:
-        logger.exception("Verificação do banco falhou: %s", error)
+
+        logger.exception(
+            "Verificação do banco falhou: %s",
+            error
+        )
+
         return {
+
             "status": "error",
+
             "database": "Neon PostgreSQL",
+
             "history_enabled": False,
-            "message": "Não foi possível consultar o banco de dados."
+
+            "message":
+                "Não foi possível consultar o banco de dados."
         }
 
 
@@ -2941,6 +3307,7 @@ def games(
 ):
 
     if not selected_date:
+
         selected_date = date.today().isoformat()
 
     try:
@@ -2983,8 +3350,12 @@ def candidates(
 
         raise HTTPException(
             status_code=400,
-            detail="Mercado inválido: "
-            + ", ".join(MARKETS.keys())
+            detail=(
+                "Mercado inválido: "
+                + ", ".join(
+                    MARKETS.keys()
+                )
+            )
         )
 
     try:
@@ -3033,211 +3404,613 @@ def candidates(
         )
 
 
+# ============================================================
+# COLETA DOS RESULTADOS REAIS
+# ============================================================
+
 @app.get("/collect-results")
 def collect_results(
-    selected_date: str = Query(alias="date"),
-    market: str = Query(default="assists")
+    selected_date: str = Query(
+        alias="date"
+    ),
+
+    market: str = Query(
+        default="assists"
+    )
 ):
+
     """
-    Coleta resultados reais de assistências apenas para jogos finalizados.
-    A fotografia pré-jogo em candidate_snapshots nunca é alterada.
+    Coleta resultados reais de partidas finalizadas.
+
+    IMPORTANTE:
+    - candidate_snapshots é a fotografia pré-jogo.
+    - candidate_results guarda o resultado pós-jogo.
+    - O jogador é localizado pelo ESPN player_id diretamente
+      no Summary da partida.
+    - Ausência de registro não é convertida em zero.
     """
 
     if market != "assists":
+
         raise HTTPException(
             status_code=400,
-            detail="Nesta primeira etapa, a coleta está habilitada apenas para assists."
+            detail=(
+                "Nesta primeira etapa, a coleta está habilitada "
+                "apenas para assists."
+            )
         )
 
     try:
-        target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
+
+        target_date = datetime.strptime(
+            selected_date,
+            "%Y-%m-%d"
+        ).date()
+
     except ValueError:
+
         raise HTTPException(
             status_code=400,
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
     if not DATABASE_URL:
+
         raise HTTPException(
             status_code=503,
             detail="Banco de dados não configurado."
         )
 
-    # A agenda confirma quais partidas da data já foram encerradas.
-    schedule = fetch_espn_games(selected_date)
+    # --------------------------------------------------------
+    # 1. IDENTIFICA PARTIDAS FINALIZADAS
+    # --------------------------------------------------------
+
+    schedule = fetch_espn_games(
+        selected_date
+    )
+
     completed_games = {}
-    for game in schedule.get("games", []):
-        if game.get("completed"):
-            home = game.get("home", {}).get("abbr")
-            away = game.get("away", {}).get("abbr")
-            game_id = str(game.get("game_id") or "")
-            if home and away:
-                completed_games[(home.upper(), away.upper())] = game_id
-                completed_games[(away.upper(), home.upper())] = game_id
+
+    completed_game_ids = []
+
+    for game in schedule.get(
+        "games",
+        []
+    ):
+
+        if not game.get("completed"):
+            continue
+
+        home = (
+            game.get("home", {})
+            .get("abbr")
+        )
+
+        away = (
+            game.get("away", {})
+            .get("abbr")
+        )
+
+        game_id = str(
+            game.get("game_id") or ""
+        )
+
+        if (
+            home
+            and away
+            and game_id
+        ):
+
+            completed_games[
+                (
+                    home.upper(),
+                    away.upper()
+                )
+            ] = game_id
+
+            completed_games[
+                (
+                    away.upper(),
+                    home.upper()
+                )
+            ] = game_id
+
+            completed_game_ids.append(
+                game_id
+            )
+
+    completed_count = len(
+        completed_game_ids
+    )
+
+    # --------------------------------------------------------
+    # 2. BUSCA SNAPSHOTS PRÉ-JOGO
+    # --------------------------------------------------------
 
     with get_database_connection() as connection:
+
         with connection.cursor() as cursor:
+
             cursor.execute(
                 """
-                SELECT player_id, player_name, team, opponent, payload
+                SELECT
+                    player_id,
+                    player_name,
+                    team,
+                    opponent,
+                    payload
                 FROM candidate_snapshots
-                WHERE selected_date = %s AND market = %s
+                WHERE
+                    selected_date = %s
+                    AND market = %s
                 ORDER BY player_name
                 """,
-                (target_date, market)
+                (
+                    target_date,
+                    market
+                )
             )
+
             snapshots = cursor.fetchall()
 
     if not snapshots:
+
         return {
+
             "date": selected_date,
+
             "market": market,
+
             "status": "no_snapshots",
+
             "snapshots_found": 0,
-            "completed_games": sum(1 for g in schedule.get("games", []) if g.get("completed")),
+
+            "completed_games":
+                completed_count,
+
             "results_saved": 0,
+
             "pending": 0,
-            "message": "Não há candidatos históricos para essa data e mercado. Consulte os candidatos antes do jogo para registrar a fotografia."
+
+            "message": (
+                "Não há candidatos históricos para essa data "
+                "e mercado. Consulte os candidatos antes do jogo "
+                "para registrar a fotografia."
+            )
         }
 
-    year = season_year(target_date)
+    # --------------------------------------------------------
+    # 3. CARREGA OS SUMMARIES DAS PARTIDAS FINALIZADAS
+    # --------------------------------------------------------
+
+    summary_cache = {}
+
+    summary_errors = 0
+
+    def fetch_summary(game_id):
+
+        return (
+            game_id,
+            get_game_summary(
+                game_id
+            )
+        )
+
+    with ThreadPoolExecutor(
+        max_workers=4
+    ) as executor:
+
+        futures = [
+            executor.submit(
+                fetch_summary,
+                game_id
+            )
+            for game_id in completed_game_ids
+        ]
+
+        for future in as_completed(
+            futures
+        ):
+
+            try:
+
+                game_id, summary = (
+                    future.result()
+                )
+
+                summary_cache[
+                    game_id
+                ] = summary
+
+            except Exception as error:
+
+                summary_errors += 1
+
+                logger.warning(
+                    "Falha ao carregar summary do jogo %s: %s",
+                    game_id,
+                    error
+                )
+
+    logger.info(
+        "Summaries carregados: %s/%s",
+        len(summary_cache),
+        len(completed_game_ids)
+    )
+
+    # --------------------------------------------------------
+    # 4. LOCALIZA CADA JOGADOR PELO PLAYER_ID
+    # --------------------------------------------------------
+
     results_to_save = []
+
     pending = 0
+
     errors = 0
 
     def fetch_player_result(snapshot):
-        player_id, player_name, team, opponent, payload = snapshot
-        logs = get_athlete_logs(str(player_id), year)
-        matching = [
-            game for game in logs
-            if game.get("date") == selected_date
-            and (game.get("team") or "").upper() == (team or "").upper()
-            and (game.get("opponent") or "").upper() == (opponent or "").upper()
-        ]
-        if not matching:
-            return ("pending", None)
 
-        game = matching[0]
-        if (game.get("minutes") or 0) <= 0:
-            return ("pending", None)
+        (
+            player_id,
+            player_name,
+            team,
+            opponent,
+            payload
+        ) = snapshot
 
-        game_id = completed_games.get((
-            (team or "").upper(), (opponent or "").upper()
-        ))
+        game_id = completed_games.get(
+            (
+                (team or "").upper(),
+                (opponent or "").upper()
+            )
+        )
+
         if not game_id:
-            return ("pending", None)
 
-        actual = game.get("assists")
+            return (
+                "pending",
+                None
+            )
+
+        summary = summary_cache.get(
+            game_id
+        )
+
+        if not summary:
+
+            return (
+                "pending",
+                None
+            )
+
+        player_game = (
+            extract_player_game_from_summary(
+                summary,
+                player_id
+            )
+        )
+
+        if not player_game:
+
+            logger.warning(
+                "Jogador não localizado no summary: "
+                "%s (%s) jogo=%s",
+                player_name,
+                player_id,
+                game_id
+            )
+
+            return (
+                "pending",
+                None
+            )
+
+        minutes = player_game.get(
+            "minutes"
+        )
+
+        if (
+            minutes is None
+            or minutes <= 0
+        ):
+
+            return (
+                "pending",
+                None
+            )
+
+        actual = player_game.get(
+            "assists"
+        )
+
         if actual is None:
-            return ("pending", None)
+
+            return (
+                "pending",
+                None
+            )
 
         row = (
-            target_date, market, str(player_id), player_name,
-            team, opponent, float(actual), game_id,
+            target_date,
+            market,
+            str(player_id),
+            player_name,
+            team,
+            opponent,
+            float(actual),
+            game_id,
             Jsonb({
-                "minutes": game.get("minutes"),
-                "game_date": game.get("date"),
-                "source": "ESPN gamelog"
+
+                "minutes":
+                    minutes,
+
+                "assists":
+                    actual,
+
+                "game_date":
+                    selected_date,
+
+                "team_from_summary":
+                    player_game.get(
+                        "team"
+                    ),
+
+                "player_id_from_summary":
+                    player_game.get(
+                        "player_id"
+                    ),
+
+                "source":
+                    "ESPN game summary"
             })
         )
-        return ("ready", row)
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(fetch_player_result, row) for row in snapshots]
-        for future in as_completed(futures):
+        return (
+            "ready",
+            row
+        )
+
+    # --------------------------------------------------------
+    # 5. PROCESSAMENTO PARALELO
+    # --------------------------------------------------------
+
+    with ThreadPoolExecutor(
+        max_workers=8
+    ) as executor:
+
+        futures = [
+            executor.submit(
+                fetch_player_result,
+                row
+            )
+            for row in snapshots
+        ]
+
+        for future in as_completed(
+            futures
+        ):
+
             try:
-                status, row = future.result()
+
+                status, row = (
+                    future.result()
+                )
+
                 if status == "ready":
-                    results_to_save.append(row)
+
+                    results_to_save.append(
+                        row
+                    )
+
                 else:
+
                     pending += 1
+
             except Exception as error:
+
                 errors += 1
-                logger.warning("Falha ao coletar resultado individual: %s", error)
+
+                logger.warning(
+                    "Falha ao coletar resultado individual: %s",
+                    error
+                )
+
+    # --------------------------------------------------------
+    # 6. SALVA RESULTADOS
+    # --------------------------------------------------------
 
     inserted = 0
+
     if results_to_save:
+
         with get_database_connection() as connection:
+
             with connection.cursor() as cursor:
+
                 for row in results_to_save:
+
                     cursor.execute(
                         """
                         INSERT INTO candidate_results (
-                            selected_date, market, player_id, player_name,
-                            team, opponent, actual_value, game_id, payload
+                            selected_date,
+                            market,
+                            player_id,
+                            player_name,
+                            team,
+                            opponent,
+                            actual_value,
+                            game_id,
+                            payload
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (selected_date, market, player_id) DO NOTHING
+                        VALUES (
+                            %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s
+                        )
+                        ON CONFLICT (
+                            selected_date,
+                            market,
+                            player_id
+                        ) DO NOTHING
                         RETURNING id
                         """,
                         row
                     )
+
                     if cursor.fetchone():
+
                         inserted += 1
 
+    # --------------------------------------------------------
+    # 7. CONTAGEM TOTAL
+    # --------------------------------------------------------
+
     with get_database_connection() as connection:
+
         with connection.cursor() as cursor:
+
             cursor.execute(
                 """
-                SELECT COUNT(*) FROM candidate_results
-                WHERE selected_date = %s AND market = %s
+                SELECT COUNT(*)
+                FROM candidate_results
+                WHERE
+                    selected_date = %s
+                    AND market = %s
                 """,
-                (target_date, market)
+                (
+                    target_date,
+                    market
+                )
             )
-            total_saved = cursor.fetchone()[0]
+
+            total_saved = (
+                cursor.fetchone()[0]
+            )
 
     return {
+
         "date": selected_date,
+
         "market": market,
+
         "status": "processed",
-        "snapshots_found": len(snapshots),
-        "completed_games": sum(1 for g in schedule.get("games", []) if g.get("completed")),
-        "results_detected": len(results_to_save),
-        "results_saved_this_run": inserted,
-        "total_results_saved": total_saved,
-        "pending": pending,
-        "errors": errors,
-        "note": "Somente jogos finalizados e registros individuais confirmados são gravados. Ausência de registro não é convertida em zero; candidatos pendentes podem ser consultados novamente."
+
+        "snapshots_found":
+            len(snapshots),
+
+        "completed_games":
+            completed_count,
+
+        "summaries_loaded":
+            len(summary_cache),
+
+        "summary_errors":
+            summary_errors,
+
+        "results_detected":
+            len(results_to_save),
+
+        "results_saved_this_run":
+            inserted,
+
+        "total_results_saved":
+            total_saved,
+
+        "pending":
+            pending,
+
+        "errors":
+            errors,
+
+        "note": (
+            "Somente jogos finalizados e jogadores "
+            "individualmente localizados no Summary ESPN "
+            "são gravados. Ausência de registro não é "
+            "convertida em zero; candidatos pendentes "
+            "podem ser consultados novamente."
+        )
     }
 
 
 # ============================================================
-# ENDPOINTS DE DIAGNÓSTICO
+# ENDPOINT DE DIAGNÓSTICO DO GAMELOG
 # ============================================================
 
 @app.get("/debug-gamelog")
-def debug_gamelog():
+def debug_gamelog(
+    player_id: str = Query(
+        ...,
+        description="ESPN athlete/player ID"
+    ),
 
-    athlete_id = "1966"
+    year: Optional[int] = Query(
+        default=None
+    )
+):
 
-    year = 2027
+    """
+    Diagnóstico real do gamelog de um jogador.
+
+    Antes este endpoint estava fixado em athlete_id=1966.
+    Agora ele utiliza o player_id informado na URL.
+    """
+
+    if not player_id:
+
+        raise HTTPException(
+            status_code=400,
+            detail="player_id é obrigatório."
+        )
+
+    if year is None:
+
+        year = season_year(
+            date.today()
+        )
 
     data = request_json(
         GAMELOG_URL.format(
-            athlete=athlete_id
+            athlete=str(
+                player_id
+            ).strip()
         ),
-        {"season": year}
+        {
+            "season": year
+        }
     )
 
-    events = data.get("events")
+    events = data.get(
+        "events"
+    )
 
-    if isinstance(events, dict):
+    if isinstance(
+        events,
+        dict
+    ):
 
         events_sample = [
             {
                 "event_id": key,
                 "data": value
             }
-            for key, value in list(events.items())[:3]
+            for key, value in list(
+                events.items()
+            )[:3]
         ]
 
-        events_count = len(events)
+        events_count = len(
+            events
+        )
 
-    elif isinstance(events, list):
+    elif isinstance(
+        events,
+        list
+    ):
 
         events_sample = events[:3]
 
-        events_count = len(events)
+        events_count = len(
+            events
+        )
 
     else:
 
@@ -3247,29 +4020,41 @@ def debug_gamelog():
 
     return {
 
-        "athlete_id": athlete_id,
+        "athlete_id":
+            str(player_id).strip(),
 
-        "season_year": year,
+        "season_year":
+            year,
 
-        "top_level_keys": list(data.keys()),
+        "top_level_keys":
+            list(data.keys()),
 
-        "categories_present": (
-            "categories" in data
-        ),
+        "categories_present":
+            "categories" in data,
 
-        "labels": data.get("labels"),
+        "labels":
+            data.get("labels"),
 
-        "names": data.get("names"),
+        "names":
+            data.get("names"),
 
-        "season_types": data.get("seasonTypes"),
+        "season_types":
+            data.get("seasonTypes"),
 
-        "events_type": type(events).__name__,
+        "events_type":
+            type(events).__name__,
 
-        "events_count": events_count,
+        "events_count":
+            events_count,
 
-        "events_sample": events_sample
+        "events_sample":
+            events_sample
     }
 
+
+# ============================================================
+# STATS CHECK
+# ============================================================
 
 @app.get("/stats-check")
 def stats_check(
@@ -3308,7 +4093,9 @@ def stats_check(
             )
         )
 
-    year = season_year(target_date)
+    year = season_year(
+        target_date
+    )
 
     sample_player = None
 
@@ -3359,41 +4146,57 @@ def stats_check(
 
         "source": "ESPN",
 
-        "season": season_for(target_date),
-
-        "season_year": year,
-
-        "teams_found": data["teams_found"],
-
-        "players_found": len(players),
-
-        "players_checked": players_checked,
-
-        "players_with_errors": players_with_errors,
-
-        "sample_player": (
-            sample_player["player"]
-            if sample_player
-            else None
+        "season": season_for(
+            target_date
         ),
 
-        "sample_player_id": (
-            sample_player["id"]
-            if sample_player
-            else None
-        ),
+        "season_year":
+            year,
 
-        "sample_games": len(previous_games),
+        "teams_found":
+            data["teams_found"],
 
-        "sample_game": (
-            previous_games[0]
-            if previous_games
-            else None
-        ),
+        "players_found":
+            len(players),
 
-        "checked_at": datetime.now().isoformat()
+        "players_checked":
+            players_checked,
+
+        "players_with_errors":
+            players_with_errors,
+
+        "sample_player":
+            (
+                sample_player["player"]
+                if sample_player
+                else None
+            ),
+
+        "sample_player_id":
+            (
+                sample_player["id"]
+                if sample_player
+                else None
+            ),
+
+        "sample_games":
+            len(previous_games),
+
+        "sample_game":
+            (
+                previous_games[0]
+                if previous_games
+                else None
+            ),
+
+        "checked_at":
+            datetime.now().isoformat()
     }
 
+
+# ============================================================
+# TEAM CHECK
+# ============================================================
 
 @app.get("/team-check")
 def team_check(
@@ -3432,7 +4235,9 @@ def team_check(
             )
         )
 
-    year = season_year(target_date)
+    year = season_year(
+        target_date
+    )
 
     def check_player(player):
 
@@ -3451,13 +4256,17 @@ def team_check(
 
             return {
 
-                "player": player["player"],
+                "player":
+                    player["player"],
 
-                "player_id": player["id"],
+                "player_id":
+                    player["id"],
 
-                "current_team": player["team"],
+                "current_team":
+                    player["team"],
 
-                "status": "no_previous_games"
+                "status":
+                    "no_previous_games"
             }
 
         last_game = previous_games[0]
@@ -3468,15 +4277,24 @@ def team_check(
             if game.get("team")
         })
 
-        last_game_team = last_game.get("team")
+        last_game_team = (
+            last_game.get("team")
+        )
 
         if not last_game_team:
 
-            status = "missing_historical_team"
+            status = (
+                "missing_historical_team"
+            )
 
-        elif last_game_team != player["team"]:
+        elif (
+            last_game_team
+            != player["team"]
+        ):
 
-            status = "team_mismatch"
+            status = (
+                "team_mismatch"
+            )
 
         else:
 
@@ -3484,28 +4302,36 @@ def team_check(
 
         return {
 
-            "player": player["player"],
+            "player":
+                player["player"],
 
-            "player_id": player["id"],
+            "player_id":
+                player["id"],
 
-            "current_team": player["team"],
+            "current_team":
+                player["team"],
 
-            "last_game_date": last_game["date"],
+            "last_game_date":
+                last_game["date"],
 
-            "last_game_team": last_game_team,
+            "last_game_team":
+                last_game_team,
 
-            "team_changed": bool(
-                last_game_team
-                and last_game_team != player["team"]
-            ),
+            "team_changed":
+                bool(
+                    last_game_team
+                    and last_game_team
+                    != player["team"]
+                ),
 
-            "teams_in_last5": historical_teams,
+            "teams_in_last5":
+                historical_teams,
 
-            "multiple_teams_last5": (
-                len(historical_teams) > 1
-            ),
+            "multiple_teams_last5":
+                len(historical_teams) > 1,
 
-            "status": status
+            "status":
+                status
         }
 
     checked_results = []
@@ -3524,7 +4350,9 @@ def team_check(
             for player in players
         }
 
-        for future in as_completed(futures):
+        for future in as_completed(
+            futures
+        ):
 
             player = futures[future]
 
@@ -3538,107 +4366,142 @@ def team_check(
 
                 errors.append({
 
-                    "player": player["player"],
+                    "player":
+                        player["player"],
 
-                    "player_id": player["id"],
+                    "player_id":
+                        player["id"],
 
-                    "current_team": player["team"],
+                    "current_team":
+                        player["team"],
 
-                    "error": str(error)[:250]
+                    "error":
+                        str(error)[:250]
                 })
 
     checked_results.sort(
-        key=lambda item: item["player"].casefold()
+        key=lambda item:
+            item["player"].casefold()
     )
 
     errors.sort(
-        key=lambda item: item["player"].casefold()
+        key=lambda item:
+            item["player"].casefold()
     )
 
     mismatches = [
         item
         for item in checked_results
-        if item["status"] == "team_mismatch"
+        if item["status"]
+        == "team_mismatch"
     ]
 
     missing_historical_team = [
         item
         for item in checked_results
-        if item["status"] == "missing_historical_team"
+        if item["status"]
+        == "missing_historical_team"
     ]
 
     no_previous_games = [
         item
         for item in checked_results
-        if item["status"] == "no_previous_games"
+        if item["status"]
+        == "no_previous_games"
     ]
 
     multiple_teams = [
         item
         for item in checked_results
-        if item.get("multiple_teams_last5")
+        if item.get(
+            "multiple_teams_last5"
+        )
     ]
 
     return {
 
-        "status": (
-            "ok"
-            if not errors
-            else "partial"
-        ),
+        "status":
+            (
+                "ok"
+                if not errors
+                else "partial"
+            ),
 
-        "source": "ESPN",
+        "source":
+            "ESPN",
 
-        "date": selected_date,
+        "date":
+            selected_date,
 
-        "season": season_for(target_date),
+        "season":
+            season_for(
+                target_date
+            ),
 
-        "teams_found": data["teams_found"],
+        "teams_found":
+            data["teams_found"],
 
-        "players_found": len(players),
+        "players_found":
+            len(players),
 
-        "players_excluded_multiple_rosters": (
+        "players_excluded_multiple_rosters":
             data.get(
                 "players_excluded_multiple_teams",
                 0
-            )
-        ),
+            ),
 
-        "players_checked": (
-            len(checked_results) + len(errors)
-        ),
+        "players_checked":
+            (
+                len(checked_results)
+                + len(errors)
+            ),
 
-        "players_with_history": (
-            len(checked_results) - len(no_previous_games)
-        ),
+        "players_with_history":
+            (
+                len(checked_results)
+                - len(no_previous_games)
+            ),
 
-        "players_without_history": len(no_previous_games),
+        "players_without_history":
+            len(no_previous_games),
 
-        "players_with_team_mismatch": len(mismatches),
+        "players_with_team_mismatch":
+            len(mismatches),
 
-        "players_missing_historical_team": len(
-            missing_historical_team
-        ),
+        "players_missing_historical_team":
+            len(
+                missing_historical_team
+            ),
 
-        "players_with_multiple_teams_last5": len(
-            multiple_teams
-        ),
+        "players_with_multiple_teams_last5":
+            len(multiple_teams),
 
-        "players_with_errors": len(errors),
+        "players_with_errors":
+            len(errors),
 
-        "team_mismatches": mismatches,
+        "team_mismatches":
+            mismatches,
 
-        "missing_historical_team": missing_historical_team,
+        "missing_historical_team":
+            missing_historical_team,
 
-        "multiple_teams_last5": multiple_teams,
+        "multiple_teams_last5":
+            multiple_teams,
 
-        "players_without_history": no_previous_games,
+        "players_without_history":
+            no_previous_games,
 
-        "errors": errors,
+        "errors":
+            errors,
 
-        "checked_at": datetime.now().isoformat()
+        "checked_at":
+            datetime.now().isoformat()
     }
 
+
+# ============================================================
+# DEFESA CHECK
+# ============================================================
 
 @app.get("/defense-check")
 def defense_check():
@@ -3650,15 +4513,17 @@ def defense_check():
 
     return {
 
-        "POR_defense": extract_team_defense_stats(
-            summary,
-            "POR"
-        ),
+        "POR_defense":
+            extract_team_defense_stats(
+                summary,
+                "POR"
+            ),
 
-        "DEN_defense": extract_team_defense_stats(
-            summary,
-            "DEN"
-        )
+        "DEN_defense":
+            extract_team_defense_stats(
+                summary,
+                "DEN"
+            )
     }
 
 
@@ -3672,7 +4537,9 @@ def defense_position_check(
     defending_team: str = Query(...)
 ):
 
-    defending_team = defending_team.upper()
+    defending_team = (
+        defending_team.upper()
+    )
 
     summary = request_json(
         SUMMARY_URL,
@@ -3686,13 +4553,17 @@ def defense_position_check(
 
     return {
 
-        "event": event,
+        "event":
+            event,
 
-        "defending_team": defending_team,
+        "defending_team":
+            defending_team,
 
-        "opponent": data["opponent"],
+        "opponent":
+            data["opponent"],
 
-        "positions": data["players"]
+        "positions":
+            data["players"]
     }
 
 
@@ -3706,7 +4577,9 @@ def defense_position_raw_check(
     defending_team: str = Query(...)
 ):
 
-    defending_team = defending_team.upper()
+    defending_team = (
+        defending_team.upper()
+    )
 
     summary = request_json(
         SUMMARY_URL,
@@ -3727,17 +4600,26 @@ def defense_position_raw_check(
 
     return {
 
-        "event": event,
+        "event":
+            event,
 
-        "defending_team": defending_team,
+        "defending_team":
+            defending_team,
 
-        "teams_count": len(teams),
+        "teams_count":
+            len(teams),
 
-        "players_count": len(players),
+        "players_count":
+            len(players),
 
-        "players_raw": players
+        "players_raw":
+            players
     }
 
+
+# ============================================================
+# SCHEDULE CHECK
+# ============================================================
 
 @app.get("/schedule-check")
 def schedule_check():
@@ -3748,23 +4630,35 @@ def schedule_check():
         "https://site.api.espn.com/apis/site/v2/sports/"
         "basketball/nba/teams/den/schedule",
         {
-            "season": season_year(target_date)
+            "season":
+                season_year(target_date)
         }
     )
 
-    events = data.get("events", [])
+    events = data.get(
+        "events",
+        []
+    )
 
     return {
 
-        "top_level_keys": list(data.keys()),
+        "top_level_keys":
+            list(data.keys()),
 
-        "team": data.get("team", {}),
+        "team":
+            data.get("team", {}),
 
-        "events_count": len(events),
+        "events_count":
+            len(events),
 
-        "sample_events": events[:2]
+        "sample_events":
+            events[:2]
     }
 
+
+# ============================================================
+# DEFESA HISTORY CHECK
+# ============================================================
 
 @app.get("/defense-history-check")
 def defense_history_check():
@@ -3775,21 +4669,28 @@ def defense_history_check():
         "https://site.api.espn.com/apis/site/v2/sports/"
         "basketball/nba/teams/den/schedule",
         {
-            "season": season_year(target_date)
+            "season":
+                season_year(target_date)
         }
     )
 
     return {
 
-        "team": "DEN",
-
-        "games": get_completed_team_games(
-            schedule,
+        "team":
             "DEN",
-            5
-        )
+
+        "games":
+            get_completed_team_games(
+                schedule,
+                "DEN",
+                5
+            )
     }
 
+
+# ============================================================
+# DEFESA GAME CHECK
+# ============================================================
 
 @app.get("/defense-game-check")
 def defense_game_check():
@@ -3801,17 +4702,23 @@ def defense_game_check():
 
     return {
 
-        "DEN_defense": extract_team_defense_stats(
-            summary,
-            "DEN"
-        ),
+        "DEN_defense":
+            extract_team_defense_stats(
+                summary,
+                "DEN"
+            ),
 
-        "POR_defense": extract_team_defense_stats(
-            summary,
-            "POR"
-        )
+        "POR_defense":
+            extract_team_defense_stats(
+                summary,
+                "POR"
+            )
     }
 
+
+# ============================================================
+# DEFESA AVERAGE CHECK
+# ============================================================
 
 @app.get("/defense-average-check")
 def defense_average_check(
