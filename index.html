@@ -85,6 +85,7 @@
   .market-button:nth-child(5) { grid-column: 2 / span 2; }
   .market-button:hover { background: #1f2937; border-color: #4b5563; }
   .market-button.active, .market-button.active:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
+  .schedule-search-button { min-height: 36px; height: 36px; padding: 6px 12px; }
   @media (min-width: 640px) {
     .actions { grid-template-columns: repeat(6, minmax(0, 1fr)); }
     .market-button:nth-child(5) { grid-column: 4 / span 2; }
@@ -187,7 +188,7 @@
           <label for="data" class="block text-[10px] font-medium text-gray-400 mb-1">Data</label>
           <input type="date" id="data">
         </div>
-        <button onclick="carregarJogos()" class="whitespace-nowrap px-3 text-xs w-full sm:w-auto">Buscar Jogos</button>
+        <button onclick="carregarJogos()" class="market-button schedule-search-button whitespace-nowrap w-full sm:w-auto">Buscar Jogos</button>
       </div>
       <div id="jogos" class="mt-2"></div>
     </div>
