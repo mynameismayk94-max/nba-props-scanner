@@ -2587,15 +2587,24 @@ def collect_candidates(
     defense_cache = {}
 
     def fetch_team_defense(team):
+        team_start = time.perf_counter()
         defense = get_team_defense_history(
             team,
             10,
             target_date
         )
+        elapsed = time.perf_counter() - team_start
+        logger.info(
+            "Defesa timing: data=%s equipe=%s jogos=%s tempo=%.2fs",
+            selected_date,
+            team,
+            len(defense),
+            elapsed
+        )
         return team, defense
 
     with ThreadPoolExecutor(
-        max_workers=4
+        max_workers=3
     ) as executor:
 
         futures = [
