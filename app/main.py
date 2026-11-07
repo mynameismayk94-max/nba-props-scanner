@@ -5,6 +5,7 @@ import os
 import threading
 
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
@@ -1562,10 +1563,30 @@ def fetch_espn_games(
 
         if home and away:
 
+            # A ESPN fornece o início em UTC; a interface exibe horário de Brasília.
+            event_date = event.get("date")
+            start_time_brt = None
+
+            if event_date:
+                try:
+                    start_utc = datetime.fromisoformat(
+                        event_date.replace("Z", "+00:00")
+                    )
+                    start_time_brt = start_utc.astimezone(
+                        ZoneInfo("America/Sao_Paulo")
+                    ).strftime("%H:%M")
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Horário inválido recebido da ESPN para jogo %s: %s",
+                        event.get("id"),
+                        event_date
+                    )
+
             games.append({
                 "game_id": event.get("id"),
                 "home": home,
                 "away": away,
+                "start_time_brt": start_time_brt,
                 "status": (
                     event.get("status", {})
                     .get("type", {})
