@@ -359,6 +359,43 @@
       </div>
     </div>
 
+    <!-- Investigação exploratória de perfis semelhantes na faixa 6–6,99 -->
+    <div class="glass-panel p-3 space-y-2">
+      <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
+      <p class="text-[10px] text-gray-400">Compara candidatos com score 6–6,99 a outros jogadores do mesmo mercado, posição e faixa de minutos médios L5. O mesmo jogador é excluído da comparação.</p>
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Score 6–6,99 · média real</span>
+          <strong id="similar-target-average" class="text-lg text-emerald-400">—</strong>
+          <span id="similar-target-count" class="block text-[9px] text-gray-500">0 registros</span>
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Perfis semelhantes · média real</span>
+          <strong id="similar-peer-average" class="text-lg text-gray-200">—</strong>
+          <span id="similar-peer-count" class="block text-[9px] text-gray-500">0 registros</span>
+        </div>
+      </div>
+      <p id="similar-difference" class="text-[10px] text-gray-400">Diferença entre os grupos: —</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Posição</th>
+              <th>Minutos L5</th>
+              <th>Score 6–6,99<br>n / média real</th>
+              <th>Similares<br>n / média real</th>
+              <th>Diferença</th>
+              <th>Amostra</th>
+            </tr>
+          </thead>
+          <tbody id="similar-profiles-table" class="text-gray-300">
+            <tr><td colspan="6" class="text-gray-400">Carregando análise...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-[9px] text-gray-500">Amostras pequenas devem ser tratadas apenas como hipótese. A análise não altera o score nem a classificação dos candidatos.</p>
+    </div>
+
     <!-- Comparação direta da qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">🎯 Qualidade do ranking: score alto x baixo</h3>
@@ -984,6 +1021,36 @@ async function fetchHistoryValidation() {
         <td class="text-teal-300">${b.l10_relative_error_pct == null ? '--' : b.l10_relative_error_pct + '%'}</td>
       </tr>
     `).join('');
+
+    const similarity = res.similarity_analysis || {};
+    const showAverage = value => value == null ? '—' : numero(value, 2);
+    const showCount = (records, players) => (records || 0) + ' registros · ' + (players || 0) + ' jogadores';
+    document.getElementById('similar-target-average').innerText = showAverage(similarity.target_actual_average);
+    document.getElementById('similar-target-count').innerText = showCount(similarity.target_count, similarity.target_players);
+    document.getElementById('similar-peer-average').innerText = showAverage(similarity.similar_actual_average);
+    document.getElementById('similar-peer-count').innerText = showCount(similarity.similar_count, similarity.similar_players);
+    const similarityDifference = similarity.actual_difference;
+    document.getElementById('similar-difference').innerText =
+      similarityDifference == null
+        ? 'Diferença entre os grupos: dados comparáveis insuficientes.'
+        : 'Diferença: ' + (similarityDifference > 0 ? '+' : '') + numero(similarityDifference, 2) + ' unidades a favor da faixa 6–6,99.';
+
+    const similarityTable = document.getElementById('similar-profiles-table');
+    const similarityCohorts = similarity.cohorts || [];
+    similarityTable.innerHTML = similarityCohorts.length
+      ? similarityCohorts.map(group => {
+          const difference = group.actual_difference;
+          const differenceText = difference == null ? '—' : (difference > 0 ? '+' : '') + numero(difference, 2);
+          return '<tr>' +
+            '<td>' + escapeHtml(group.position || '—') + '</td>' +
+            '<td>' + escapeHtml(group.minutes_band || '—') + '</td>' +
+            '<td>' + showCount(group.target_records, group.target_players) + '<br><b>' + showAverage(group.target_actual_average) + '</b></td>' +
+            '<td>' + showCount(group.similar_records, group.similar_players) + '<br><b>' + showAverage(group.similar_actual_average) + '</b></td>' +
+            '<td>' + differenceText + '</td>' +
+            '<td>' + escapeHtml(group.sample_status || '—') + '</td>' +
+            '</tr>';
+        }).join('')
+      : '<tr><td colspan="6" class="text-gray-400">Ainda não há registros concluídos na faixa 6–6,99.</td></tr>';
 
     const ranking = res.ranking_quality || {};
     const high = res.score_bands.find(b => b.band === '7+') || {};
