@@ -3215,14 +3215,22 @@ def validation_history(
             return {
                 "games": 0,
                 "actual_average": None,
+                "score_average": None,
+                "l5_prediction_average": None,
+                "l10_prediction_average": None,
                 "l5_mae": None,
                 "l10_mae": None,
+                "l5_relative_error_pct": None,
+                "l10_relative_error_pct": None,
                 "score_actual_pearson": None
             }
 
         actual_values = []
+        score_values = []
         l5_errors = []
         l10_errors = []
+        l5_predictions = []
+        l10_predictions = []
         pairs = []
 
         for row in rows:
@@ -3245,17 +3253,19 @@ def validation_history(
             actual_values.append(actual)
 
             if last5_avg is not None:
-                l5_errors.append(
-                    abs(actual - float(last5_avg))
-                )
+                prediction_l5 = float(last5_avg)
+                l5_predictions.append(prediction_l5)
+                l5_errors.append(abs(actual - prediction_l5))
 
             if last10_avg is not None:
-                l10_errors.append(
-                    abs(actual - float(last10_avg))
-                )
+                prediction_l10 = float(last10_avg)
+                l10_predictions.append(prediction_l10)
+                l10_errors.append(abs(actual - prediction_l10))
 
             if triage_score is not None:
-                pairs.append((float(triage_score), actual))
+                score = float(triage_score)
+                score_values.append(score)
+                pairs.append((score, actual))
 
         xs = [p[0] for p in pairs]
         ys = [p[1] for p in pairs]
@@ -3274,11 +3284,33 @@ def validation_history(
             if den != 0:
                 pearson = round(num / den, 4)
 
+        l5_mae = safe_average(l5_errors)
+        l10_mae = safe_average(l10_errors)
+        l5_prediction_average = safe_average(l5_predictions)
+        l10_prediction_average = safe_average(l10_predictions)
+
+        # Erro relativo agregado: MAE / média das previsões da mesma amostra.
+        l5_relative_error = (
+            round(l5_mae / l5_prediction_average * 100, 2)
+            if l5_mae is not None and l5_prediction_average not in (None, 0)
+            else None
+        )
+        l10_relative_error = (
+            round(l10_mae / l10_prediction_average * 100, 2)
+            if l10_mae is not None and l10_prediction_average not in (None, 0)
+            else None
+        )
+
         return {
             "games": len(rows),
             "actual_average": safe_average(actual_values),
-            "l5_mae": safe_average(l5_errors),
-            "l10_mae": safe_average(l10_errors),
+            "score_average": safe_average(score_values),
+            "l5_prediction_average": l5_prediction_average,
+            "l10_prediction_average": l10_prediction_average,
+            "l5_mae": l5_mae,
+            "l10_mae": l10_mae,
+            "l5_relative_error_pct": l5_relative_error,
+            "l10_relative_error_pct": l10_relative_error,
             "score_actual_pearson": pearson
         }
 
@@ -3321,6 +3353,31 @@ def validation_history(
 
     overall_metrics = build_metrics(completed_rows)
 
+    # Separação entre a faixa de maior score e a de menor score.
+    high_band = next((b for b in bands_output if b["band"] == "7+"), None)
+    low_band = next((b for b in bands_output if b["band"] == "<4"), None)
+    high_low = {
+        "high_score_band": high_band,
+        "low_score_band": low_band,
+        "actual_average_difference": (
+            round(high_band["actual_average"] - low_band["actual_average"], 2)
+            if high_band and low_band
+            and high_band["actual_average"] is not None
+            and low_band["actual_average"] is not None
+            else None
+        ),
+        "high_vs_low_pct": (
+            round(
+                (high_band["actual_average"] - low_band["actual_average"])
+                / low_band["actual_average"] * 100, 2
+            )
+            if high_band and low_band
+            and high_band["actual_average"] is not None
+            and low_band["actual_average"] not in (None, 0)
+            else None
+        )
+    }
+
     by_date = {}
 
     for row in completed_rows:
@@ -3356,11 +3413,13 @@ def validation_history(
             **overall_metrics
         },
         "score_bands": bands_output,
+        "ranking_quality": high_low,
         "daily": daily_output,
         "method_note": (
-            "Validação histórica mantendo a regra de integridade "
-            "do score intocado. Exibe desempenho por faixa, comparação "
-            "L5 vs L10 através de MAE e calibração de produção real."
+            "Precisão: MAE L5/L10. Erro relativo: MAE dividido pela média "
+            "das previsões correspondentes, usando a mesma amostra válida. "
+            "Ranking: médias reais e quantidade por faixa de score. "
+            "Registros pendentes são excluídos; score original não é alterado."
         )
     }
 
