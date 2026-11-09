@@ -3349,12 +3349,9 @@ def validation_history(
 
 
     # Investigação de perfis semelhantes para a faixa 6–6,99.
-    # Compara candidatos dessa faixa com outros jogadores do mesmo mercado,
-    # posição normalizada e faixa de minutos L5. O próprio jogador é excluído
-    # do grupo de comparação para evitar comparação consigo mesmo.
-    similarity_targets = []
-    similarity_groups = {}
-
+    # Para cada candidato-alvo, procura até três registros de outros jogadores
+    # da mesma posição, com L5, L10 e minutos mais próximos (variáveis
+    # padronizadas pelo desvio-padrão do próprio mercado).
     def normalize_audit_position(value):
         raw = str(value or "").strip().upper()
         if raw in ("G", "PG", "SG", "GUARD"):
@@ -3375,43 +3372,96 @@ def validation_history(
             return "24–29,9 min"
         return "30+ min"
 
-    for row in completed_rows:
-        score = row[6]
-        if score is None:
+    similarity_targets = [
+        row for row in completed_rows
+        if row[6] is not None and 6.0 <= float(row[6]) < 7.0
+    ]
+    other_candidates = [
+        row for row in completed_rows
+        if row[6] is not None and not (6.0 <= float(row[6]) < 7.0)
+    ]
+
+    feature_indexes = (7, 8, 9)  # L5, L10 e minutos médios.
+    feature_scales = {}
+
+    for feature_index in feature_indexes:
+        values = [
+            float(row[feature_index])
+            for row in completed_rows
+            if row[feature_index] is not None
+        ]
+        if values:
+            mean_value = sum(values) / len(values)
+            variance = sum((value - mean_value) ** 2 for value in values) / len(values)
+            feature_scales[feature_index] = variance ** 0.5 or 1.0
+        else:
+            feature_scales[feature_index] = 1.0
+
+    similarity_groups = {}
+    matched_peer_keys = set()
+    matched_target_rows = []
+
+    for target in similarity_targets:
+        target_position = normalize_audit_position(target[5])
+        target_minutes_band = audit_minutes_band(target[9])
+        group_key = (target_position, target_minutes_band)
+
+        group = similarity_groups.setdefault(group_key, {
+            "targets": [],
+            "peers": {}
+        })
+        group["targets"].append(target)
+        matched_target_rows.append(target)
+
+        target_features = [target[index] for index in feature_indexes]
+        if any(value is None for value in target_features):
             continue
 
-        position_group = normalize_audit_position(row[5])
-        minutes_group = audit_minutes_band(row[9])
-        group_key = (position_group, minutes_group)
+        target_player_id = str(target[1])
+        ranked_peers = []
 
-        if group_key not in similarity_groups:
-            similarity_groups[group_key] = {
-                "targets": [],
-                "others": []
-            }
+        for candidate in other_candidates:
+            if str(candidate[1]) == target_player_id:
+                continue
+            if normalize_audit_position(candidate[5]) != target_position:
+                continue
 
-        if 6.0 <= float(score) < 7.0:
-            similarity_targets.append(row)
-            similarity_groups[group_key]["targets"].append(row)
-        else:
-            similarity_groups[group_key]["others"].append(row)
+            candidate_features = [candidate[index] for index in feature_indexes]
+            if any(value is None for value in candidate_features):
+                continue
+
+            squared_distances = [
+                (
+                    (float(target_value) - float(candidate_value))
+                    / feature_scales[feature_index]
+                ) ** 2
+                for feature_index, target_value, candidate_value
+                in zip(feature_indexes, target_features, candidate_features)
+            ]
+            distance = (sum(squared_distances) / len(squared_distances)) ** 0.5
+
+            # Limite conservador: evita chamar de semelhante um registro distante.
+            if distance <= 1.25:
+                ranked_peers.append((distance, candidate))
+
+        ranked_peers.sort(key=lambda item: item[0])
+
+        for distance, peer in ranked_peers[:3]:
+            peer_key = (peer[0], str(peer[1]))
+            if peer_key not in group["peers"]:
+                group["peers"][peer_key] = {
+                    "row": peer,
+                    "distance": distance
+                }
+                matched_peer_keys.add(peer_key)
 
     similarity_cohorts = []
-    matched_target_rows = []
     matched_peer_rows = []
 
     for (position_group, minutes_group), group in sorted(similarity_groups.items()):
         target_rows = group["targets"]
-        if not target_rows:
-            continue
-
-        target_player_ids = {str(row[1]) for row in target_rows}
-        peer_rows = [
-            row for row in group["others"]
-            if str(row[1]) not in target_player_ids
-        ]
-
-        matched_target_rows.extend(target_rows)
+        peer_entries = list(group["peers"].values())
+        peer_rows = [entry["row"] for entry in peer_entries]
         matched_peer_rows.extend(peer_rows)
 
         target_average = safe_average([float(row[10]) for row in target_rows])
@@ -3421,7 +3471,7 @@ def validation_history(
             "position": position_group,
             "minutes_band": minutes_group,
             "target_records": len(target_rows),
-            "target_players": len(target_player_ids),
+            "target_players": len({str(row[1]) for row in target_rows}),
             "target_actual_average": target_average,
             "similar_records": len(peer_rows),
             "similar_players": len({str(row[1]) for row in peer_rows}),
@@ -3430,6 +3480,9 @@ def validation_history(
                 round(target_average - peer_average, 2)
                 if target_average is not None and peer_average is not None
                 else None
+            ),
+            "average_similarity_distance": safe_average(
+                [entry["distance"] for entry in peer_entries]
             ),
             "sample_status": (
                 "Acompanhar"
@@ -3460,10 +3513,12 @@ def validation_history(
         ),
         "cohorts": similarity_cohorts,
         "method_note": (
-            "Compara registros concluídos da faixa de score 6–6,99 com registros "
-            "de outros scores do mesmo mercado, posição normalizada e faixa de "
-            "minutos L5. O mesmo player_id é excluído do grupo comparável. "
-            "É uma análise exploratória de perfil, não uma recomendação de aposta."
+            "Para cada registro de score 6–6,99, seleciona até três registros "
+            "de outros jogadores da mesma posição, com L5, L10 e minutos médios "
+            "mais próximos. As três variáveis são padronizadas pelo desvio-padrão "
+            "do mercado; somente pares com distância média padronizada até 1,25 "
+            "são aceitos. O mesmo player_id é excluído. Análise exploratória, "
+            "não recomendação de aposta."
         )
     }
 
