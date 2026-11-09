@@ -3406,7 +3406,8 @@ def validation_history(
             row for row in completed_rows if row_in_band(row, score_band)
         ]
         other_candidates = [
-            row for row in completed_rows if not row_in_band(row, score_band)
+            row for row in completed_rows
+            if row[6] is not None and not row_in_band(row, score_band)
         ]
 
         similarity_groups = {}
