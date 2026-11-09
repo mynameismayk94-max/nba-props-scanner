@@ -3456,13 +3456,15 @@ def validation_history(
                 matched_peer_keys.add(peer_key)
 
     similarity_cohorts = []
-    matched_peer_rows = []
+    matched_peer_rows_by_key = {}
 
     for (position_group, minutes_group), group in sorted(similarity_groups.items()):
         target_rows = group["targets"]
         peer_entries = list(group["peers"].values())
         peer_rows = [entry["row"] for entry in peer_entries]
-        matched_peer_rows.extend(peer_rows)
+        for peer in peer_rows:
+            peer_key = (peer[0], str(peer[1]))
+            matched_peer_rows_by_key.setdefault(peer_key, peer)
 
         target_average = safe_average([float(row[10]) for row in target_rows])
         peer_average = safe_average([float(row[10]) for row in peer_rows])
@@ -3491,6 +3493,7 @@ def validation_history(
             )
         })
 
+    matched_peer_rows = list(matched_peer_rows_by_key.values())
     similarity_target_average = safe_average(
         [float(row[10]) for row in matched_target_rows]
     )
