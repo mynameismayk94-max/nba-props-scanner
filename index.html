@@ -270,7 +270,7 @@
       <div id="collection-status" class="text-[10px] text-gray-400" aria-live="polite"></div>
       <div>
         <h3 class="text-xs font-semibold text-white">📈 Comparativo por mercado</h3>
-        <p class="text-[10px] text-gray-400">Visão dos seis mercados ativos e do histórico legado de tentativas totais. A amostra considera apenas resultados reais já coletados.</p>
+        <p class="text-[10px] text-gray-400">Visão dos seis mercados ativos. A amostra considera apenas resultados reais já coletados.</p>
       </div>
       <div class="tablewrap">
         <table>
@@ -302,7 +302,6 @@
           <option value="threes">Tentativas de 3 Pontos</option>
           <option value="two_pa">Tentativas de 2 Pontos</option>
           <option value="fgm">Cestas Convertidas</option>
-          <option value="attempts">Tentativas totais (histórico)</option>
         </select>
       </div>
       <div class="text-[10px] text-gray-400 text-right">Amostra: <span id="hist-sample-count" class="font-bold text-white">0</span></div>
@@ -926,7 +925,6 @@ async function fetchMarketComparison() {
     { id: 'threes', label: 'Tentativas de 3 pts' },
     { id: 'two_pa', label: 'Tentativas de 2 pts' },
     { id: 'fgm', label: 'Cestas convertidas' },
-    { id: 'attempts', label: 'Tentativas totais (histórico)' }
   ];
   const tableBody = document.getElementById('market-comparison-table');
   tableBody.innerHTML = '<tr><td colspan="7" class="text-gray-400">Carregando os mercados...</td></tr>';
