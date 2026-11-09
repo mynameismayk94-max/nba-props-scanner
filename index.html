@@ -255,7 +255,7 @@
     
     <div class="glass-panel p-3 border-l-4 border-l-emerald-500">
       <h2 class="text-xs font-bold text-white uppercase tracking-wide mb-0.5">Auditoria Histórica</h2>
-      <p class="text-[10px] text-gray-400">Avaliação acumulada do modelo (MAE L5 vs L10).</p>
+      <p class="text-[10px] text-gray-400">Precisão da previsão, qualidade do ranking e erro proporcional — somente resultados concluídos.</p>
     </div>
 
     <div class="glass-panel p-3 space-y-3">
@@ -308,7 +308,7 @@
       <div class="text-[10px] text-gray-400 text-right">Amostra: <span id="hist-sample-count" class="font-bold text-white">0</span></div>
     </div>
 
-    <!-- 4 KPIs Principais -->
+    <!-- KPIs de precisão e cobertura -->
     <div class="grid grid-cols-2 gap-2">
       <div class="glass-panel p-2.5">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro L5 (MAE)</span>
@@ -326,21 +326,31 @@
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Conclusão</span>
         <div class="text-base font-bold text-gray-200 mt-0.5" id="kpi-completion">--%</div>
       </div>
+      <div class="glass-panel p-2.5">
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro relativo L5</span>
+        <div class="text-base font-bold text-emerald-300 mt-0.5" id="kpi-l5-relative">--%</div>
+      </div>
+      <div class="glass-panel p-2.5">
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro relativo L10</span>
+        <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
+      </div>
     </div>
 
-    <!-- Tabela de Calibração -->
+    <!-- Tabela de Calibração e qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">📊 Calibração por Faixa de Score</h3>
       <div class="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Faixa</th>
-              <th>Jogos</th>
-              <th>Média Real</th>
+              <th>Faixa score</th>
+              <th>Amostra</th>
+              <th>Score médio</th>
+              <th>Média real</th>
               <th>MAE L5</th>
+              <th>Erro rel. L5</th>
               <th>MAE L10</th>
-              <th>Pearson</th>
+              <th>Erro rel. L10</th>
             </tr>
           </thead>
           <tbody id="score-bands-table" class="text-gray-300">
@@ -350,9 +360,28 @@
       </div>
     </div>
 
+    <!-- Comparação direta da qualidade do ranking -->
+    <div class="glass-panel p-3 space-y-2">
+      <h3 class="text-xs font-semibold text-white">🎯 Qualidade do ranking: score alto x baixo</h3>
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Média real · Score 7+</span>
+          <strong id="ranking-high-average" class="text-lg text-emerald-400">—</strong>
+          <span id="ranking-high-count" class="block text-[9px] text-gray-500">0 registros</span>
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Média real · Score abaixo de 4</span>
+          <strong id="ranking-low-average" class="text-lg text-gray-200">—</strong>
+          <span id="ranking-low-count" class="block text-[9px] text-gray-500">0 registros</span>
+        </div>
+      </div>
+      <p id="ranking-separation" class="text-[10px] text-gray-400">Diferença entre as faixas: —</p>
+      <p class="text-[9px] text-gray-500">A comparação mostra separação estatística observada, não taxa de acerto de apostas.</p>
+    </div>
+
     <!-- Gráfico de Evolução -->
     <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">Evolução do Erro Médio (MAE)</h3>
+      <h3 class="text-xs font-semibold text-white">Evolução do erro (MAE e erro relativo)</h3>
       <div class="h-44 w-full">
         <canvas id="dailyErrorChart"></canvas>
       </div>
@@ -941,18 +970,34 @@ async function fetchHistoryValidation() {
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
     document.getElementById('kpi-completion').innerText = (summary.completion_rate_pct || 0) + '%';
+    document.getElementById('kpi-l5-relative').innerText = summary.l5_relative_error_pct == null ? '--%' : numero(summary.l5_relative_error_pct, 1) + '%';
+    document.getElementById('kpi-l10-relative').innerText = summary.l10_relative_error_pct == null ? '--%' : numero(summary.l10_relative_error_pct, 1) + '%';
 
     const tableBody = document.getElementById('score-bands-table');
     tableBody.innerHTML = res.score_bands.map(b => `
       <tr>
         <td class="font-semibold text-emerald-400">${b.band}</td>
         <td>${b.games}</td>
+        <td>${b.score_average ?? '--'}</td>
         <td class="font-bold text-white">${b.actual_average ?? '--'}</td>
         <td>${b.l5_mae ?? '--'}</td>
+        <td class="text-emerald-300">${b.l5_relative_error_pct == null ? '--' : b.l5_relative_error_pct + '%'}</td>
         <td>${b.l10_mae ?? '--'}</td>
-        <td class="text-indigo-400">${b.score_actual_pearson ?? '--'}</td>
+        <td class="text-teal-300">${b.l10_relative_error_pct == null ? '--' : b.l10_relative_error_pct + '%'}</td>
       </tr>
     `).join('');
+
+    const ranking = res.ranking_quality || {};
+    const high = res.score_bands.find(b => b.band === '7+') || {};
+    const low = res.score_bands.find(b => b.band === '<4') || {};
+    document.getElementById('ranking-high-average').innerText = high.actual_average ?? '—';
+    document.getElementById('ranking-high-count').innerText = (high.games ?? 0) + ' registros';
+    document.getElementById('ranking-low-average').innerText = low.actual_average ?? '—';
+    document.getElementById('ranking-low-count').innerText = (low.games ?? 0) + ' registros';
+    document.getElementById('ranking-separation').innerText =
+      ranking.actual_average_difference == null
+        ? 'Diferença entre as faixas: amostra insuficiente.'
+        : 'Diferença: ' + ranking.actual_average_difference + ' unidades (' + ranking.high_vs_low_pct + '% acima da faixa abaixo de 4).';
 
     renderDailyChart(res.daily);
   } catch (e) {
@@ -965,6 +1010,8 @@ function renderDailyChart(dailyData) {
   const labels = dailyData.map(d => d.date);
   const l5Data = dailyData.map(d => d.l5_mae);
   const l10Data = dailyData.map(d => d.l10_mae);
+  const l5Relative = dailyData.map(d => d.l5_relative_error_pct);
+  const l10Relative = dailyData.map(d => d.l10_relative_error_pct);
 
   if(chartInstance) chartInstance.destroy();
 
@@ -973,8 +1020,10 @@ function renderDailyChart(dailyData) {
     data: {
       labels: labels,
       datasets: [
-        { label: 'Erro L5', data: l5Data, borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', tension: 0.3, fill: true },
-        { label: 'Erro L10', data: l10Data, borderColor: '#2dd4bf', borderDash: [5,5], tension: 0.3, fill: false }
+        { label: 'MAE L5', data: l5Data, borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', tension: 0.3, fill: false, yAxisID: 'y' },
+        { label: 'MAE L10', data: l10Data, borderColor: '#2dd4bf', borderDash: [5,5], tension: 0.3, fill: false, yAxisID: 'y' },
+        { label: 'Erro relativo L5 (%)', data: l5Relative, borderColor: '#a78bfa', tension: 0.3, fill: false, yAxisID: 'y1' },
+        { label: 'Erro relativo L10 (%)', data: l10Relative, borderColor: '#fbbf24', borderDash: [5,5], tension: 0.3, fill: false, yAxisID: 'y1' }
       ]
     },
     options: {
@@ -983,7 +1032,8 @@ function renderDailyChart(dailyData) {
       plugins: { legend: { labels: { color: '#9ca3af', font: { size: 9 } } } },
       scales: {
         x: { ticks: { color: '#6b7280', font: { size: 8 } }, grid: { color: '#1f2937' } },
-        y: { ticks: { color: '#6b7280', font: { size: 8 } }, grid: { color: '#1f2937' } }
+        y: { type: 'linear', position: 'left', title: { display: true, text: 'MAE (unidades)', color: '#9ca3af', font: { size: 8 } }, ticks: { color: '#6b7280', font: { size: 8 } }, grid: { color: '#1f2937' } },
+        y1: { type: 'linear', position: 'right', title: { display: true, text: 'Erro relativo (%)', color: '#9ca3af', font: { size: 8 } }, ticks: { color: '#6b7280', font: { size: 8 } }, grid: { drawOnChartArea: false } }
       }
     }
   });
