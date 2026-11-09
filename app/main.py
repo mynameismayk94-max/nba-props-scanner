@@ -309,10 +309,6 @@ MARKETS = {
         "index": 2,
         "label": "Cestas convertidas"
     },
-    "attempts": {
-        "index": 1,
-        "label": "Tentativas totais (histórico)"
-    }
 }
 
 ACTIVE_MARKETS = {"points", "assists", "rebounds", "threes", "two_pa", "fgm"}
@@ -3121,10 +3117,10 @@ def validation_history(
       à produção dos jogadores.
     """
 
-    if market not in MARKETS:
+    if market not in ACTIVE_MARKETS:
         raise HTTPException(
             status_code=400,
-            detail="Mercado inválido."
+            detail="Mercado inválido ou inativo na auditoria."
         )
 
     parsed_from = None
