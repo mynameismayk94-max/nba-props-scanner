@@ -3626,7 +3626,8 @@ def validation_history(
             **overall_metrics
         },
         "score_bands": bands_output,
-        "similarity_analysis": similarity_analysis,\n        "similarity_analyses": similarity_analyses,
+        "similarity_analysis": similarity_analysis,
+        "similarity_analyses": similarity_analyses,
         "ranking_quality": high_low,
         "daily": daily_output,
         "method_note": (
