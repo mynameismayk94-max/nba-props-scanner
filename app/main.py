@@ -3398,7 +3398,6 @@ def validation_history(
             feature_scales[feature_index] = 1.0
 
     similarity_groups = {}
-    matched_peer_keys = set()
     matched_target_rows = []
 
     for target in similarity_targets:
@@ -3410,9 +3409,6 @@ def validation_history(
             "targets": [],
             "peers": {}
         })
-        group["targets"].append(target)
-        matched_target_rows.append(target)
-
         target_features = [target[index] for index in feature_indexes]
         if any(value is None for value in target_features):
             continue
@@ -3445,6 +3441,11 @@ def validation_history(
                 ranked_peers.append((distance, candidate))
 
         ranked_peers.sort(key=lambda item: item[0])
+        if not ranked_peers:
+            continue
+
+        group["targets"].append(target)
+        matched_target_rows.append(target)
 
         for distance, peer in ranked_peers[:3]:
             peer_key = (peer[0], str(peer[1]))
@@ -3453,13 +3454,14 @@ def validation_history(
                     "row": peer,
                     "distance": distance
                 }
-                matched_peer_keys.add(peer_key)
 
     similarity_cohorts = []
     matched_peer_rows_by_key = {}
 
     for (position_group, minutes_group), group in sorted(similarity_groups.items()):
         target_rows = group["targets"]
+        if not target_rows:
+            continue
         peer_entries = list(group["peers"].values())
         peer_rows = [entry["row"] for entry in peer_entries]
         for peer in peer_rows:
