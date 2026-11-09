@@ -3347,6 +3347,126 @@ def validation_history(
             **metrics
         })
 
+
+    # Investigação de perfis semelhantes para a faixa 6–6,99.
+    # Compara candidatos dessa faixa com outros jogadores do mesmo mercado,
+    # posição normalizada e faixa de minutos L5. O próprio jogador é excluído
+    # do grupo de comparação para evitar comparação consigo mesmo.
+    similarity_targets = []
+    similarity_groups = {}
+
+    def normalize_audit_position(value):
+        raw = str(value or "").strip().upper()
+        if raw in ("G", "PG", "SG", "GUARD"):
+            return "G"
+        if raw in ("F", "SF", "PF", "FORWARD"):
+            return "F"
+        if raw in ("C", "CENTER"):
+            return "C"
+        return "OTHER" if raw else "N/D"
+
+    def audit_minutes_band(value):
+        if value is None:
+            return "N/D"
+        minutes = float(value)
+        if minutes < 24:
+            return "<24 min"
+        if minutes < 30:
+            return "24–29,9 min"
+        return "30+ min"
+
+    for row in completed_rows:
+        score = row[6]
+        if score is None:
+            continue
+
+        position_group = normalize_audit_position(row[5])
+        minutes_group = audit_minutes_band(row[9])
+        group_key = (position_group, minutes_group)
+
+        if group_key not in similarity_groups:
+            similarity_groups[group_key] = {
+                "targets": [],
+                "others": []
+            }
+
+        if 6.0 <= float(score) < 7.0:
+            similarity_targets.append(row)
+            similarity_groups[group_key]["targets"].append(row)
+        else:
+            similarity_groups[group_key]["others"].append(row)
+
+    similarity_cohorts = []
+    matched_target_rows = []
+    matched_peer_rows = []
+
+    for (position_group, minutes_group), group in sorted(similarity_groups.items()):
+        target_rows = group["targets"]
+        if not target_rows:
+            continue
+
+        target_player_ids = {str(row[1]) for row in target_rows}
+        peer_rows = [
+            row for row in group["others"]
+            if str(row[1]) not in target_player_ids
+        ]
+
+        matched_target_rows.extend(target_rows)
+        matched_peer_rows.extend(peer_rows)
+
+        target_average = safe_average([float(row[10]) for row in target_rows])
+        peer_average = safe_average([float(row[10]) for row in peer_rows])
+
+        similarity_cohorts.append({
+            "position": position_group,
+            "minutes_band": minutes_group,
+            "target_records": len(target_rows),
+            "target_players": len(target_player_ids),
+            "target_actual_average": target_average,
+            "similar_records": len(peer_rows),
+            "similar_players": len({str(row[1]) for row in peer_rows}),
+            "similar_actual_average": peer_average,
+            "actual_difference": (
+                round(target_average - peer_average, 2)
+                if target_average is not None and peer_average is not None
+                else None
+            ),
+            "sample_status": (
+                "Acompanhar"
+                if len(target_rows) >= 5 and len(peer_rows) >= 10
+                else "Amostra reduzida"
+            )
+        })
+
+    similarity_target_average = safe_average(
+        [float(row[10]) for row in matched_target_rows]
+    )
+    similarity_peer_average = safe_average(
+        [float(row[10]) for row in matched_peer_rows]
+    )
+
+    similarity_analysis = {
+        "target_band": "6-6.99",
+        "target_count": len(matched_target_rows),
+        "target_players": len({str(row[1]) for row in matched_target_rows}),
+        "target_actual_average": similarity_target_average,
+        "similar_count": len(matched_peer_rows),
+        "similar_players": len({str(row[1]) for row in matched_peer_rows}),
+        "similar_actual_average": similarity_peer_average,
+        "actual_difference": (
+            round(similarity_target_average - similarity_peer_average, 2)
+            if similarity_target_average is not None and similarity_peer_average is not None
+            else None
+        ),
+        "cohorts": similarity_cohorts,
+        "method_note": (
+            "Compara registros concluídos da faixa de score 6–6,99 com registros "
+            "de outros scores do mesmo mercado, posição normalizada e faixa de "
+            "minutos L5. O mesmo player_id é excluído do grupo comparável. "
+            "É uma análise exploratória de perfil, não uma recomendação de aposta."
+        )
+    }
+
     overall_metrics = build_metrics(completed_rows)
 
     # Separação entre a faixa de maior score e a de menor score.
@@ -3409,6 +3529,7 @@ def validation_history(
             **overall_metrics
         },
         "score_bands": bands_output,
+        "similarity_analysis": similarity_analysis,
         "ranking_quality": high_low,
         "daily": daily_output,
         "method_note": (
