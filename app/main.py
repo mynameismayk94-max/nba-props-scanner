@@ -3686,7 +3686,8 @@ def gap_validation(
             s.triage_score,
             s.last5_avg,
             s.last10_avg,
-            s.payload,
+            s.payload->>'opponent_position_minutes_filtered_defense_l5_projected',
+            s.payload->>'opponent_position_minutes_filtered_defense_l10_projected',
             r.actual_value
         FROM candidate_snapshots s
         INNER JOIN candidate_results r
@@ -3733,20 +3734,16 @@ def gap_validation(
             score,
             last5_avg,
             last10_avg,
-            payload,
+            defense5_raw,
+            defense10_raw,
             actual_value
         ) = row
 
-        snapshot = payload if isinstance(payload, dict) else {}
         actual = as_number(actual_value)
         baseline5 = as_number(last5_avg)
         baseline10 = as_number(last10_avg)
-        defense5 = as_number(
-            snapshot.get("opponent_position_minutes_filtered_defense_l5_projected")
-        )
-        defense10 = as_number(
-            snapshot.get("opponent_position_minutes_filtered_defense_l10_projected")
-        )
+        defense5 = as_number(defense5_raw)
+        defense10 = as_number(defense10_raw)
 
         def period_data(baseline, defense):
             if baseline is None or defense is None or actual is None:
