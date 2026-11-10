@@ -14,11 +14,9 @@ from pathlib import Path
 import requests
 import psycopg
 from psycopg.types.json import Jsonb
-from base64 import b64decode
-from hmac import compare_digest
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 
