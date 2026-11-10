@@ -178,7 +178,7 @@
 
     <!-- Navegação por Abas Compacta -->
     <nav class="flex space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
-      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center">
+      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Scanner
       </button>
       <button id="tab-history-btn" onclick="switchTab('history')" class="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
@@ -487,16 +487,18 @@ function switchTab(tab) {
   const scannerBtn = document.getElementById('tab-scanner-btn');
   const historyBtn = document.getElementById('tab-history-btn');
 
+  const inactiveClass = "px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
+  const activeClass = "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
+
+  scannerBtn.className = tab === 'scanner' ? activeClass : inactiveClass;
+  historyBtn.className = tab === 'history' ? activeClass : inactiveClass;
+
   if (tab === 'scanner') {
     scannerTab.classList.remove('hidden');
     historyTab.classList.add('hidden');
-    scannerBtn.className = "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
-    historyBtn.className = "px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
   } else {
     scannerTab.classList.add('hidden');
     historyTab.classList.remove('hidden');
-    historyBtn.className = "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
-    scannerBtn.className = "px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
     const auditDate = document.getElementById('audit-collection-date');
     if(auditDate && !auditDate.value) auditDate.value = data.value;
     fetchMarketComparison();
