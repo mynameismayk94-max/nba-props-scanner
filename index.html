@@ -1014,6 +1014,10 @@ async function fetchMarketComparison() {
 }
 
 function limparIndicadoresAuditoria() {
+  // Ao trocar o mercado, reinicia a faixa exploratória no padrão 7+.
+  const similarityBandSelect = document.getElementById('similarity-band-select');
+  if (similarityBandSelect) similarityBandSelect.value = '7+';
+
   [
     'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson',
     'kpi-completion', 'kpi-l5-relative', 'kpi-l10-relative',
