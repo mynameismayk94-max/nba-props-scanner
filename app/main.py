@@ -3124,6 +3124,10 @@ def validation_history(
             detail="Mercado inválido ou inativo na auditoria."
         )
 
+    valid_score_bands = {"all", "7+", "6-6.99", "5-5.99", "4-4.99", "<4"}
+    if score_band not in valid_score_bands:
+        raise HTTPException(status_code=400, detail="Faixa de Score inválida.")
+
     parsed_from = None
     parsed_to = None
 
@@ -3643,6 +3647,7 @@ def validation_history(
 @app.get("/gap-validation")
 def gap_validation(
     market: str = Query(default="assists"),
+    score_band: str = Query(default="all"),
     date_from: Optional[str] = Query(default=None),
     date_to: Optional[str] = Query(default=None)
 ):
@@ -3697,6 +3702,22 @@ def gap_validation(
         WHERE s.market = %s
     """
     params = [market]
+
+    score_band_limits = {
+        "7+": (7.0, None),
+        "6-6.99": (6.0, 7.0),
+        "5-5.99": (5.0, 6.0),
+        "4-4.99": (4.0, 5.0),
+        "<4": (None, 4.0)
+    }
+    if score_band != "all":
+        minimum, maximum = score_band_limits[score_band]
+        if minimum is not None:
+            query += " AND s.triage_score >= %s"
+            params.append(minimum)
+        if maximum is not None:
+            query += " AND s.triage_score < %s"
+            params.append(maximum)
 
     if parsed_from:
         query += " AND s.selected_date >= %s"
@@ -3881,6 +3902,7 @@ def gap_validation(
         "status": "ok",
         "market": market,
         "market_label": MARKETS[market]["label"],
+        "score_band": score_band,
         "completed_records": len(detailed),
         "periods": {
             "l5": summarize_period("l5"),
