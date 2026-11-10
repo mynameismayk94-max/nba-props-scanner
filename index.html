@@ -392,7 +392,7 @@
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Classificação pré-jogo</th><th>Registros</th><th>Acima ref. defesa</th><th>Diferença média vs. defesa</th></tr></thead>
+          <thead><tr><th>Classificação pré-jogo</th><th>Registros</th><th>Seguiram a direção esperada</th><th>Não seguiram</th></tr></thead>
           <tbody id="gap-summary-table" class="text-gray-300">
             <tr><td colspan="4" class="text-gray-400">Carregando validação do GAP...</td></tr>
           </tbody>
@@ -1112,28 +1112,27 @@ function renderGapAudit() {
 
   const periodKey = periodSelect.value || 'l5';
   const groups = gapAuditData.periods?.[periodKey] || {};
-  const order = ['Favorável', 'Resistência', 'Neutro', 'Sem referência'];
-  const colors = {
-    'Favorável': 'text-emerald-400',
-    'Resistência': 'text-red-400',
-    'Neutro': 'text-gray-300',
-    'Sem referência': 'text-gray-500'
-  };
+  const rows = [
+    { key: 'Favorável', label: 'Favorável', color: 'text-emerald-400', valueColor: 'text-emerald-300' },
+    { key: 'Resistência', label: 'Não favorável', color: 'text-red-400', valueColor: 'text-red-300' },
+    { key: 'Neutro', label: 'Neutro', color: 'text-gray-300', valueColor: 'text-white' },
+    { key: 'Sem referência', label: 'Sem referência', color: 'text-gray-500', valueColor: 'text-white' }
+  ];
 
-  summaryTable.innerHTML = order.map(label => {
-    const group = groups[label] || {};
-    const aboveDefense = group.above_defense_pct == null
-      ? '—'
-      : numero(group.above_defense_pct, 1) + '% (' + (group.above_defense_count || 0) + ')';
-    const deltaDefense = group.actual_minus_defense_average == null
-      ? '—'
-      : (group.actual_minus_defense_average > 0 ? '+' : '') + numero(group.actual_minus_defense_average, 2);
+  summaryTable.innerHTML = rows.map(row => {
+    const group = groups[row.key] || {};
+    const count = Number(group.count || 0);
+    const hasDirection = row.key === 'Favorável' || row.key === 'Resistência';
+    const followed = hasDirection ? Number(group.followed_direction_count || 0) : null;
+    const notFollowed = hasDirection ? Number(group.not_followed_direction_count || 0) : null;
+    const followedText = hasDirection ? followed : '—';
+    const notFollowedText = hasDirection ? notFollowed : '—';
 
     return '<tr>' +
-      '<td class="font-semibold ' + colors[label] + '">' + label + '</td>' +
-      '<td>' + (group.count || 0) + '</td>' +
-      '<td class="font-bold ' + (label === 'Favorável' ? 'text-emerald-300' : label === 'Resistência' ? 'text-red-300' : 'text-white') + '">' + aboveDefense + '</td>' +
-      '<td>' + deltaDefense + '</td>' +
+      '<td class="font-semibold ' + row.color + '">' + row.label + '</td>' +
+      '<td class="font-bold text-white">' + count + '</td>' +
+      '<td class="font-bold ' + row.valueColor + '">' + followedText + '</td>' +
+      '<td class="font-bold text-gray-300">' + notFollowedText + '</td>' +
       '</tr>';
   }).join('');
 
@@ -1142,7 +1141,7 @@ function renderGapAudit() {
   note.innerText = total + ' resultados concluídos com snapshot pré-jogo · Score: ' +
     (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
     ' · GAP ' + (periodKey === 'l5' ? 'L5' : 'L10') +
-    '. Favorável é validado pela frequência acima da referência defensiva; Resistência, pela frequência abaixo dela.';
+    '. Favorável: resultado real acima da referência defensiva. Não favorável: resultado real abaixo da referência. Resultado igual à referência entra em “Não seguiram”. Neutro não tem direção esperada; Sem referência não pode ser validado.';
 }
 async function fetchGapValidation(market) {
   const requestId = ++gapValidationRequestId;
