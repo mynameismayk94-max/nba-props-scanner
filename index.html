@@ -363,6 +363,57 @@
       </div>
     </div>
 
+
+    <!-- Auditoria do contexto defensivo: GAP pré-jogo x resultado real -->
+    <div class="glass-panel p-3 space-y-3">
+      <div>
+        <h3 class="text-xs font-semibold text-white">🛡️ Validação do GAP defensivo</h3>
+        <p class="text-[10px] text-gray-400 mt-1">Compara a classificação registrada antes do jogo com o resultado real. O GAP negativo é Favorável; o positivo indica Resistência. Score não participa do cálculo do GAP.</p>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label for="gap-period-select" class="block text-[10px] text-gray-400 mb-1">GAP analisado</label>
+          <select id="gap-period-select" onchange="renderGapAudit()" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
+            <option value="l5" selected>L5</option>
+            <option value="l10">L10</option>
+          </select>
+        </div>
+        <div>
+          <label for="gap-score-band-select" class="block text-[10px] text-gray-400 mb-1">Faixa de Score</label>
+          <select id="gap-score-band-select" onchange="fetchGapValidation(document.getElementById('hist-market').value)" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
+            <option value="all" selected>Todas</option>
+            <option value="7+">7+</option>
+            <option value="6-6.99">6–6,99</option>
+            <option value="5-5.99">5–5,99</option>
+            <option value="4-4.99">4–4,99</option>
+            <option value="<4">Abaixo de 4</option>
+          </select>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Classificação pré-jogo</th><th>Amostra</th><th>Média real</th><th>Acima média própria</th><th>Acima ref. defesa</th></tr></thead>
+          <tbody id="gap-summary-table" class="text-gray-300">
+            <tr><td colspan="5" class="text-gray-400">Carregando validação do GAP...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p id="gap-audit-note" class="text-[10px] text-gray-400">Aguardando dados concluídos...</p>
+      <div>
+        <h4 class="text-[10px] font-semibold text-gray-200">Registros individuais — pré-jogo x pós-jogo</h4>
+        <p class="text-[9px] text-gray-500 mt-0.5">Exibe os 50 registros concluídos mais recentes. Δ defesa positivo significa que o resultado real ficou acima da referência defensiva.</p>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Data</th><th>Jogador</th><th>Score</th><th>Status L5</th><th>GAP L5</th><th>Δ média L5</th><th>Δ def. L5</th><th>Status L10</th><th>GAP L10</th><th>Δ média L10</th><th>Δ def. L10</th><th>Real</th></tr></thead>
+          <tbody id="gap-records-table" class="text-gray-300">
+            <tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-[9px] text-gray-500">Esta análise valida o contexto estatístico, não uma aposta ganha ou perdida: não há linha de casa de apostas armazenada. A média L5/L10 do jogador e a referência defensiva são parâmetros de comparação, não odds ou linhas oficiais.</p>
+    </div>
+
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
@@ -485,6 +536,8 @@ let mercadoAtual = '';
 let resultadoAtual = null;
 let chartInstance = null;
 let historyValidationRequestId = 0;
+let gapValidationRequestId = 0;
+let gapAuditData = null;
 
 function switchTab(tab) {
   const scannerTab = document.getElementById('tab-scanner');
@@ -1026,11 +1079,19 @@ function limparIndicadoresAuditoria() {
     'similar-target-average', 'similar-target-count',
     'similar-peer-average', 'similar-peer-count',
     'similar-sample-status', 'similar-difference', 'ranking-separation',
-    'similar-target-label'
+    'similar-target-label', 'gap-audit-note'
   ].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.innerText = '—';
   });
+
+  gapAuditData = null;
+  const gapScoreBand = document.getElementById('gap-score-band-select');
+  if (gapScoreBand) gapScoreBand.value = 'all';
+  const gapSummary = document.getElementById('gap-summary-table');
+  if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando validação do GAP...</td></tr>';
+  const gapRecords = document.getElementById('gap-records-table');
+  if (gapRecords) gapRecords.innerHTML = '<tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>';
 
   const bands = document.getElementById('score-bands-table');
   if (bands) bands.innerHTML = '<tr><td colspan="8" class="text-gray-400">Carregando dados do mercado...</td></tr>';
@@ -1049,11 +1110,114 @@ function limparIndicadoresAuditoria() {
   }
 }
 
+
+function renderGapAudit() {
+  const summaryTable = document.getElementById('gap-summary-table');
+  const recordsTable = document.getElementById('gap-records-table');
+  const note = document.getElementById('gap-audit-note');
+  const periodSelect = document.getElementById('gap-period-select');
+  if(!summaryTable || !recordsTable || !periodSelect) return;
+
+  if(!gapAuditData) {
+    summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Sem dados de GAP disponíveis.</td></tr>';
+    recordsTable.innerHTML = '<tr><td colspan="12" class="text-gray-400">Sem registros disponíveis.</td></tr>';
+    return;
+  }
+
+  const periodKey = periodSelect.value || 'l5';
+  const groups = gapAuditData.periods?.[periodKey] || {};
+  const order = ['Favorável', 'Resistência', 'Neutro', 'Sem referência'];
+  const colors = {
+    'Favorável': 'text-emerald-400',
+    'Resistência': 'text-red-400',
+    'Neutro': 'text-gray-300',
+    'Sem referência': 'text-gray-500'
+  };
+
+  summaryTable.innerHTML = order.map(label => {
+    const group = groups[label] || {};
+    const aboveOwn = group.above_baseline_pct == null
+      ? '—'
+      : numero(group.above_baseline_pct, 1) + '% (' + (group.above_baseline_count || 0) + ')';
+    const aboveDefense = group.above_defense_pct == null
+      ? '—'
+      : numero(group.above_defense_pct, 1) + '% (' + (group.above_defense_count || 0) + ')';
+    return '<tr>' +
+      '<td class="font-semibold ' + colors[label] + '">' + label + '</td>' +
+      '<td>' + (group.count || 0) + '</td>' +
+      '<td class="font-bold text-white">' + numero(group.actual_average) + '</td>' +
+      '<td>' + aboveOwn + '</td>' +
+      '<td>' + aboveDefense + '</td>' +
+      '</tr>';
+  }).join('');
+
+  const total = gapAuditData.completed_records || 0;
+  const scoreBand = gapAuditData.score_band || 'all';
+  note.innerText = total + ' resultados concluídos com snapshot pré-jogo · Score: ' +
+    (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
+    ' · GAP ' + (periodKey === 'l5' ? 'L5' : 'L10') +
+    '. Percentuais mostram a frequência de resultados acima de cada referência, não taxa de acerto de aposta.';
+
+  const records = (gapAuditData.records || []).slice(0, 50);
+  recordsTable.innerHTML = records.length ? records.map(item => {
+    const statusClass = value => value === 'Favorável'
+      ? 'text-emerald-400'
+      : value === 'Resistência'
+        ? 'text-red-400'
+        : value === 'Neutro'
+          ? 'text-gray-300'
+          : 'text-gray-500';
+    const signed = value => value == null
+      ? '—'
+      : (Number(value) > 0 ? '+' : '') + numero(value);
+    return '<tr>' +
+      '<td>' + escapeHtml(item.date || '—') + '</td>' +
+      '<td><b>' + escapeHtml(item.player || '—') + '</b><br><span class="text-gray-500">' + escapeHtml((item.team || '—') + ' vs ' + (item.opponent || '—')) + '</span></td>' +
+      '<td>' + numero(item.score) + '</td>' +
+      '<td class="font-semibold ' + statusClass(item.l5?.classification) + '">' + escapeHtml(item.l5?.classification || '—') + '</td>' +
+      '<td>' + signed(item.l5?.gap) + '</td>' +
+      '<td>' + signed(item.l5?.actual_minus_baseline) + '</td>' +
+      '<td>' + signed(item.l5?.actual_minus_defense) + '</td>' +
+      '<td class="font-semibold ' + statusClass(item.l10?.classification) + '">' + escapeHtml(item.l10?.classification || '—') + '</td>' +
+      '<td>' + signed(item.l10?.gap) + '</td>' +
+      '<td>' + signed(item.l10?.actual_minus_baseline) + '</td>' +
+      '<td>' + signed(item.l10?.actual_minus_defense) + '</td>' +
+      '<td class="font-bold text-white">' + numero(item.actual) + '</td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="12" class="text-gray-400">Ainda não há resultados concluídos com snapshots.</td></tr>';
+}
+
+async function fetchGapValidation(market) {
+  const requestId = ++gapValidationRequestId;
+  const summaryTable = document.getElementById('gap-summary-table');
+  const recordsTable = document.getElementById('gap-records-table');
+  const note = document.getElementById('gap-audit-note');
+  if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando validação do GAP...</td></tr>';
+  if(recordsTable) recordsTable.innerHTML = '<tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>';
+  if(note) note.innerText = 'Consultando snapshots e resultados reais...';
+
+  try {
+    const scoreBand = document.getElementById('gap-score-band-select')?.value || 'all';
+    const res = await requisicao('/gap-validation?market=' + encodeURIComponent(market) + '&score_band=' + encodeURIComponent(scoreBand));
+    if(requestId !== gapValidationRequestId) return;
+    if(res.status !== 'ok') throw new Error('Resposta inválida');
+    gapAuditData = res;
+    renderGapAudit();
+  } catch(error) {
+    if(requestId !== gapValidationRequestId) return;
+    gapAuditData = null;
+    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-red-400">Não foi possível carregar a validação do GAP.</td></tr>';
+    if(recordsTable) recordsTable.innerHTML = '<tr><td colspan="12" class="text-red-400">Não foi possível carregar os registros.</td></tr>';
+    if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
+  }
+}
+
 async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
   const requestId = ++historyValidationRequestId;
 
   limparIndicadoresAuditoria();
+  fetchGapValidation(market);
 
   const sampleCount = document.getElementById('hist-sample-count');
   if (sampleCount) sampleCount.innerText = '...';
