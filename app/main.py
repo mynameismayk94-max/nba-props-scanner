@@ -3640,6 +3640,265 @@ def validation_history(
     }
 
 
+@app.get("/gap-validation")
+def gap_validation(
+    market: str = Query(default="assists"),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None)
+):
+    """
+    Auditoria do contexto defensivo original (GAP L5/L10).
+    Usa os valores preservados no payload imutável dos snapshots.
+    Não recalcula nem altera Score ou classificação do Scanner.
+    """
+
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(
+            status_code=400,
+            detail="Mercado inválido ou inativo na auditoria."
+        )
+
+    parsed_from = None
+    parsed_to = None
+
+    try:
+        if date_from:
+            parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+        if date_to:
+            parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período de datas inválido.")
+
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    query = """
+        SELECT
+            s.selected_date,
+            s.player_id,
+            s.player_name,
+            s.team,
+            s.opponent,
+            s.position,
+            s.triage_score,
+            s.last5_avg,
+            s.last10_avg,
+            s.payload,
+            r.actual_value
+        FROM candidate_snapshots s
+        INNER JOIN candidate_results r
+            ON r.selected_date = s.selected_date
+            AND r.market = s.market
+            AND r.player_id = s.player_id
+        WHERE s.market = %s
+    """
+    params = [market]
+
+    if parsed_from:
+        query += " AND s.selected_date >= %s"
+        params.append(parsed_from)
+    if parsed_to:
+        query += " AND s.selected_date <= %s"
+        params.append(parsed_to)
+
+    query += " ORDER BY s.selected_date DESC, s.triage_score DESC"
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+    def as_number(value):
+        try:
+            if value is None:
+                return None
+            number = float(value)
+            return number if number == number and abs(number) != float("inf") else None
+        except (TypeError, ValueError):
+            return None
+
+    detailed = []
+
+    for row in rows:
+        (
+            selected_date,
+            player_id,
+            player_name,
+            team,
+            opponent,
+            position,
+            score,
+            last5_avg,
+            last10_avg,
+            payload,
+            actual_value
+        ) = row
+
+        snapshot = payload if isinstance(payload, dict) else {}
+        actual = as_number(actual_value)
+        baseline5 = as_number(last5_avg)
+        baseline10 = as_number(last10_avg)
+        defense5 = as_number(
+            snapshot.get("opponent_position_minutes_filtered_defense_l5_projected")
+        )
+        defense10 = as_number(
+            snapshot.get("opponent_position_minutes_filtered_defense_l10_projected")
+        )
+
+        def period_data(baseline, defense):
+            if baseline is None or defense is None or actual is None:
+                return {
+                    "gap": None,
+                    "classification": "Sem referência",
+                    "baseline": baseline,
+                    "defense_reference": defense,
+                    "actual_minus_baseline": (
+                        round(actual - baseline, 2)
+                        if actual is not None and baseline is not None else None
+                    ),
+                    "actual_minus_defense": (
+                        round(actual - defense, 2)
+                        if actual is not None and defense is not None else None
+                    )
+                }
+
+            gap = baseline - defense
+            classification = (
+                "Favorável" if gap < 0
+                else "Resistência" if gap > 0
+                else "Neutro"
+            )
+            return {
+                "gap": round(gap, 2),
+                "classification": classification,
+                "baseline": baseline,
+                "defense_reference": defense,
+                "actual_minus_baseline": round(actual - baseline, 2),
+                "actual_minus_defense": round(actual - defense, 2)
+            }
+
+        p5 = period_data(baseline5, defense5)
+        p10 = period_data(baseline10, defense10)
+
+        detailed.append({
+            "date": selected_date.isoformat() if selected_date else None,
+            "player_id": str(player_id),
+            "player": player_name,
+            "team": team,
+            "opponent": opponent,
+            "position": position,
+            "score": as_number(score),
+            "actual": actual,
+            "l5": p5,
+            "l10": p10
+        })
+
+    def summarize_period(period_key):
+        groups = {
+            "Favorável": [],
+            "Resistência": [],
+            "Neutro": [],
+            "Sem referência": []
+        }
+
+        for item in detailed:
+            period = item[period_key]
+            groups.setdefault(period["classification"], []).append(item)
+
+        output = {}
+        for classification, group in groups.items():
+            valid = [
+                item for item in group
+                if item["actual"] is not None
+            ]
+            if not valid:
+                output[classification] = {
+                    "count": 0,
+                    "actual_average": None,
+                    "baseline_average": None,
+                    "defense_reference_average": None,
+                    "gap_average": None,
+                    "above_baseline_count": 0,
+                    "above_baseline_pct": None,
+                    "above_defense_count": 0,
+                    "above_defense_pct": None,
+                    "actual_minus_defense_average": None
+                }
+                continue
+
+            def average(values):
+                values = [value for value in values if value is not None]
+                return round(sum(values) / len(values), 2) if values else None
+
+            baseline_pairs = [
+                item for item in valid
+                if item[period_key]["baseline"] is not None
+            ]
+            defense_pairs = [
+                item for item in valid
+                if item[period_key]["defense_reference"] is not None
+            ]
+            above_baseline = [
+                item for item in baseline_pairs
+                if item["actual"] > item[period_key]["baseline"]
+            ]
+            above_defense = [
+                item for item in defense_pairs
+                if item["actual"] > item[period_key]["defense_reference"]
+            ]
+
+            output[classification] = {
+                "count": len(valid),
+                "actual_average": average([item["actual"] for item in valid]),
+                "baseline_average": average([
+                    item[period_key]["baseline"] for item in valid
+                ]),
+                "defense_reference_average": average([
+                    item[period_key]["defense_reference"] for item in valid
+                ]),
+                "gap_average": average([
+                    item[period_key]["gap"] for item in valid
+                ]),
+                "above_baseline_count": len(above_baseline),
+                "above_baseline_pct": (
+                    round(len(above_baseline) / len(baseline_pairs) * 100, 1)
+                    if baseline_pairs else None
+                ),
+                "above_defense_count": len(above_defense),
+                "above_defense_pct": (
+                    round(len(above_defense) / len(defense_pairs) * 100, 1)
+                    if defense_pairs else None
+                ),
+                "actual_minus_defense_average": average([
+                    item[period_key]["actual_minus_defense"]
+                    for item in defense_pairs
+                ])
+            }
+
+        return output
+
+    return {
+        "status": "ok",
+        "market": market,
+        "market_label": MARKETS[market]["label"],
+        "completed_records": len(detailed),
+        "periods": {
+            "l5": summarize_period("l5"),
+            "l10": summarize_period("l10")
+        },
+        "records": detailed,
+        "method_note": (
+            "GAP = média individual do período menos referência defensiva ajustada "
+            "da mesma posição e com minutagem igual ou superior à média L5 do jogador. "
+            "A classificação é reconstruída dos valores imutáveis do snapshot. "
+            "Acima da referência não significa aposta ganha: é comparação estatística."
+        )
+    }
+
+
 # Página inicial do Scanner, servida pelo mesmo domínio da API no Render.
 INDEX_FILE = Path(__file__).resolve().parent.parent / "index.html"
 
