@@ -487,8 +487,8 @@ function switchTab(tab) {
   const scannerBtn = document.getElementById('tab-scanner-btn');
   const historyBtn = document.getElementById('tab-history-btn');
 
-  const inactiveClass = "px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
-  const activeClass = "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
+  const inactiveClass = "tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
+  const activeClass = "tab-button active px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
 
   scannerBtn.className = tab === 'scanner' ? activeClass : inactiveClass;
   historyBtn.className = tab === 'history' ? activeClass : inactiveClass;
