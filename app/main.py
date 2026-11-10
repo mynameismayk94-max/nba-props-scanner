@@ -3124,10 +3124,6 @@ def validation_history(
             detail="Mercado inválido ou inativo na auditoria."
         )
 
-    valid_score_bands = {"all", "7+", "6-6.99", "5-5.99", "4-4.99", "<4"}
-    if score_band not in valid_score_bands:
-        raise HTTPException(status_code=400, detail="Faixa de Score inválida.")
-
     parsed_from = None
     parsed_to = None
 
@@ -3662,6 +3658,10 @@ def gap_validation(
             status_code=400,
             detail="Mercado inválido ou inativo na auditoria."
         )
+
+    valid_score_bands = {"all", "7+", "6-6.99", "5-5.99", "4-4.99", "<4"}
+    if score_band not in valid_score_bands:
+        raise HTTPException(status_code=400, detail="Faixa de Score inválida.")
 
     parsed_from = None
     parsed_to = None
