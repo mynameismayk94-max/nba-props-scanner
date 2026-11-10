@@ -392,9 +392,9 @@
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Data</th><th>Jogador</th><th>Score</th><th>Status L5</th><th>GAP L5</th><th>Status L10</th><th>GAP L10</th><th>Real</th><th>Δ def. L5</th><th>Δ def. L10</th></tr></thead>
+          <thead><tr><th>Data</th><th>Jogador</th><th>Score</th><th>Status L5</th><th>GAP L5</th><th>Δ média L5</th><th>Δ def. L5</th><th>Status L10</th><th>GAP L10</th><th>Δ média L10</th><th>Δ def. L10</th><th>Real</th></tr></thead>
           <tbody id="gap-records-table" class="text-gray-300">
-            <tr><td colspan="10" class="text-gray-400">Carregando registros...</td></tr>
+            <tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1076,7 +1076,7 @@ function limparIndicadoresAuditoria() {
   const gapSummary = document.getElementById('gap-summary-table');
   if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando validação do GAP...</td></tr>';
   const gapRecords = document.getElementById('gap-records-table');
-  if (gapRecords) gapRecords.innerHTML = '<tr><td colspan="10" class="text-gray-400">Carregando registros...</td></tr>';
+  if (gapRecords) gapRecords.innerHTML = '<tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>';
 
   const bands = document.getElementById('score-bands-table');
   if (bands) bands.innerHTML = '<tr><td colspan="8" class="text-gray-400">Carregando dados do mercado...</td></tr>';
@@ -1105,7 +1105,7 @@ function renderGapAudit() {
 
   if(!gapAuditData) {
     summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Sem dados de GAP disponíveis.</td></tr>';
-    recordsTable.innerHTML = '<tr><td colspan="10" class="text-gray-400">Sem registros disponíveis.</td></tr>';
+    recordsTable.innerHTML = '<tr><td colspan="12" class="text-gray-400">Sem registros disponíveis.</td></tr>';
     return;
   }
 
@@ -1159,13 +1159,15 @@ function renderGapAudit() {
       '<td>' + numero(item.score) + '</td>' +
       '<td class="font-semibold ' + statusClass(item.l5?.classification) + '">' + escapeHtml(item.l5?.classification || '—') + '</td>' +
       '<td>' + signed(item.l5?.gap) + '</td>' +
+      '<td>' + signed(item.l5?.actual_minus_baseline) + '</td>' +
+      '<td>' + signed(item.l5?.actual_minus_defense) + '</td>' +
       '<td class="font-semibold ' + statusClass(item.l10?.classification) + '">' + escapeHtml(item.l10?.classification || '—') + '</td>' +
       '<td>' + signed(item.l10?.gap) + '</td>' +
-      '<td class="font-bold text-white">' + numero(item.actual) + '</td>' +
-      '<td>' + signed(item.l5?.actual_minus_defense) + '</td>' +
+      '<td>' + signed(item.l10?.actual_minus_baseline) + '</td>' +
       '<td>' + signed(item.l10?.actual_minus_defense) + '</td>' +
+      '<td class="font-bold text-white">' + numero(item.actual) + '</td>' +
       '</tr>';
-  }).join('') : '<tr><td colspan="10" class="text-gray-400">Ainda não há resultados concluídos com snapshots.</td></tr>';
+  }).join('') : '<tr><td colspan="12" class="text-gray-400">Ainda não há resultados concluídos com snapshots.</td></tr>';
 }
 
 async function fetchGapValidation(market) {
@@ -1174,7 +1176,7 @@ async function fetchGapValidation(market) {
   const recordsTable = document.getElementById('gap-records-table');
   const note = document.getElementById('gap-audit-note');
   if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando validação do GAP...</td></tr>';
-  if(recordsTable) recordsTable.innerHTML = '<tr><td colspan="10" class="text-gray-400">Carregando registros...</td></tr>';
+  if(recordsTable) recordsTable.innerHTML = '<tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>';
   if(note) note.innerText = 'Consultando snapshots e resultados reais...';
 
   try {
@@ -1187,7 +1189,7 @@ async function fetchGapValidation(market) {
     if(requestId !== gapValidationRequestId) return;
     gapAuditData = null;
     if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-red-400">Não foi possível carregar a validação do GAP.</td></tr>';
-    if(recordsTable) recordsTable.innerHTML = '<tr><td colspan="10" class="text-red-400">Não foi possível carregar os registros.</td></tr>';
+    if(recordsTable) recordsTable.innerHTML = '<tr><td colspan="12" class="text-red-400">Não foi possível carregar os registros.</td></tr>';
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
