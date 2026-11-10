@@ -14,11 +14,9 @@ from pathlib import Path
 import requests
 import psycopg
 from psycopg.types.json import Jsonb
-from base64 import b64decode
-from hmac import compare_digest
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -38,65 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ============================================================
-# PROTEÇÃO TEMPORÁRIA POR SENHA COMPARTILHADA
-# Configure ACCESS_PASSWORD no ambiente do Render.
-# ACCESS_USERNAME é opcional e, por padrão, usa "nba".
-# /health permanece público para o monitoramento do Render.
-# ============================================================
-
-ACCESS_PASSWORD = os.getenv("ACCESS_PASSWORD", "").strip()
-ACCESS_USERNAME = os.getenv("ACCESS_USERNAME", "nba").strip() or "nba"
-
-if not ACCESS_PASSWORD:
-    logger.warning(
-        "ACCESS_PASSWORD não configurada: proteção de acesso desativada."
-    )
-
-
-@app.middleware("http")
-async def shared_password_gate(request: Request, call_next):
-    if not ACCESS_PASSWORD:
-        return await call_next(request)
-
-    if request.url.path == "/health" or request.method == "OPTIONS":
-        return await call_next(request)
-
-    authorization = request.headers.get("authorization", "")
-
-    if authorization.startswith("Basic "):
-        try:
-            decoded = b64decode(
-                authorization[6:],
-                validate=True
-            ).decode("utf-8")
-            supplied_username, supplied_password = decoded.split(":", 1)
-
-            username_ok = compare_digest(
-                supplied_username,
-                ACCESS_USERNAME
-            )
-            password_ok = compare_digest(
-                supplied_password,
-                ACCESS_PASSWORD
-            )
-
-            if username_ok and password_ok:
-                return await call_next(request)
-
-        except (ValueError, UnicodeDecodeError):
-            pass
-
-    return Response(
-        content="Acesso restrito. Informe usuário e senha.",
-        status_code=401,
-        headers={
-            "WWW-Authenticate": 'Basic realm="NBA Props Analytics", charset="UTF-8"'
-        },
-        media_type="text/plain"
-    )
 
 
 # ============================================================
