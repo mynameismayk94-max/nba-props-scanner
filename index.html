@@ -74,6 +74,10 @@
   
   button { padding: 6px 12px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: #2563eb; color: white; height: 36px; }
   button:hover { background: #1d4ed8; }
+  /* Abas: neutral por padrão e verde imediato no toque/seleção */
+  .tab-button { background: transparent; color: #9ca3af; -webkit-tap-highlight-color: transparent; }
+  .tab-button:hover { background: transparent; color: #fff; }
+  .tab-button:active, .tab-button.active, .tab-button.active:hover { background: #10b981; color: #030712; }
   button.secondary { background: #374151; color: #f3f4f6; }
   button.analisar { background: #059669; color: white; padding: 4px 8px; font-size: 11px; height: auto; }
 
@@ -178,10 +182,10 @@
 
     <!-- Navegação por Abas Compacta -->
     <nav class="flex space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
-      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="tab-button active px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Scanner
       </button>
-      <button id="tab-history-btn" onclick="switchTab('history')" class="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+      <button id="tab-history-btn" onclick="switchTab('history')" class="tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Auditoria
       </button>
     </nav>
@@ -487,8 +491,8 @@ function switchTab(tab) {
   const scannerBtn = document.getElementById('tab-scanner-btn');
   const historyBtn = document.getElementById('tab-history-btn');
 
-  const inactiveClass = "px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
-  const activeClass = "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
+  const inactiveClass = "tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
+  const activeClass = "tab-button active px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
 
   scannerBtn.className = tab === 'scanner' ? activeClass : inactiveClass;
   historyBtn.className = tab === 'history' ? activeClass : inactiveClass;
