@@ -370,12 +370,25 @@
         <h3 class="text-xs font-semibold text-white">🛡️ Validação do GAP defensivo</h3>
         <p class="text-[10px] text-gray-400 mt-1">Compara a classificação registrada antes do jogo com o resultado real. O GAP negativo é Favorável; o positivo indica Resistência. Score não participa do cálculo do GAP.</p>
       </div>
-      <div class="flex items-center justify-between gap-2">
-        <label for="gap-period-select" class="text-[10px] text-gray-400">Referência analisada</label>
-        <select id="gap-period-select" onchange="renderGapAudit()" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white">
-          <option value="l5" selected>L5</option>
-          <option value="l10">L10</option>
-        </select>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label for="gap-period-select" class="block text-[10px] text-gray-400 mb-1">GAP analisado</label>
+          <select id="gap-period-select" onchange="renderGapAudit()" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
+            <option value="l5" selected>L5</option>
+            <option value="l10">L10</option>
+          </select>
+        </div>
+        <div>
+          <label for="gap-score-band-select" class="block text-[10px] text-gray-400 mb-1">Faixa de Score</label>
+          <select id="gap-score-band-select" onchange="fetchGapValidation(document.getElementById('hist-market').value)" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
+            <option value="all" selected>Todas</option>
+            <option value="7+">7+</option>
+            <option value="6-6.99">6–6,99</option>
+            <option value="5-5.99">5–5,99</option>
+            <option value="4-4.99">4–4,99</option>
+            <option value="<4">Abaixo de 4</option>
+          </select>
+        </div>
       </div>
       <div class="tablewrap">
         <table>
@@ -1073,6 +1086,8 @@ function limparIndicadoresAuditoria() {
   });
 
   gapAuditData = null;
+  const gapScoreBand = document.getElementById('gap-score-band-select');
+  if (gapScoreBand) gapScoreBand.value = 'all';
   const gapSummary = document.getElementById('gap-summary-table');
   if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando validação do GAP...</td></tr>';
   const gapRecords = document.getElementById('gap-records-table');
@@ -1137,8 +1152,10 @@ function renderGapAudit() {
   }).join('');
 
   const total = gapAuditData.completed_records || 0;
-  note.innerText = total + ' resultados concluídos com snapshot pré-jogo. A tabela acima usa GAP ' +
-    (periodKey === 'l5' ? 'L5' : 'L10') +
+  const scoreBand = gapAuditData.score_band || 'all';
+  note.innerText = total + ' resultados concluídos com snapshot pré-jogo · Score: ' +
+    (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
+    ' · GAP ' + (periodKey === 'l5' ? 'L5' : 'L10') +
     '. Percentuais mostram a frequência de resultados acima de cada referência, não taxa de acerto de aposta.';
 
   const records = (gapAuditData.records || []).slice(0, 50);
@@ -1180,7 +1197,8 @@ async function fetchGapValidation(market) {
   if(note) note.innerText = 'Consultando snapshots e resultados reais...';
 
   try {
-    const res = await requisicao('/gap-validation?market=' + encodeURIComponent(market));
+    const scoreBand = document.getElementById('gap-score-band-select')?.value || 'all';
+    const res = await requisicao('/gap-validation?market=' + encodeURIComponent(market) + '&score_band=' + encodeURIComponent(scoreBand));
     if(requestId !== gapValidationRequestId) return;
     if(res.status !== 'ok') throw new Error('Resposta inválida');
     gapAuditData = res;
@@ -1199,6 +1217,7 @@ async function fetchHistoryValidation() {
   const requestId = ++historyValidationRequestId;
 
   limparIndicadoresAuditoria();
+  fetchGapValidation(market);
 
   const sampleCount = document.getElementById('hist-sample-count');
   if (sampleCount) sampleCount.innerText = '...';
@@ -1291,7 +1310,6 @@ async function fetchHistoryValidation() {
         : 'Diferença: ' + ranking.actual_average_difference + ' unidades (' + ranking.high_vs_low_pct + '% acima da faixa abaixo de 4).';
 
     renderDailyChart(res.daily);
-    await fetchGapValidation(market);
   } catch (e) {
     if (requestId !== historyValidationRequestId) return;
     console.error('Erro na auditoria:', e);
