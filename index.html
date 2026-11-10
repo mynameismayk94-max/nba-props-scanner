@@ -283,7 +283,7 @@
               <th>Mercado</th>
               <th>Registros</th>
               <th>Resultados</th>
-              <th>Conclusão</th>
+              <th>Cobertura da coleta</th>
               <th>MAE L5</th>
               <th>MAE L10</th>
               <th>Pearson</th>
@@ -326,7 +326,7 @@
         <div class="text-base font-bold text-indigo-400 mt-0.5" id="kpi-pearson">--</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">Conclusão</span>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Cobertura da coleta</span>
         <div class="text-base font-bold text-gray-200 mt-0.5" id="kpi-completion">--%</div>
       </div>
       <div class="glass-panel p-2.5">
@@ -484,6 +484,7 @@ let candidatosAtuais = [];
 let mercadoAtual = '';
 let resultadoAtual = null;
 let chartInstance = null;
+let historyValidationRequestId = 0;
 
 function switchTab(tab) {
   const scannerTab = document.getElementById('tab-scanner');
@@ -1012,11 +1013,51 @@ async function fetchMarketComparison() {
   }).join('');
 }
 
+function limparIndicadoresAuditoria() {
+  [
+    'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson',
+    'kpi-completion', 'kpi-l5-relative', 'kpi-l10-relative',
+    'ranking-high-average', 'ranking-high-count',
+    'ranking-low-average', 'ranking-low-count',
+    'similar-target-average', 'similar-target-count',
+    'similar-peer-average', 'similar-peer-count',
+    'similar-sample-status', 'similar-difference', 'ranking-separation',
+    'similar-target-label'
+  ].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.innerText = '—';
+  });
+
+  const bands = document.getElementById('score-bands-table');
+  if (bands) bands.innerHTML = '<tr><td colspan="8" class="text-gray-400">Carregando dados do mercado...</td></tr>';
+
+  const profiles = document.getElementById('similar-profiles-table');
+  if (profiles) profiles.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando dados do mercado...</td></tr>';
+
+  const chartCanvas = document.getElementById('dailyErrorChart');
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+  if (chartCanvas) {
+    const ctx = chartCanvas.getContext('2d');
+    ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+  }
+}
+
 async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
+  const requestId = ++historyValidationRequestId;
+
+  limparIndicadoresAuditoria();
+
+  const sampleCount = document.getElementById('hist-sample-count');
+  if (sampleCount) sampleCount.innerText = '...';
+
   try {
     const res = await requisicao('/validation-history?market=' + market);
-    if(res.status !== 'ok') return;
+    if (requestId !== historyValidationRequestId) return;
+    if(res.status !== 'ok') throw new Error('Resposta inválida para a auditoria');
 
     const summary = res.summary;
     document.getElementById('hist-sample-count').innerText = summary.completed_results || 0;
@@ -1102,7 +1143,13 @@ async function fetchHistoryValidation() {
 
     renderDailyChart(res.daily);
   } catch (e) {
+    if (requestId !== historyValidationRequestId) return;
     console.error('Erro na auditoria:', e);
+    document.getElementById('hist-sample-count').innerText = '—';
+    document.getElementById('score-bands-table').innerHTML =
+      '<tr><td colspan="8" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
+    document.getElementById('similar-profiles-table').innerHTML =
+      '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
   }
 }
 
