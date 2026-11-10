@@ -3843,6 +3843,8 @@ def gap_validation(
                     "above_baseline_pct": None,
                     "above_defense_count": 0,
                     "above_defense_pct": None,
+                    "followed_direction_count": None,
+                    "not_followed_direction_count": None,
                     "actual_minus_defense_average": None
                 }
                 continue
@@ -3867,6 +3869,17 @@ def gap_validation(
                 item for item in defense_pairs
                 if item["actual"] > item[period_key]["defense_reference"]
             ]
+            below_defense = [
+                item for item in defense_pairs
+                if item["actual"] < item[period_key]["defense_reference"]
+            ]
+
+            followed_direction = (
+                above_defense if classification == "Favorável"
+                else below_defense if classification == "Resistência"
+                else []
+            )
+            has_expected_direction = classification in {"Favorável", "Resistência"}
 
             output[classification] = {
                 "count": len(valid),
@@ -3889,6 +3902,13 @@ def gap_validation(
                 "above_defense_pct": (
                     round(len(above_defense) / len(defense_pairs) * 100, 1)
                     if defense_pairs else None
+                ),
+                "followed_direction_count": (
+                    len(followed_direction) if has_expected_direction else None
+                ),
+                "not_followed_direction_count": (
+                    len(defense_pairs) - len(followed_direction)
+                    if has_expected_direction else None
                 ),
                 "actual_minus_defense_average": average([
                     item[period_key]["actual_minus_defense"]
