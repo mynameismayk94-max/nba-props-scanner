@@ -247,7 +247,7 @@
         <div><span class="text-emerald-400">Acima</span> — defesa permite mais de 10% que a média da liga para a posição.</div>
         <div><span class="text-amber-300">Próximo</span> — defesa dentro de ±10% da média da liga.</div>
         <div><span class="text-red-400">Abaixo</span> — defesa permite menos de 10% que a média da liga.</div>
-        <div>Referência: total cedido à posição por partida; média da liga calculada com os últimos 5/10 jogos de cada equipe. Sem corte mínimo de minutos.</div>
+        <div>Referência geral: total cedido à posição por partida, sem corte mínimo de minutos. No modal, análise complementar de jogadores da mesma posição com minutagem ±5 min.</div>
       </div>
 
       <div id="resultado"></div>
@@ -921,6 +921,14 @@ function abrirAnalise(indice){
   const status10 = classificarContextoDefensivo(proj10, league10);
   const deviation5 = desvioDefensivoPct(proj5, league5);
   const deviation10 = desvioDefensivoPct(proj10, league10);
+  const bandDefense5 = p.opponent_position_minute_band_defense_l5_avg;
+  const bandDefense10 = p.opponent_position_minute_band_defense_l10_avg;
+  const bandLeague5 = p.league_position_minute_band_l5_avg;
+  const bandLeague10 = p.league_position_minute_band_l10_avg;
+  const bandDeviation5 = desvioDefensivoPct(bandDefense5, bandLeague5);
+  const bandDeviation10 = desvioDefensivoPct(bandDefense10, bandLeague10);
+  const bandLower = p.opponent_position_minute_band_lower;
+  const bandUpper = p.opponent_position_minute_band_upper;
 
   let html = '<div class="analysis-grid">';
   html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
@@ -928,6 +936,8 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>🏟️ Participação</h3><table class="analysis-table"><tr><th>Período</th><th>Jogos</th><th>Taxa</th></tr><tr><td>L5</td><td><b>' + participacoes(p.team_games_last5_played) + '/' + participacoes(p.team_games_last5_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</b></td></tr><tr><td>L10</td><td><b>' + participacoes(p.team_games_last10_played) + '/' + participacoes(p.team_games_last10_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</b></td></tr></table></div>';
 
   html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Total cedido por jogo</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Média da liga</td><td><b>' + numero(league5) + '</b></td><td><b>' + numero(league10) + '</b></td></tr><tr><td>Desvio vs liga</td><td><b>' + (deviation5 == null ? '—' : (deviation5 > 0 ? '+' : '') + deviation5.toFixed(1) + '%') + '</b></td><td><b>' + (deviation10 == null ? '—' : (deviation10 > 0 ? '+' : '') + deviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Classificação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos da defesa</td><td>' + participacoes(p.opponent_position_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_defense_games_l10) + '</td></tr><tr><td>Jogos da liga</td><td>' + participacoes(p.league_position_allowed_l5_games) + '</td><td>' + participacoes(p.league_position_allowed_l10_games) + '</td></tr></table><div class="analysis-note">Total da estatística cedida a todos os jogadores da posição em cada partida, comparado à média dos totais por partida das 30 equipes. Acima: defesa permite mais de 10%; Abaixo: menos de 10%; Próximo: dentro de ±10%. Sem corte mínimo de minutos.</div></div>';
+
+  html += '<div class="analysis-card"><h3>🎯 Perfil de minutagem semelhante (±5 min)</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Faixa analisada</td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td></tr><tr><td>Média da defesa por jogador</td><td><b>' + numero(bandDefense5) + '</b></td><td><b>' + numero(bandDefense10) + '</b></td></tr><tr><td>Média da liga por jogador</td><td><b>' + numero(bandLeague5) + '</b></td><td><b>' + numero(bandLeague10) + '</b></td></tr><tr><td>Desvio vs liga</td><td><b>' + (bandDeviation5 == null ? '—' : (bandDeviation5 > 0 ? '+' : '') + bandDeviation5.toFixed(1) + '%') + '</b></td><td><b>' + (bandDeviation10 == null ? '—' : (bandDeviation10 > 0 ? '+' : '') + bandDeviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Amostra da defesa</td><td>' + participacoes(p.opponent_position_minute_band_defense_l5_appearances) + ' aparições / ' + participacoes(p.opponent_position_minute_band_defense_l5_games) + ' jogos</td><td>' + participacoes(p.opponent_position_minute_band_defense_l10_appearances) + ' aparições / ' + participacoes(p.opponent_position_minute_band_defense_l10_games) + ' jogos</td></tr><tr><td>Amostra da liga</td><td>' + participacoes(p.league_position_minute_band_l5_appearances) + ' aparições / ' + participacoes(p.league_position_minute_band_l5_games) + ' jogos</td><td>' + participacoes(p.league_position_minute_band_l10_appearances) + ' aparições / ' + participacoes(p.league_position_minute_band_l10_games) + ' jogos</td></tr></table><div class="analysis-note">Média individual por aparição de atletas da mesma posição entre ' + numero(bandLower, 1) + ' e ' + numero(bandUpper, 1) + ' minutos. A média da liga usa o mesmo filtro e a mesma unidade. É uma referência contextual, sem classificação própria e sem alterar o Score.</div></div>';
   html += '</div>';
 
   document.getElementById('modalBody').innerHTML = html;
