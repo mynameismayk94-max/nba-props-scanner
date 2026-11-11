@@ -1,0 +1,17 @@
+name: Auto collect pending results
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 4,10,16,22 * * *"
+      timezone: "America/Sao_Paulo"
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Collect pending results
+        run: |
+          curl --fail --show-error --silent             --max-time 600             "https://nba-props-scanner.onrender.com/collect-pending-results?max_combinations=100"
