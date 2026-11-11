@@ -2565,8 +2565,8 @@ def build_player_result(
         "opponent_position_equal_game_defense_l5_games": position_equal_game_l5.get("games_analyzed", 0) if position_equal_game_l5 else 0,
         "opponent_position_equal_game_defense_l10_games": position_equal_game_l10.get("games_analyzed", 0) if position_equal_game_l10 else 0,
         "opponent_position_equal_game_defense_l5_appearances": position_equal_game_l5.get("player_appearances", 0) if position_equal_game_l5 else 0,
-        "opponent_position_equal_game_defense_l10_appearances": position_equal_game_l10.get("player_appearances", 0) if position_equal_game_l10 else 0
-        , "opponent_position_equal_game_reference_version": 1
+        "opponent_position_equal_game_defense_l10_appearances": position_equal_game_l10.get("player_appearances", 0) if position_equal_game_l10 else 0,
+        "opponent_position_equal_game_reference_version": 1
     }
 
 
