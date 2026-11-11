@@ -3287,7 +3287,14 @@ def validation_history(
                         ROW_NUMBER() OVER (
                             PARTITION BY s.selected_date, s.market
                             ORDER BY
-                                s.display_rank ASC NULLS LAST,
+                                CASE
+                                    WHEN COUNT(*) FILTER (
+                                        WHERE s.display_rank IS NULL
+                                    ) OVER (
+                                        PARTITION BY s.selected_date, s.market
+                                    ) = 0
+                                    THEN s.display_rank
+                                END ASC NULLS LAST,
                                 s.triage_score DESC NULLS LAST,
                                 s.player_id ASC
                         ) AS cohort_rank
@@ -3840,8 +3847,15 @@ def gap_validation(
                 ROW_NUMBER() OVER (
                     PARTITION BY s.selected_date, s.market
                     ORDER BY
-                        s.display_rank ASC NULLS LAST,
-                        s.triage_score DESC NULLS LAST,
+                        CASE
+                                    WHEN COUNT(*) FILTER (
+                                        WHERE s.display_rank IS NULL
+                                    ) OVER (
+                                        PARTITION BY s.selected_date, s.market
+                                    ) = 0
+                                    THEN s.display_rank
+                                END ASC NULLS LAST,
+                                s.triage_score DESC NULLS LAST,
                         s.player_id ASC
                 ) AS cohort_rank
             FROM candidate_snapshots s
