@@ -3917,7 +3917,12 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         ref5, ref10 = number(ref5_raw), number(ref10_raw)
         games5, games10 = int(number(games5_raw) or 0), int(number(games10_raw) or 0)
         apps5, apps10 = int(number(apps5_raw) or 0), int(number(apps10_raw) or 0)
-        if reference_version is None or int(number(reference_version) or 0) < 2: legacy_records += 1
+        reference_version_number = int(number(reference_version) or 0)
+        if reference_version_number < 2:
+            legacy_records += 1
+            ref5 = None
+            ref10 = None
+            games5 = games10 = apps5 = apps10 = 0
         class5, pct5 = classify(baseline5, ref5)
         class10, pct10 = classify(baseline10, ref10)
         def actual_delta(ref): return round(actual - ref, 2) if actual is not None and ref is not None else None
