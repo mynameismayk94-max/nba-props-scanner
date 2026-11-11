@@ -242,11 +242,12 @@
         </div>
       </div>
 
-      <div class="scanner-legend" aria-label="Legenda do GAP">
-        <div><strong>Como interpretar o GAP:</strong></div>
-        <div><span class="legend-negative">🟢 Favorável</span> — GAP negativo: a defesa permite mais que a média do jogador.</div>
-        <div><span class="legend-positive">🔴 Não favorável</span> — GAP positivo: a defesa é mais resistente que a média do jogador.</div>
-        <div><span class="legend-neutral">⚪ Neutro</span> — GAP igual a zero.</div>
+      <div class="scanner-legend" aria-label="Contexto defensivo por posição">
+        <div><strong>Como interpretar o contexto defensivo:</strong></div>
+        <div><span class="text-emerald-400">Acima</span> — média do jogador pelo menos 10% superior à referência da posição.</div>
+        <div><span class="text-amber-300">Próximo</span> — diferença dentro de ±10% da referência.</div>
+        <div><span class="text-red-400">Abaixo</span> — média do jogador pelo menos 10% inferior à referência.</div>
+        <div>Referência calculada com jogadores da mesma posição, sem corte mínimo de minutos e com peso igual por partida.</div>
       </div>
 
       <div id="resultado"></div>
@@ -273,6 +274,14 @@
       </div>
       <p class="text-[10px] text-gray-400">Selecione uma data com snapshots registrados e partidas concluídas. A coleta será executada nos seis mercados ativos, sem duplicar resultados já salvos.</p>
       <div id="collection-status" class="text-[10px] text-gray-400" aria-live="polite"></div>
+    <div class="glass-panel p-3 space-y-2">
+      <div class="text-[10px] font-bold text-gray-300 uppercase tracking-wide">População da auditoria</div>
+      <div class="audit-cohort-buttons grid grid-cols-2 gap-2">
+        <button id="audit-cohort-top10" type="button" onclick="setAuditCohort('top10')" class="market-button active">Top 10 exibidos</button>
+        <button id="audit-cohort-all" type="button" onclick="setAuditCohort('all')" class="market-button">Todos os elegíveis</button>
+      </div>
+      <p id="audit-cohort-description" class="text-[10px] text-gray-400">Analisando os dez candidatos mais bem classificados pelo Score em cada data e mercado.</p>
+    </div>
       <div>
         <h3 class="text-xs font-semibold text-white">📈 Comparativo por mercado</h3>
         <p class="text-[10px] text-gray-400">Visão dos seis mercados ativos. A amostra considera apenas resultados reais já coletados.</p>
@@ -297,14 +306,7 @@
       </div>
     </div>
 
-    <div class="glass-panel p-3 space-y-2">
-      <div class="text-[10px] font-bold text-gray-300 uppercase tracking-wide">População da auditoria</div>
-      <div class="audit-cohort-buttons grid grid-cols-2 gap-2">
-        <button id="audit-cohort-top10" type="button" onclick="setAuditCohort('top10')" class="market-button active">Top 10 exibidos</button>
-        <button id="audit-cohort-all" type="button" onclick="setAuditCohort('all')" class="market-button">Todos os elegíveis</button>
-      </div>
-      <p id="audit-cohort-description" class="text-[10px] text-gray-400">Analisando os dez candidatos mais bem classificados pelo Score em cada data e mercado.</p>
-    </div>
+
 
     <div class="flex items-center justify-between gap-2">
       <div class="w-1/2">
@@ -377,12 +379,12 @@
     <!-- Auditoria do contexto defensivo: GAP pré-jogo x resultado real -->
     <div class="glass-panel p-3 space-y-3">
       <div>
-        <h3 class="text-xs font-semibold text-white">🛡️ Validação do GAP defensivo</h3>
-        <p class="text-[10px] text-gray-400 mt-1">Compara a classificação registrada antes do jogo com o resultado real. O GAP negativo é Favorável; o positivo indica Resistência. Score não participa do cálculo do GAP.</p>
+        <h3 class="text-xs font-semibold text-white">🛡️ Auditoria do contexto defensivo</h3>
+        <p class="text-[10px] text-gray-400 mt-1">Compara a média pré-jogo do jogador com a produção média permitida pela defesa para atletas da mesma posição. Também mostra como foi o resultado real em relação à referência.</p>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label for="gap-period-select" class="block text-[10px] text-gray-400 mb-1">GAP analisado</label>
+          <label for="gap-period-select" class="block text-[10px] text-gray-400 mb-1">Período da média</label>
           <select id="gap-period-select" onchange="renderGapAudit()" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
             <option value="l5" selected>L5</option>
             <option value="l10">L10</option>
@@ -402,14 +404,14 @@
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Classificação pré-jogo</th><th>Registros</th><th>Seguiram a direção esperada</th><th>Não seguiram</th></tr></thead>
+          <thead><tr><th>Comparação pré-jogo</th><th>Amostra</th><th>Média jogador</th><th>Referência</th><th>Média real</th><th>Real acima / igual / abaixo</th></tr></thead>
           <tbody id="gap-summary-table" class="text-gray-300">
-            <tr><td colspan="4" class="text-gray-400">Carregando validação do GAP...</td></tr>
+            <tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>
           </tbody>
         </table>
       </div>
       <p id="gap-audit-note" class="text-[10px] text-gray-400">Aguardando dados concluídos...</p>
-      <p class="text-[9px] text-gray-500">A leitura é direta: Favorável deve tender a ficar acima da referência defensiva; Resistência deve tender a ficar abaixo. Isso valida o contexto do GAP, não uma aposta ganha ou perdida.</p>
+      <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da referência. A tabela compara o contexto pré-jogo com os resultados reais; não representa taxa de acerto de apostas nem rentabilidade. Snapshots antigos sem a nova referência aparecem como “Sem referência”.</p>
     </div>
 
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
@@ -638,12 +640,22 @@ function celulaParticipacaoEquipe(p){
     '</div></td>';
 }
 
-function diferencaVsDefesa(vJogador, pDefesa){
-  if(vJogador === null || vJogador === undefined || pDefesa === null || pDefesa === undefined) return null;
-  const j = Number(vJogador);
-  const d = Number(pDefesa);
+function diferencaVsDefesa(vJogador, referencia){
+  if(vJogador === null || vJogador === undefined || referencia === null || referencia === undefined) return null;
+  const j = Number(vJogador), d = Number(referencia);
   if(!Number.isFinite(j) || !Number.isFinite(d)) return null;
   return j - d;
+}
+
+function classificarContextoDefensivo(vJogador, referencia){
+  const diferenca = diferencaVsDefesa(vJogador, referencia);
+  if(diferenca === null) return 'Sem referência';
+  const defesa = Number(referencia);
+  if(defesa === 0) return diferenca > 0 ? 'Acima' : 'Próximo';
+  const percentual = diferenca / Math.abs(defesa) * 100;
+  if(percentual > 10) return 'Acima';
+  if(percentual < -10) return 'Abaixo';
+  return 'Próximo';
 }
 
 function formatarDiferenca(valor){
@@ -653,28 +665,21 @@ function formatarDiferenca(valor){
   return n > 0 ? '+' + n.toFixed(2) : n.toFixed(2);
 }
 
-function statusDiferenca(valor){
-  if(valor === null || valor === undefined) return '—';
-  const n = Number(valor);
-  if(!Number.isFinite(n)) return '—';
-  if(n > 0) return '🔴 Resis.';
-  if(n < 0) return '🟢 Favor.';
-  return '⚪ Neutro';
+function classeContextoDefensivo(status){
+  if(status === 'Acima') return 'text-emerald-400';
+  if(status === 'Próximo') return 'text-amber-300';
+  if(status === 'Abaixo') return 'text-red-400';
+  return 'text-gray-500';
 }
 
-function classeStatusDiferenca(valor){
-  if(valor === null || valor === undefined) return '';
-  const n = Number(valor);
-  if(!Number.isFinite(n)) return '';
-  if(n > 0) return 'difference-positive';
-  if(n < 0) return 'difference-negative';
-  return 'difference-neutral';
-}
-
-function celulaDiferenca(v5, v10){
+function celulaDiferenca(jogador5, defesa5, jogador10, defesa10){
+  const status5 = classificarContextoDefensivo(jogador5, defesa5);
+  const status10 = classificarContextoDefensivo(jogador10, defesa10);
+  const delta5 = diferencaVsDefesa(jogador5, defesa5);
+  const delta10 = diferencaVsDefesa(jogador10, defesa10);
   return '<td class="difference-cell"><div class="split-metric">' +
-    '<div class="split-item"><span class="period-label">L5</span><span class="difference-value ' + classeStatusDiferenca(v5) + '">' + statusDiferenca(v5) + '</span><span class="sample">Gap: ' + formatarDiferenca(v5) + '</span></div>' +
-    '<div class="split-item"><span class="period-label">L10</span><span class="difference-value ' + classeStatusDiferenca(v10) + '">' + statusDiferenca(v10) + '</span><span class="sample">Gap: ' + formatarDiferenca(v10) + '</span></div>' +
+    '<div class="split-item"><span class="period-label">L5</span><span class="difference-value ' + classeContextoDefensivo(status5) + '">' + status5 + '</span><span class="sample">Dif.: ' + formatarDiferenca(delta5) + '</span></div>' +
+    '<div class="split-item"><span class="period-label">L10</span><span class="difference-value ' + classeContextoDefensivo(status10) + '">' + status10 + '</span><span class="sample">Dif.: ' + formatarDiferenca(delta10) + '</span></div>' +
     '</div></td>';
 }
 
@@ -775,12 +780,12 @@ function filtrosHtml(){
       </select>
     </div>
     <div class="filter-group">
-      <label for="filtroDiferenca">DEFESA</label>
+      <label for="filtroDiferenca">CONTEXTO DEFENSIVO</label>
       <select id="filtroDiferenca">
         <option value="all">Todos</option>
-        <option value="positive">Positiva</option>
-        <option value="1">≥ +1</option>
-        <option value="-1">≤ -1</option>
+        <option value="above">Acima</option>
+        <option value="close">Próximo</option>
+        <option value="below">Abaixo</option>
       </select>
     </div>
     <div class="filter-group">
@@ -807,13 +812,7 @@ function filtrosHtml(){
 }
 
 function obterDiferenca(jogador){
-  const proj5 = jogador.opponent_position_minutes_filtered_defense_l5_projected;
-  const proj10 = jogador.opponent_position_minutes_filtered_defense_l10_projected;
-  const d5 = diferencaVsDefesa(jogador.last5_avg, proj5);
-  const d10 = diferencaVsDefesa(jogador.last10_avg, proj10);
-  const valores = [d5, d10].filter(v => v !== null);
-  if(!valores.length) return null;
-  return Math.max(...valores);
+  return diferencaVsDefesa(jogador.last5_avg, jogador.opponent_position_equal_game_defense_l5_avg);
 }
 
 function filtrarCandidatos(){
@@ -827,14 +826,14 @@ function filtrarCandidatos(){
     const minutos = Number(p.minutes_last5_avg);
     const triage = Number(p.triage_score);
     const pos = String(p.position || '').toUpperCase();
-    const diff = obterDiferenca(p);
+    const defensiveClass = classificarContextoDefensivo(p.last5_avg, p.opponent_position_equal_game_defense_l5_avg);
 
     if(min > 0 && (!Number.isFinite(minutos) || minutos < min)) return false;
     if(score > 0 && (!Number.isFinite(triage) || triage < score)) return false;
     if(posicao !== 'all' && pos !== posicao) return false;
-    if(diferenca === 'positive' && (diff === null || diff <= 0)) return false;
-    if(['1','2','3'].includes(diferenca) && (diff === null || diff < Number(diferenca))) return false;
-    if(['-1','-2'].includes(diferenca) && (diff === null || diff > Number(diferenca))) return false;
+    if(diferenca === 'above' && defensiveClass !== 'Acima') return false;
+    if(diferenca === 'close' && defensiveClass !== 'Próximo') return false;
+    if(diferenca === 'below' && defensiveClass !== 'Abaixo') return false;
     return true;
   });
 
@@ -865,13 +864,11 @@ function renderizarResultados(){
   }
 
   html += '<div class="tablewrap"><table>';
-  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Defesa</th><th>Gap</th><th>Ação</th></tr>';
+  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Defesa posição</th><th>Comparação</th><th>Ação</th></tr>';
 
   filtrados.forEach(p => {
-    const proj5 = p.opponent_position_minutes_filtered_defense_l5_projected;
-    const proj10 = p.opponent_position_minutes_filtered_defense_l10_projected;
-    const difference5 = diferencaVsDefesa(p.last5_avg, proj5);
-    const difference10 = diferencaVsDefesa(p.last10_avg, proj10);
+    const proj5 = p.opponent_position_equal_game_defense_l5_avg;
+    const proj10 = p.opponent_position_equal_game_defense_l10_avg;
 
     html += '<tr>';
     html += '<td><b>' + escapeHtml(p.player) + '</b></td>';
@@ -884,7 +881,7 @@ function renderizarResultados(){
     html += celulaParticipacaoEquipe(p);
     html += '<td class="metric">' + numero(p.triage_score) + '</td>';
     html += '<td class="new-metric"><div class="split-metric">' + blocoPeriodo(proj5, 'L5') + blocoPeriodo(proj10, 'L10') + '</div></td>';
-    html += celulaDiferenca(difference5, difference10);
+    html += celulaDiferenca(p.last5_avg, proj5, p.last10_avg, proj10);
     html += '<td><button class="analisar" onclick="abrirAnalise(' + candidatosAtuais.indexOf(p) + ')">Analisar</button></td>';
     html += '</tr>';
   });
@@ -917,21 +914,19 @@ function abrirAnalise(indice){
   document.getElementById('modalPlayer').innerText = p.player || 'Jogador';
   document.getElementById('modalMeta').innerText = (p.team || '—') + ' · ' + (p.position || '—') + ' vs ' + (p.opponent || '—');
 
-  const proj5 = p.opponent_position_minutes_filtered_defense_l5_projected;
-  const proj10 = p.opponent_position_minutes_filtered_defense_l10_projected;
+  const proj5 = p.opponent_position_equal_game_defense_l5_avg;
+  const proj10 = p.opponent_position_equal_game_defense_l10_avg;
   const difference5 = diferencaVsDefesa(p.last5_avg, proj5);
   const difference10 = diferencaVsDefesa(p.last10_avg, proj10);
+  const status5 = classificarContextoDefensivo(p.last5_avg, proj5);
+  const status10 = classificarContextoDefensivo(p.last10_avg, proj10);
 
   let html = '<div class="analysis-grid">';
   html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
 
   html += '<div class="analysis-card"><h3>🏟️ Participação</h3><table class="analysis-table"><tr><th>Período</th><th>Jogos</th><th>Taxa</th></tr><tr><td>L5</td><td><b>' + participacoes(p.team_games_last5_played) + '/' + participacoes(p.team_games_last5_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</b></td></tr><tr><td>L10</td><td><b>' + participacoes(p.team_games_last10_played) + '/' + participacoes(p.team_games_last10_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</b></td></tr></table></div>';
 
-  html += '<div class="analysis-card"><h3>🎯 Contexto Defensivo</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média Jogador</td><td>' + numero(p.last5_avg) + '</td><td>' + numero(p.last10_avg) + '</td></tr><tr><td>Projeção Defesa</td><td>' + numero(proj5) + '</td><td>' + numero(proj10) + '</td></tr><tr><td><b>Gap</b></td><td><span class="' + (difference5 > 0 ? 'difference-positive' : 'difference-negative') + '">' + formatarDiferenca(difference5) + '</span></td><td><span class="' + (difference10 > 0 ? 'difference-positive' : 'difference-negative') + '">' + formatarDiferenca(difference10) + '</span></td></tr></table></div>';
-
-  html += '<div class="analysis-card"><h3>🛡️ Defesa Ajustada</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média ajustada</td><td>' + numero(p.opponent_position_minutes_filtered_defense_l5_avg) + '</td><td>' + numero(p.opponent_position_minutes_filtered_defense_l10_avg) + '</td></tr><tr><td>Projeção</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr></table><div class="analysis-note">Métrica principal do GAP: considera apenas adversários da mesma posição com minutagem igual ou superior à média L5 do jogador.</div></div>';
-
-  html += '<div class="analysis-card"><h3>📚 Contexto da Posição — Todos os Minutos</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média por jogador</td><td><b>' + numero(p.opponent_position_individual_defense_l5_avg) + '</b></td><td><b>' + numero(p.opponent_position_individual_defense_l10_avg) + '</b></td></tr><tr><td>Aparições</td><td>' + participacoes(p.opponent_position_individual_defense_player_games_l5) + '</td><td>' + participacoes(p.opponent_position_individual_defense_player_games_l10) + '</td></tr></table><div class="analysis-note">Média da estatística selecionada por aparição de jogadores da mesma posição, sem filtro de minutos. É apenas contexto complementar e não altera o GAP nem a classificação.</div></div>';
+  html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média jogador</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Referência da defesa</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Comparação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos usados</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_games) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_games) + '</td></tr><tr><td>Aparições</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_appearances) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_appearances) + '</td></tr></table><div class="analysis-note">Média da produção por aparição de jogadores da mesma posição em cada partida; depois, média entre partidas com peso igual. Sem corte mínimo de minutos. Próximo: diferença dentro de ±10%.</div></div>';
   html += '</div>';
 
   document.getElementById('modalBody').innerHTML = html;
@@ -1110,7 +1105,7 @@ function limparIndicadoresAuditoria() {
   const gapScoreBand = document.getElementById('gap-score-band-select');
   if (gapScoreBand) gapScoreBand.value = 'all';
   const gapSummary = document.getElementById('gap-summary-table');
-  if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando validação do GAP...</td></tr>';
+  if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>';
   const gapRecords = document.getElementById('gap-records-table');
   if (gapRecords) gapRecords.innerHTML = '<tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>';
 
@@ -1137,51 +1132,36 @@ function renderGapAudit() {
   const note = document.getElementById('gap-audit-note');
   const periodSelect = document.getElementById('gap-period-select');
   if(!summaryTable || !periodSelect) return;
-
-  if(!gapAuditData) {
-    summaryTable.innerHTML = '<tr><td colspan="4" class="text-gray-400">Sem dados de GAP disponíveis.</td></tr>';
-    return;
-  }
-
+  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="6" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
   const periodKey = periodSelect.value || 'l5';
   const groups = gapAuditData.periods?.[periodKey] || {};
   const rows = [
-    { key: 'Favorável', label: 'Favorável', color: 'text-emerald-400', valueColor: 'text-emerald-300' },
-    { key: 'Resistência', label: 'Não favorável', color: 'text-red-400', valueColor: 'text-red-300' },
-    { key: 'Neutro', label: 'Neutro', color: 'text-gray-300', valueColor: 'text-white' },
-    { key: 'Sem referência', label: 'Sem referência', color: 'text-gray-500', valueColor: 'text-white' }
+    {key:'Acima', color:'text-emerald-400'},
+    {key:'Próximo', color:'text-amber-300'},
+    {key:'Abaixo', color:'text-red-400'},
+    {key:'Sem referência', color:'text-gray-500'}
   ];
-
   summaryTable.innerHTML = rows.map(row => {
     const group = groups[row.key] || {};
-    const count = Number(group.count || 0);
-    const hasDirection = row.key === 'Favorável' || row.key === 'Resistência';
-    const followed = hasDirection ? Number(group.followed_direction_count || 0) : null;
-    const notFollowed = hasDirection ? Number(group.not_followed_direction_count || 0) : null;
-    const followedText = hasDirection ? followed : '—';
-    const notFollowedText = hasDirection ? notFollowed : '—';
-
-    return '<tr>' +
-      '<td class="font-semibold ' + row.color + '">' + row.label + '</td>' +
-      '<td class="font-bold text-white">' + count + '</td>' +
-      '<td class="font-bold ' + row.valueColor + '">' + followedText + '</td>' +
-      '<td class="font-bold text-gray-300">' + notFollowedText + '</td>' +
-      '</tr>';
+    const outcomes = Number(group.actual_above_reference || 0) + ' / ' + Number(group.actual_equal_reference || 0) + ' / ' + Number(group.actual_below_reference || 0);
+    return '<tr><td class="font-semibold ' + row.color + '">' + row.key + '</td>' +
+      '<td class="font-bold text-white">' + Number(group.count || 0) + '</td>' +
+      '<td>' + (group.baseline_average == null ? '—' : numero(group.baseline_average)) + '</td>' +
+      '<td>' + (group.defense_reference_average == null ? '—' : numero(group.defense_reference_average)) + '</td>' +
+      '<td class="font-bold text-white">' + (group.actual_average == null ? '—' : numero(group.actual_average)) + '</td>' +
+      '<td>' + (Number(group.completed || 0) ? outcomes : '—') + '</td></tr>';
   }).join('');
-
-  const total = gapAuditData.completed_records || 0;
   const scoreBand = gapAuditData.score_band || 'all';
-  note.innerText = total + ' resultados concluídos com snapshot pré-jogo · População: ' +
-    (gapAuditData.cohort_label || 'Todos os elegíveis') + ' · Score: ' +
-    (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
-    ' · GAP ' + (periodKey === 'l5' ? 'L5' : 'L10') +
-    '. Favorável: resultado real acima da referência defensiva. Não favorável: resultado real abaixo da referência. Resultado igual à referência entra em “Não seguiram”. Neutro não tem direção esperada; Sem referência não pode ser validado.';
+  note.innerText = (gapAuditData.completed_records || 0) + ' resultados concluídos · População: ' +
+    (gapAuditData.cohort_label || 'Todos os elegíveis') + ' · Score: ' + (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
+    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Real acima / igual / abaixo da referência. ' +
+    Number(gapAuditData.legacy_records_without_new_reference || 0) + ' registros antigos sem a nova referência.';
 }
 async function fetchGapValidation(market) {
   const requestId = ++gapValidationRequestId;
   const summaryTable = document.getElementById('gap-summary-table');
   const note = document.getElementById('gap-audit-note');
-  if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="4" class="text-gray-400">Carregando validação do GAP...</td></tr>';
+  if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>';
   if(note) note.innerText = 'Consultando snapshots e resultados reais...';
 
   try {
@@ -1194,7 +1174,7 @@ async function fetchGapValidation(market) {
   } catch(error) {
     if(requestId !== gapValidationRequestId) return;
     gapAuditData = null;
-    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="4" class="text-red-400">Não foi possível carregar a validação do GAP.</td></tr>';
+    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
