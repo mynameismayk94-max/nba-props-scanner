@@ -26,7 +26,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.15.0"
+    version="3.16.0"
 )
 
 app.add_middleware(
@@ -1130,6 +1130,70 @@ def calculate_minutes_filtered_position_defense(
     }
 
 
+def calculate_minutes_band_position_defense(
+    sample,
+    position,
+    stat_key,
+    minutes_center,
+    margin=5.0
+):
+    """
+    Média individual por aparição para atletas da mesma posição
+    dentro de uma faixa simétrica de minutagem (centro ± margem).
+    Aceita amostras defensivas de uma equipe e amostras agregadas da liga.
+    """
+    lower_minutes = max(0.0, float(minutes_center) - float(margin))
+    upper_minutes = float(minutes_center) + float(margin)
+
+    total_stat = 0.0
+    total_minutes = 0.0
+    player_appearances = 0
+    games_analyzed = 0
+
+    for game in sample:
+        position_data = (
+            game.get("positions", {})
+            .get(position, {})
+        )
+        players = position_data.get("players", [])
+        game_has_valid_player = False
+
+        for player in players:
+            player_minutes = player.get("minutes")
+            stat_value = player.get(stat_key)
+
+            if (
+                player_minutes is None
+                or player_minutes < lower_minutes
+                or player_minutes > upper_minutes
+                or stat_value is None
+            ):
+                continue
+
+            total_stat += stat_value
+            total_minutes += player_minutes
+            player_appearances += 1
+            game_has_valid_player = True
+
+        if game_has_valid_player:
+            games_analyzed += 1
+
+    return {
+        "minutes_center": round(float(minutes_center), 1),
+        "minutes_margin": round(float(margin), 1),
+        "minutes_lower": round(lower_minutes, 1),
+        "minutes_upper": round(upper_minutes, 1),
+        "games_analyzed": games_analyzed,
+        "player_appearances": player_appearances,
+        "total_minutes": round(total_minutes, 1),
+        "total_stat": round(total_stat, 1),
+        "average_per_player_appearance": (
+            round(total_stat / player_appearances, 2)
+            if player_appearances else None
+        )
+    }
+
+
 def calculate_equal_game_position_defense(sample, position, stat_key):
     """Média da produção por aparição dentro de cada jogo; jogos têm peso igual."""
     game_averages = []
@@ -2152,7 +2216,7 @@ NBA_TEAM_ABBREVIATIONS = (
 )
 
 
-@lru_cache(maxsize=60)
+@lru_cache(maxsize=12)
 def get_league_position_defense_baseline(year, target_date_iso):
     """Média da liga de totais cedidos por jogo a cada posição, usando os últimos 5/10 jogos de cada equipe."""
     started = time.perf_counter()
@@ -2204,6 +2268,15 @@ def get_league_position_defense_baseline(year, target_date_iso):
         }
         for window in (5, 10)
     }
+    # Guarda somente os dados individuais já extraídos dos mesmos boxscores.
+    # Isso permite comparar a faixa de minutos sem novas consultas à ESPN.
+    minute_player_samples = {
+        window: {
+            position: []
+            for position in ("G", "F", "C")
+        }
+        for window in (5, 10)
+    }
 
     for team, games in team_samples.items():
         for index, game in enumerate(games[:10]):
@@ -2218,6 +2291,19 @@ def get_league_position_defense_baseline(year, target_date_iso):
 
             for position in ("G", "F", "C"):
                 position_data = positions.get(position, {})
+                players = position_data.get("players", [])
+                if players:
+                    sample_game = {
+                        "positions": {
+                            position: {
+                                "players": players
+                            }
+                        }
+                    }
+                    minute_player_samples[10][position].append(sample_game)
+                    if index < 5:
+                        minute_player_samples[5][position].append(sample_game)
+
                 for stat_key in stat_keys:
                     value = position_data.get(stat_key)
                     if value is None:
@@ -2226,7 +2312,12 @@ def get_league_position_defense_baseline(year, target_date_iso):
                     if index < 5:
                         samples[5][position][stat_key].append(value)
 
-    result = {"positions": {}, "teams_analyzed": len(team_samples), "unique_games": len(summaries)}
+    result = {
+        "positions": {},
+        "minute_player_samples": minute_player_samples,
+        "teams_analyzed": len(team_samples),
+        "unique_games": len(summaries)
+    }
     for position in ("G", "F", "C"):
         result["positions"][position] = {}
         for stat_key in stat_keys:
@@ -2481,6 +2572,10 @@ def build_player_result(
     position_player_games_l10 = 0
     position_filtered_l5 = None
     position_filtered_l10 = None
+    position_minute_band_l5 = None
+    position_minute_band_l10 = None
+    league_minute_band_l5 = None
+    league_minute_band_l10 = None
     position_equal_game_l5 = None
     position_equal_game_l10 = None
 
@@ -2578,6 +2673,42 @@ def build_player_result(
             )
         )
 
+        # Nova leitura contextual: jogadores da mesma posição em uma faixa
+        # simétrica de ±5 minutos do candidato, usando os mesmos boxscores.
+        position_minute_band_l5 = calculate_minutes_band_position_defense(
+            defense_games_sample_l5,
+            position,
+            position_stat_key,
+            minutes_avg,
+            5.0
+        )
+        position_minute_band_l10 = calculate_minutes_band_position_defense(
+            defense_games_sample_l10,
+            position,
+            position_stat_key,
+            minutes_avg,
+            5.0
+        )
+
+        league_minute_samples = (
+            league_baseline.get("minute_player_samples", {})
+            if league_baseline else {}
+        )
+        league_minute_band_l5 = calculate_minutes_band_position_defense(
+            league_minute_samples.get(5, {}).get(position, []),
+            position,
+            position_stat_key,
+            minutes_avg,
+            5.0
+        )
+        league_minute_band_l10 = calculate_minutes_band_position_defense(
+            league_minute_samples.get(10, {}).get(position, []),
+            position,
+            position_stat_key,
+            minutes_avg,
+            5.0
+        )
+
         position_equal_game_l5 = calculate_equal_game_position_defense(
             defense_games_sample_l5, position, position_stat_key
         )
@@ -2623,6 +2754,65 @@ def build_player_result(
         "opponent_position_individual_defense_player_games_l5": position_player_games_l5,
         "opponent_position_individual_defense_player_games_l10": position_player_games_l10,
         "opponent_position_minutes_filtered_threshold": round(minutes_avg, 1),
+        "opponent_position_minute_band_reference_version": 1,
+        "opponent_position_minute_band_margin": 5.0,
+        "opponent_position_minute_band_center": round(minutes_avg, 1),
+        "opponent_position_minute_band_lower": (
+            position_minute_band_l5.get("minutes_lower")
+            if position_minute_band_l5 else None
+        ),
+        "opponent_position_minute_band_upper": (
+            position_minute_band_l5.get("minutes_upper")
+            if position_minute_band_l5 else None
+        ),
+        "opponent_position_minute_band_defense_l5_avg": (
+            position_minute_band_l5.get("average_per_player_appearance")
+            if position_minute_band_l5 else None
+        ),
+        "opponent_position_minute_band_defense_l10_avg": (
+            position_minute_band_l10.get("average_per_player_appearance")
+            if position_minute_band_l10 else None
+        ),
+        "opponent_position_minute_band_defense_l5_games": (
+            position_minute_band_l5.get("games_analyzed", 0)
+            if position_minute_band_l5 else 0
+        ),
+        "opponent_position_minute_band_defense_l10_games": (
+            position_minute_band_l10.get("games_analyzed", 0)
+            if position_minute_band_l10 else 0
+        ),
+        "opponent_position_minute_band_defense_l5_appearances": (
+            position_minute_band_l5.get("player_appearances", 0)
+            if position_minute_band_l5 else 0
+        ),
+        "opponent_position_minute_band_defense_l10_appearances": (
+            position_minute_band_l10.get("player_appearances", 0)
+            if position_minute_band_l10 else 0
+        ),
+        "league_position_minute_band_l5_avg": (
+            league_minute_band_l5.get("average_per_player_appearance")
+            if league_minute_band_l5 else None
+        ),
+        "league_position_minute_band_l10_avg": (
+            league_minute_band_l10.get("average_per_player_appearance")
+            if league_minute_band_l10 else None
+        ),
+        "league_position_minute_band_l5_games": (
+            league_minute_band_l5.get("games_analyzed", 0)
+            if league_minute_band_l5 else 0
+        ),
+        "league_position_minute_band_l10_games": (
+            league_minute_band_l10.get("games_analyzed", 0)
+            if league_minute_band_l10 else 0
+        ),
+        "league_position_minute_band_l5_appearances": (
+            league_minute_band_l5.get("player_appearances", 0)
+            if league_minute_band_l5 else 0
+        ),
+        "league_position_minute_band_l10_appearances": (
+            league_minute_band_l10.get("player_appearances", 0)
+            if league_minute_band_l10 else 0
+        ),
         "opponent_position_minutes_filtered_defense_l5_avg": (
             position_filtered_l5.get("average_per_player_appearance")
             if position_filtered_l5 else None
