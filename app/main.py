@@ -3270,7 +3270,7 @@ def validation_history(
         with connection.cursor() as cursor:
 
             query = """
-                WITH ranked_snapshots AS (
+                WITH snapshot_cohort AS (
                     SELECT
                         s.selected_date,
                         s.market,
@@ -3284,20 +3284,11 @@ def validation_history(
                         s.last10_avg,
                         s.minutes_last5_avg,
                         s.display_rank,
-                        ROW_NUMBER() OVER (
+                        COUNT(*) FILTER (
+                            WHERE s.display_rank IS NULL
+                        ) OVER (
                             PARTITION BY s.selected_date, s.market
-                            ORDER BY
-                                CASE
-                                    WHEN COUNT(*) FILTER (
-                                        WHERE s.display_rank IS NULL
-                                    ) OVER (
-                                        PARTITION BY s.selected_date, s.market
-                                    ) = 0
-                                    THEN s.display_rank
-                                END ASC NULLS LAST,
-                                s.triage_score DESC NULLS LAST,
-                                s.player_id ASC
-                        ) AS cohort_rank
+                        ) AS missing_rank_count
                     FROM candidate_snapshots s
                     WHERE s.market = %s
             """
@@ -3313,6 +3304,31 @@ def validation_history(
                 params.append(parsed_to)
 
             query += """
+                ),
+                ranked_snapshots AS (
+                    SELECT
+                        selected_date,
+                        market,
+                        player_id,
+                        player_name,
+                        team,
+                        opponent,
+                        position,
+                        triage_score,
+                        last5_avg,
+                        last10_avg,
+                        minutes_last5_avg,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY selected_date, market
+                            ORDER BY
+                                CASE
+                                    WHEN missing_rank_count = 0
+                                    THEN display_rank
+                                END ASC NULLS LAST,
+                                triage_score DESC NULLS LAST,
+                                player_id ASC
+                        ) AS cohort_rank
+                    FROM snapshot_cohort
                 )
                 SELECT
                     s.selected_date,
@@ -3830,7 +3846,7 @@ def gap_validation(
         )
 
     query = """
-        WITH ranked_snapshots AS (
+        WITH snapshot_cohort AS (
             SELECT
                 s.selected_date,
                 s.market,
@@ -3844,22 +3860,38 @@ def gap_validation(
                 s.last10_avg,
                 s.payload,
                 s.display_rank,
-                ROW_NUMBER() OVER (
+                COUNT(*) FILTER (
+                    WHERE s.display_rank IS NULL
+                ) OVER (
                     PARTITION BY s.selected_date, s.market
-                    ORDER BY
-                        CASE
-                                    WHEN COUNT(*) FILTER (
-                                        WHERE s.display_rank IS NULL
-                                    ) OVER (
-                                        PARTITION BY s.selected_date, s.market
-                                    ) = 0
-                                    THEN s.display_rank
-                                END ASC NULLS LAST,
-                                s.triage_score DESC NULLS LAST,
-                        s.player_id ASC
-                ) AS cohort_rank
+                ) AS missing_rank_count
             FROM candidate_snapshots s
             WHERE s.market = %s
+        ),
+        ranked_snapshots AS (
+            SELECT
+                selected_date,
+                market,
+                player_id,
+                player_name,
+                team,
+                opponent,
+                position,
+                triage_score,
+                last5_avg,
+                last10_avg,
+                payload,
+                ROW_NUMBER() OVER (
+                    PARTITION BY selected_date, market
+                    ORDER BY
+                        CASE
+                            WHEN missing_rank_count = 0
+                            THEN display_rank
+                        END ASC NULLS LAST,
+                        triage_score DESC NULLS LAST,
+                        player_id ASC
+                ) AS cohort_rank
+            FROM snapshot_cohort
         )
         SELECT
             s.selected_date,
