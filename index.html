@@ -541,8 +541,6 @@ function switchTab(tab) {
   } else {
     scannerTab.classList.add('hidden');
     historyTab.classList.remove('hidden');
-    const auditDate = document.getElementById('audit-collection-date');
-    if(auditDate && !auditDate.value) auditDate.value = data.value;
     fetchMarketComparison();
     fetchHistoryValidation();
   }
