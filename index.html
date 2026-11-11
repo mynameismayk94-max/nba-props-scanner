@@ -160,10 +160,19 @@
   }
   .analysis-card { border: 1px solid #1f2937; border-radius: 8px; padding: 10px; background: #111827; }
   .analysis-card h3 { color: #34d399; font-size: 11px; margin-top: 0; margin-bottom: 6px; font-weight: 700; }
-  .analysis-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  .analysis-table th, .analysis-table td { padding: 5px; border-bottom: 1px solid #1f2937; text-align: left; }
+  .analysis-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 10px; white-space: normal; }
+  .analysis-table th, .analysis-table td { padding: 6px 4px; border-bottom: 1px solid #1f2937; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+  .analysis-table th:first-child, .analysis-table td:first-child { width: 42%; color: #9ca3af; }
+  .analysis-table th:not(:first-child), .analysis-table td:not(:first-child) { width: 29%; }
   .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; }
-  .analysis-note { margin-top: 8px; padding: 8px; background: #111827; border-left: 3px solid #10b981; border-radius: 4px; font-size: 10px; line-height: 1.3; color: #9ca3af; }
+  .analysis-table td b { color: #f9fafb; font-variant-numeric: tabular-nums; }
+  .analysis-note { margin-top: 6px; padding: 6px 7px; background: #0b1220; border-left: 2px solid #10b981; border-radius: 4px; font-size: 9px; line-height: 1.35; color: #9ca3af; }
+  @media (max-width: 380px) {
+    .modal-body { padding: 8px; }
+    .analysis-card { padding: 8px; }
+    .analysis-table { font-size: 9px; }
+    .analysis-table th, .analysis-table td { padding: 5px 3px; }
+  }
 </style>
 </head>
 
@@ -272,15 +281,15 @@
         </div>
         <button id="collect-results-btn" type="button" onclick="coletarResultadosAuditoria()" class="bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-semibold rounded-lg px-4 py-2 text-xs min-h-9">Atualizar resultados</button>
       </div>
-      <p class="text-[10px] text-gray-400">Selecione uma data com snapshots registrados e partidas concluídas. A coleta será executada nos seis mercados ativos, sem duplicar resultados já salvos.</p>
+      <p class="text-[10px] text-gray-400">Coleta resultados concluídos nos seis mercados, sem duplicar registros.</p>
       <div id="collection-status" class="text-[10px] text-gray-400" aria-live="polite"></div>
     <div class="glass-panel p-3 space-y-2">
       <div class="text-[10px] font-bold text-gray-300 uppercase tracking-wide">População da auditoria</div>
       <div class="audit-cohort-buttons grid grid-cols-2 gap-2">
-        <button id="audit-cohort-top10" type="button" onclick="setAuditCohort('top10')" class="market-button active">Top 10 exibidos</button>
-        <button id="audit-cohort-all" type="button" onclick="setAuditCohort('all')" class="market-button">Todos os elegíveis</button>
+        <button id="audit-cohort-top10" type="button" aria-pressed="true" onclick="setAuditCohort('top10')" class="market-button active">Top 10</button>
+        <button id="audit-cohort-all" type="button" aria-pressed="false" onclick="setAuditCohort('all')" class="market-button">Todos</button>
       </div>
-      <p id="audit-cohort-description" class="text-[10px] text-gray-400">Analisando os dez candidatos mais bem classificados pelo Score em cada data e mercado.</p>
+      <p id="audit-cohort-description" class="text-[10px] text-gray-400">Top 10 por Score em cada data e mercado.</p>
     </div>
       <div>
         <h3 class="text-xs font-semibold text-white">📈 Comparativo por mercado</h3>
@@ -541,7 +550,8 @@ let gapAuditData = null;
 let auditCohort = 'top10';
 
 function setAuditCohort(cohort) {
-  if (!['top10', 'all'].includes(cohort) || auditCohort === cohort) return;
+  if (!['top10', 'all'].includes(cohort)) return;
+  const changed = auditCohort !== cohort;
   auditCohort = cohort;
 
   const top10Button = document.getElementById('audit-cohort-top10');
@@ -550,16 +560,24 @@ function setAuditCohort(cohort) {
   const activeClass = 'market-button active';
   const inactiveClass = 'market-button';
 
-  if (top10Button) top10Button.className = cohort === 'top10' ? activeClass : inactiveClass;
-  if (allButton) allButton.className = cohort === 'all' ? activeClass : inactiveClass;
+  if (top10Button) {
+    top10Button.className = cohort === 'top10' ? activeClass : inactiveClass;
+    top10Button.setAttribute('aria-pressed', cohort === 'top10' ? 'true' : 'false');
+  }
+  if (allButton) {
+    allButton.className = cohort === 'all' ? activeClass : inactiveClass;
+    allButton.setAttribute('aria-pressed', cohort === 'all' ? 'true' : 'false');
+  }
   if (description) {
     description.innerText = cohort === 'top10'
       ? 'Analisando os dez candidatos mais bem classificados pelo Score em cada data e mercado.'
       : 'Analisando todos os candidatos que passaram pelos critérios de elegibilidade do Scanner.';
   }
 
-  fetchMarketComparison();
-  fetchHistoryValidation();
+  if (changed) {
+    fetchMarketComparison();
+    fetchHistoryValidation();
+  }
 }
 
 function switchTab(tab) {
@@ -580,6 +598,8 @@ function switchTab(tab) {
   } else {
     scannerTab.classList.add('hidden');
     historyTab.classList.remove('hidden');
+    // Reaplica o estado visual do padrão mesmo na primeira abertura da aba.
+    setAuditCohort(auditCohort);
     const auditDate = document.getElementById('audit-collection-date');
     if(auditDate && !auditDate.value) auditDate.value = data.value;
     fetchMarketComparison();
