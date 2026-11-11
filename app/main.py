@@ -1131,19 +1131,19 @@ def calculate_minutes_filtered_position_defense(
 
 
 def calculate_equal_game_position_defense(sample, position, stat_key):
-    """Média da produção por aparição dentro de cada jogo; jogos têm peso igual."""
-    game_averages = []
+    """Média do total cedido à posição por jogo, com peso igual entre partidas."""
+    game_totals = []
     appearances = 0
     for game in sample:
         position_data = game.get("positions", {}).get(position, {})
         players = position_data.get("players", [])
         values = [p.get(stat_key) for p in players if p.get(stat_key) is not None]
         if values:
-            game_averages.append(sum(values) / len(values))
+            game_totals.append(sum(values))
             appearances += len(values)
     return {
-        "average_per_game": round(sum(game_averages) / len(game_averages), 2) if game_averages else None,
-        "games_analyzed": len(game_averages),
+        "average_per_game": round(sum(game_totals) / len(game_totals), 2) if game_totals else None,
+        "games_analyzed": len(game_totals),
         "player_appearances": appearances
     }
 
@@ -2566,7 +2566,7 @@ def build_player_result(
         "opponent_position_equal_game_defense_l10_games": position_equal_game_l10.get("games_analyzed", 0) if position_equal_game_l10 else 0,
         "opponent_position_equal_game_defense_l5_appearances": position_equal_game_l5.get("player_appearances", 0) if position_equal_game_l5 else 0,
         "opponent_position_equal_game_defense_l10_appearances": position_equal_game_l10.get("player_appearances", 0) if position_equal_game_l10 else 0,
-        "opponent_position_equal_game_reference_version": 1
+        "opponent_position_equal_game_reference_version": 2
     }
 
 
@@ -3917,7 +3917,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         ref5, ref10 = number(ref5_raw), number(ref10_raw)
         games5, games10 = int(number(games5_raw) or 0), int(number(games10_raw) or 0)
         apps5, apps10 = int(number(apps5_raw) or 0), int(number(apps10_raw) or 0)
-        if reference_version is None: legacy_records += 1
+        if reference_version is None or int(number(reference_version) or 0) < 2: legacy_records += 1
         class5, pct5 = classify(baseline5, ref5)
         class10, pct10 = classify(baseline10, ref10)
         def actual_delta(ref): return round(actual - ref, 2) if actual is not None and ref is not None else None
