@@ -2146,9 +2146,9 @@ def get_team_regular_season_schedule(
 
 
 NBA_TEAM_ABBREVIATIONS = (
-    "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW",
-    "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
-    "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS"
+    "ATL", "BKN", "BOS", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GS",
+    "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NO", "NY",
+    "OKC", "ORL", "PHI", "PHX", "POR", "SA", "SAC", "TOR", "UTAH", "WSH"
 )
 
 
@@ -2233,8 +2233,15 @@ def get_league_position_defense_baseline(year, target_date_iso):
             result["positions"][position][stat_key] = {}
             for window in (5, 10):
                 values = samples[window][position][stat_key]
+                expected_games = sum(min(window, len(games)) for games in team_samples.values())
+                has_sufficient_coverage = (
+                    len(team_samples) >= 24
+                    and expected_games > 0
+                    and len(values) >= expected_games * 0.70
+                )
                 result["positions"][position][stat_key][f"l{window}_avg"] = (
-                    round(sum(values) / len(values), 2) if values else None
+                    round(sum(values) / len(values), 2)
+                    if values and has_sufficient_coverage else None
                 )
                 result["positions"][position][stat_key][f"l{window}_games"] = len(values)
 
