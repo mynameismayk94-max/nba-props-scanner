@@ -85,11 +85,19 @@ def initialize_database():
                         last5_avg DOUBLE PRECISION,
                         last10_avg DOUBLE PRECISION,
                         minutes_last5_avg DOUBLE PRECISION,
+                        display_rank INTEGER,
                         payload JSONB NOT NULL,
                         captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         CONSTRAINT uq_candidate_snapshot
                             UNIQUE (selected_date, market, player_id)
                     )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    ALTER TABLE candidate_snapshots
+                    ADD COLUMN IF NOT EXISTS display_rank INTEGER
                     """
                 )
 
@@ -162,7 +170,7 @@ def save_candidate_snapshots(
 
     rows = []
 
-    for candidate in candidates:
+    for display_rank, candidate in enumerate(candidates, start=1):
 
         player_id = candidate.get("player_id")
 
@@ -186,6 +194,7 @@ def save_candidate_snapshots(
                 candidate.get("last5_avg"),
                 candidate.get("last10_avg"),
                 candidate.get("minutes_last5_avg"),
+                display_rank,
                 Jsonb(candidate)
             )
         )
@@ -213,11 +222,12 @@ def save_candidate_snapshots(
                         last5_avg,
                         last10_avg,
                         minutes_last5_avg,
+                        display_rank,
                         payload
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (
                         selected_date,
@@ -3214,7 +3224,8 @@ def validation_history(
     ),
     date_to: Optional[str] = Query(
         default=None
-    )
+    ),
+    cohort: str = Query(default="all")
 ):
     """
     Validação histórica aprimorada para exibir:
@@ -3231,6 +3242,8 @@ def validation_history(
             status_code=400,
             detail="Mercado inválido ou inativo na auditoria."
         )
+    if cohort not in {"top10", "all"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
 
     parsed_from = None
     parsed_to = None
@@ -3257,25 +3270,27 @@ def validation_history(
         with connection.cursor() as cursor:
 
             query = """
-                SELECT
-                    s.selected_date,
-                    s.player_id,
-                    s.player_name,
-                    s.team,
-                    s.opponent,
-                    s.position,
-                    s.triage_score,
-                    s.last5_avg,
-                    s.last10_avg,
-                    s.minutes_last5_avg,
-                    r.actual_value
-                FROM candidate_snapshots s
-                INNER JOIN candidate_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
-                WHERE
-                    s.market = %s
+                WITH snapshot_cohort AS (
+                    SELECT
+                        s.selected_date,
+                        s.market,
+                        s.player_id,
+                        s.player_name,
+                        s.team,
+                        s.opponent,
+                        s.position,
+                        s.triage_score,
+                        s.last5_avg,
+                        s.last10_avg,
+                        s.minutes_last5_avg,
+                        s.display_rank,
+                        COUNT(*) FILTER (
+                            WHERE s.display_rank IS NULL
+                        ) OVER (
+                            PARTITION BY s.selected_date, s.market
+                        ) AS missing_rank_count
+                    FROM candidate_snapshots s
+                    WHERE s.market = %s
             """
 
             params = [market]
@@ -3288,26 +3303,63 @@ def validation_history(
                 query += " AND s.selected_date <= %s"
                 params.append(parsed_to)
 
-            query += " ORDER BY s.selected_date ASC, s.triage_score DESC"
+            query += """
+                ),
+                ranked_snapshots AS (
+                    SELECT
+                        selected_date,
+                        market,
+                        player_id,
+                        player_name,
+                        team,
+                        opponent,
+                        position,
+                        triage_score,
+                        last5_avg,
+                        last10_avg,
+                        minutes_last5_avg,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY selected_date, market
+                            ORDER BY
+                                CASE
+                                    WHEN missing_rank_count = 0
+                                    THEN display_rank
+                                END ASC NULLS LAST,
+                                triage_score DESC NULLS LAST,
+                                player_id ASC
+                        ) AS cohort_rank
+                    FROM snapshot_cohort
+                )
+                SELECT
+                    s.selected_date,
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    s.position,
+                    s.triage_score,
+                    s.last5_avg,
+                    s.last10_avg,
+                    s.minutes_last5_avg,
+                    r.actual_value
+                FROM ranked_snapshots s
+                LEFT JOIN candidate_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                WHERE (%s = 'all' OR s.cohort_rank <= 10)
+                ORDER BY s.selected_date ASC, s.triage_score DESC
+            """
+            params.append(cohort)
 
             cursor.execute(query, params)
-            completed_rows = cursor.fetchall()
+            audit_rows = cursor.fetchall()
 
-            snapshot_query = (
-                "SELECT COUNT(*) FROM candidate_snapshots WHERE market = %s"
-            )
-            snapshot_params = [market]
-
-            if parsed_from:
-                snapshot_query += " AND selected_date >= %s"
-                snapshot_params.append(parsed_from)
-
-            if parsed_to:
-                snapshot_query += " AND selected_date <= %s"
-                snapshot_params.append(parsed_to)
-
-            cursor.execute(snapshot_query, snapshot_params)
-            snapshots_total = cursor.fetchone()[0]
+    snapshots_total = len(audit_rows)
+    completed_rows = [
+        row for row in audit_rows
+        if row[10] is not None
+    ]
 
     def safe_average(values):
         if not values:
@@ -3727,6 +3779,8 @@ def validation_history(
         "status": "ok",
         "market": market,
         "market_label": MARKETS[market]["label"],
+        "cohort": cohort,
+        "cohort_label": "Top 10 exibidos" if cohort == "top10" else "Todos os elegíveis",
         "summary": {
             "snapshots_total": snapshots_total,
             "completed_results": completed_count,
@@ -3753,7 +3807,8 @@ def gap_validation(
     market: str = Query(default="assists"),
     score_band: str = Query(default="all"),
     date_from: Optional[str] = Query(default=None),
-    date_to: Optional[str] = Query(default=None)
+    date_to: Optional[str] = Query(default=None),
+    cohort: str = Query(default="all")
 ):
     """
     Auditoria do contexto defensivo original (GAP L5/L10).
@@ -3766,6 +3821,8 @@ def gap_validation(
             status_code=400,
             detail="Mercado inválido ou inativo na auditoria."
         )
+    if cohort not in {"top10", "all"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
 
     valid_score_bands = {"all", "7+", "6-6.99", "5-5.99", "4-4.99", "<4"}
     if score_band not in valid_score_bands:
@@ -3789,6 +3846,53 @@ def gap_validation(
         )
 
     query = """
+        WITH snapshot_cohort AS (
+            SELECT
+                s.selected_date,
+                s.market,
+                s.player_id,
+                s.player_name,
+                s.team,
+                s.opponent,
+                s.position,
+                s.triage_score,
+                s.last5_avg,
+                s.last10_avg,
+                s.payload,
+                s.display_rank,
+                COUNT(*) FILTER (
+                    WHERE s.display_rank IS NULL
+                ) OVER (
+                    PARTITION BY s.selected_date, s.market
+                ) AS missing_rank_count
+            FROM candidate_snapshots s
+            WHERE s.market = %s
+        ),
+        ranked_snapshots AS (
+            SELECT
+                selected_date,
+                market,
+                player_id,
+                player_name,
+                team,
+                opponent,
+                position,
+                triage_score,
+                last5_avg,
+                last10_avg,
+                payload,
+                ROW_NUMBER() OVER (
+                    PARTITION BY selected_date, market
+                    ORDER BY
+                        CASE
+                            WHEN missing_rank_count = 0
+                            THEN display_rank
+                        END ASC NULLS LAST,
+                        triage_score DESC NULLS LAST,
+                        player_id ASC
+                ) AS cohort_rank
+            FROM snapshot_cohort
+        )
         SELECT
             s.selected_date,
             s.player_id,
@@ -3802,14 +3906,14 @@ def gap_validation(
             s.payload->>'opponent_position_minutes_filtered_defense_l5_projected',
             s.payload->>'opponent_position_minutes_filtered_defense_l10_projected',
             r.actual_value
-        FROM candidate_snapshots s
+        FROM ranked_snapshots s
         INNER JOIN candidate_results r
             ON r.selected_date = s.selected_date
             AND r.market = s.market
             AND r.player_id = s.player_id
-        WHERE s.market = %s
+        WHERE (%s = 'all' OR s.cohort_rank <= 10)
     """
-    params = [market]
+    params = [market, cohort]
 
     score_band_limits = {
         "7+": (7.0, None),
@@ -4030,6 +4134,8 @@ def gap_validation(
         "status": "ok",
         "market": market,
         "market_label": MARKETS[market]["label"],
+        "cohort": cohort,
+        "cohort_label": "Top 10 exibidos" if cohort == "top10" else "Todos os elegíveis",
         "score_band": score_band,
         "completed_records": len(detailed),
         "periods": {

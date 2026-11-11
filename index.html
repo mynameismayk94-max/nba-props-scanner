@@ -88,6 +88,7 @@
   .market-button { grid-column: span 2; display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; min-height: 52px; height: auto; padding: 9px 8px; background: #111827; border: 1px solid #374151; color: #d1d5db; white-space: normal; overflow-wrap: break-word; word-break: normal; text-align: center; line-height: 1.3; }
   .market-button:hover { background: #1f2937; border-color: #4b5563; }
   .market-button.active, .market-button.active:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
+  .audit-cohort-buttons .market-button { grid-column: span 1; min-height: 40px; }
   .schedule-search-button { min-height: 36px; height: 36px; padding: 6px 12px; }
 
   /* Cards de confronto da agenda */
@@ -294,6 +295,15 @@
           </tbody>
         </table>
       </div>
+    </div>
+
+    <div class="glass-panel p-3 space-y-2">
+      <div class="text-[10px] font-bold text-gray-300 uppercase tracking-wide">População da auditoria</div>
+      <div class="audit-cohort-buttons grid grid-cols-2 gap-2">
+        <button id="audit-cohort-top10" type="button" onclick="setAuditCohort('top10')" class="market-button active">Top 10 exibidos</button>
+        <button id="audit-cohort-all" type="button" onclick="setAuditCohort('all')" class="market-button">Todos os elegíveis</button>
+      </div>
+      <p id="audit-cohort-description" class="text-[10px] text-gray-400">Analisando os dez candidatos mais bem classificados pelo Score em cada data e mercado.</p>
     </div>
 
     <div class="flex items-center justify-between gap-2">
@@ -526,6 +536,29 @@ let chartInstance = null;
 let historyValidationRequestId = 0;
 let gapValidationRequestId = 0;
 let gapAuditData = null;
+let auditCohort = 'top10';
+
+function setAuditCohort(cohort) {
+  if (!['top10', 'all'].includes(cohort) || auditCohort === cohort) return;
+  auditCohort = cohort;
+
+  const top10Button = document.getElementById('audit-cohort-top10');
+  const allButton = document.getElementById('audit-cohort-all');
+  const description = document.getElementById('audit-cohort-description');
+  const activeClass = 'market-button active';
+  const inactiveClass = 'market-button';
+
+  if (top10Button) top10Button.className = cohort === 'top10' ? activeClass : inactiveClass;
+  if (allButton) allButton.className = cohort === 'all' ? activeClass : inactiveClass;
+  if (description) {
+    description.innerText = cohort === 'top10'
+      ? 'Analisando os dez candidatos mais bem classificados pelo Score em cada data e mercado.'
+      : 'Analisando todos os candidatos que passaram pelos critérios de elegibilidade do Scanner.';
+  }
+
+  fetchMarketComparison();
+  fetchHistoryValidation();
+}
 
 function switchTab(tab) {
   const scannerTab = document.getElementById('tab-scanner');
@@ -1029,7 +1062,7 @@ async function fetchMarketComparison() {
 
   const results = await Promise.all(markets.map(async market => {
     try {
-      const res = await requisicao('/validation-history?market=' + market.id);
+      const res = await requisicao('/validation-history?market=' + market.id + '&cohort=' + encodeURIComponent(auditCohort));
       if(res.status !== 'ok') throw new Error('Resposta inválida');
       return { market, summary: res.summary };
     } catch (error) {
@@ -1138,7 +1171,8 @@ function renderGapAudit() {
 
   const total = gapAuditData.completed_records || 0;
   const scoreBand = gapAuditData.score_band || 'all';
-  note.innerText = total + ' resultados concluídos com snapshot pré-jogo · Score: ' +
+  note.innerText = total + ' resultados concluídos com snapshot pré-jogo · População: ' +
+    (gapAuditData.cohort_label || 'Todos os elegíveis') + ' · Score: ' +
     (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
     ' · GAP ' + (periodKey === 'l5' ? 'L5' : 'L10') +
     '. Favorável: resultado real acima da referência defensiva. Não favorável: resultado real abaixo da referência. Resultado igual à referência entra em “Não seguiram”. Neutro não tem direção esperada; Sem referência não pode ser validado.';
@@ -1152,7 +1186,7 @@ async function fetchGapValidation(market) {
 
   try {
     const scoreBand = document.getElementById('gap-score-band-select')?.value || 'all';
-    const res = await requisicao('/gap-validation?market=' + encodeURIComponent(market) + '&score_band=' + encodeURIComponent(scoreBand));
+    const res = await requisicao('/gap-validation?market=' + encodeURIComponent(market) + '&score_band=' + encodeURIComponent(scoreBand) + '&cohort=' + encodeURIComponent(auditCohort));
     if(requestId !== gapValidationRequestId) return;
     if(res.status !== 'ok') throw new Error('Resposta inválida');
     gapAuditData = res;
@@ -1175,7 +1209,7 @@ async function fetchHistoryValidation() {
   if (sampleCount) sampleCount.innerText = '...';
 
   try {
-    const res = await requisicao('/validation-history?market=' + market);
+    const res = await requisicao('/validation-history?market=' + market + '&cohort=' + encodeURIComponent(auditCohort));
     if (requestId !== historyValidationRequestId) return;
     if(res.status !== 'ok') throw new Error('Resposta inválida para a auditoria');
 
