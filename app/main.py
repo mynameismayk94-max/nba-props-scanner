@@ -2145,6 +2145,116 @@ def get_team_regular_season_schedule(
     return tuple(games)
 
 
+NBA_TEAM_ABBREVIATIONS = (
+    "ATL", "BKN", "BOS", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GS",
+    "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NO", "NY",
+    "OKC", "ORL", "PHI", "PHX", "POR", "SA", "SAC", "TOR", "UTAH", "WSH"
+)
+
+
+@lru_cache(maxsize=60)
+def get_league_position_defense_baseline(year, target_date_iso):
+    """Média da liga de totais cedidos por jogo a cada posição, usando os últimos 5/10 jogos de cada equipe."""
+    started = time.perf_counter()
+    team_samples = {}
+
+    def fetch_schedule(team):
+        games = [
+            game for game in get_team_regular_season_schedule(team, year)
+            if (game.get("date") or "")[:10] < target_date_iso
+        ]
+        games.sort(key=lambda game: game.get("date") or "", reverse=True)
+        return team, games[:10]
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        futures = [executor.submit(fetch_schedule, team) for team in NBA_TEAM_ABBREVIATIONS]
+        for future in as_completed(futures):
+            try:
+                team, games = future.result()
+                team_samples[team] = games
+            except Exception as error:
+                logger.warning("Falha ao consultar agenda da liga: %s", error)
+
+    game_ids = {
+        str(game["game_id"])
+        for games in team_samples.values()
+        for game in games
+        if game.get("game_id")
+    }
+
+    summaries = {}
+
+    def fetch_summary(game_id):
+        return game_id, get_game_summary(game_id)
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        futures = [executor.submit(fetch_summary, game_id) for game_id in game_ids]
+        for future in as_completed(futures):
+            try:
+                game_id, summary = future.result()
+                summaries[game_id] = summary
+            except Exception as error:
+                logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
+
+    stat_keys = ("points", "assists", "rebounds", "fga", "three_pa", "two_pa", "fgm")
+    samples = {
+        window: {
+            position: {stat: [] for stat in stat_keys}
+            for position in ("G", "F", "C")
+        }
+        for window in (5, 10)
+    }
+
+    for team, games in team_samples.items():
+        for index, game in enumerate(games[:10]):
+            summary = summaries.get(str(game.get("game_id")))
+            if not summary:
+                continue
+            try:
+                positions = aggregate_position_game(summary, team).get("positions", {})
+            except Exception as error:
+                logger.warning("Falha ao agregar benchmark %s/%s: %s", team, game.get("game_id"), error)
+                continue
+
+            for position in ("G", "F", "C"):
+                position_data = positions.get(position, {})
+                for stat_key in stat_keys:
+                    value = position_data.get(stat_key)
+                    if value is None:
+                        continue
+                    samples[10][position][stat_key].append(value)
+                    if index < 5:
+                        samples[5][position][stat_key].append(value)
+
+    result = {"positions": {}, "teams_analyzed": len(team_samples), "unique_games": len(summaries)}
+    for position in ("G", "F", "C"):
+        result["positions"][position] = {}
+        for stat_key in stat_keys:
+            result["positions"][position][stat_key] = {}
+            for window in (5, 10):
+                values = samples[window][position][stat_key]
+                expected_games = sum(min(window, len(games)) for games in team_samples.values())
+                has_sufficient_coverage = (
+                    len(team_samples) >= 24
+                    and expected_games > 0
+                    and len(values) >= expected_games * 0.70
+                )
+                result["positions"][position][stat_key][f"l{window}_avg"] = (
+                    round(sum(values) / len(values), 2)
+                    if values and has_sufficient_coverage else None
+                )
+                result["positions"][position][stat_key][f"l{window}_games"] = len(values)
+
+    logger.info(
+        "Benchmark liga: data=%s equipes=%s jogos_unicos=%s L5_G=%s L10_G=%s tempo=%.2fs",
+        target_date_iso, len(team_samples), len(summaries),
+        result["positions"]["G"]["assists"]["l5_games"],
+        result["positions"]["G"]["assists"]["l10_games"],
+        time.perf_counter() - started
+    )
+    return result
+
+
 def get_player_team_game_counts(
     player_games,
     team_abbr: str,
@@ -2240,7 +2350,8 @@ def build_player_result(
     target_date,
     market,
     defense=None,
-    opponent=None
+    opponent=None,
+    league_baseline=None
 ):
 
     previous_games = [
@@ -2566,7 +2677,25 @@ def build_player_result(
         "opponent_position_equal_game_defense_l10_games": position_equal_game_l10.get("games_analyzed", 0) if position_equal_game_l10 else 0,
         "opponent_position_equal_game_defense_l5_appearances": position_equal_game_l5.get("player_appearances", 0) if position_equal_game_l5 else 0,
         "opponent_position_equal_game_defense_l10_appearances": position_equal_game_l10.get("player_appearances", 0) if position_equal_game_l10 else 0,
-        "opponent_position_equal_game_reference_version": 1
+        "opponent_position_allowed_l5_avg": position_defense_l5,
+        "opponent_position_allowed_l10_avg": position_defense_l10,
+        "league_position_allowed_l5_avg": (
+            league_baseline.get("positions", {}).get(position, {}).get(position_stat_key, {}).get("l5_avg")
+            if league_baseline and position_stat_key else None
+        ),
+        "league_position_allowed_l10_avg": (
+            league_baseline.get("positions", {}).get(position, {}).get(position_stat_key, {}).get("l10_avg")
+            if league_baseline and position_stat_key else None
+        ),
+        "league_position_allowed_l5_games": (
+            league_baseline.get("positions", {}).get(position, {}).get(position_stat_key, {}).get("l5_games", 0)
+            if league_baseline and position_stat_key else 0
+        ),
+        "league_position_allowed_l10_games": (
+            league_baseline.get("positions", {}).get(position, {}).get(position_stat_key, {}).get("l10_games", 0)
+            if league_baseline and position_stat_key else 0
+        ),
+        "opponent_position_equal_game_reference_version": 2
     }
 
 
@@ -2720,27 +2849,41 @@ def collect_candidates(
         )
         return team, defense
 
+    league_baseline = None
+
     with ThreadPoolExecutor(
-        max_workers=3
+        max_workers=4
     ) as executor:
 
         futures = [
-            executor.submit(
-                fetch_team_defense,
-                team
-            )
+            executor.submit(fetch_team_defense, team)
             for team in eligible_opponents
         ]
+        league_future = (
+            executor.submit(
+                get_league_position_defense_baseline,
+                year,
+                target_date.isoformat()
+            )
+            if eligible_players else None
+        )
 
         for future in as_completed(futures):
-
             try:
                 team, defense = future.result()
                 defense_cache[team] = defense
-
             except Exception as error:
                 logger.warning(
                     "Falha ao consultar histórico defensivo: %s",
+                    error
+                )
+
+        if league_future:
+            try:
+                league_baseline = league_future.result()
+            except Exception as error:
+                logger.warning(
+                    "Falha ao calcular benchmark defensivo da liga: %s",
                     error
                 )
 
@@ -2773,7 +2916,8 @@ def collect_candidates(
             target_date,
             market,
             defense,
-            opponent
+            opponent,
+            league_baseline
         )
 
         if result:
@@ -3837,7 +3981,7 @@ def validation_history(
 
 @app.get("/gap-validation")
 def gap_validation(market: str = Query(default="assists"), score_band: str = Query(default="all"), date_from: Optional[str] = Query(default=None), date_to: Optional[str] = Query(default=None), cohort: str = Query(default="all")):
-    """Audita a nova referência defensiva por posição, sem filtro mínimo de minutos."""
+    """Audita se a defesa permite mais ou menos produção por posição que a média recente da liga."""
     if market not in ACTIVE_MARKETS:
         raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
     if cohort not in {"top10", "all"}:
@@ -3852,6 +3996,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
     if not DATABASE_URL:
         raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
     query = """
         WITH snapshot_cohort AS (
             SELECT s.selected_date, s.market, s.player_id, s.player_name, s.team, s.opponent, s.position,
@@ -3866,12 +4011,14 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         )
         SELECT s.selected_date, s.player_id, s.player_name, s.team, s.opponent, s.position, s.triage_score,
                s.last5_avg, s.last10_avg,
-               s.payload->>'opponent_position_equal_game_defense_l5_avg',
-               s.payload->>'opponent_position_equal_game_defense_l10_avg',
-               s.payload->>'opponent_position_equal_game_defense_l5_games',
-               s.payload->>'opponent_position_equal_game_defense_l10_games',
-               s.payload->>'opponent_position_equal_game_defense_l5_appearances',
-               s.payload->>'opponent_position_equal_game_defense_l10_appearances',
+               s.payload->>'opponent_position_allowed_l5_avg',
+               s.payload->>'opponent_position_allowed_l10_avg',
+               s.payload->>'league_position_allowed_l5_avg',
+               s.payload->>'league_position_allowed_l10_avg',
+               s.payload->>'opponent_position_defense_games_l5',
+               s.payload->>'opponent_position_defense_games_l10',
+               s.payload->>'league_position_allowed_l5_games',
+               s.payload->>'league_position_allowed_l10_games',
                s.payload->>'opponent_position_equal_game_reference_version',
                r.actual_value
         FROM ranked_snapshots s INNER JOIN candidate_results r
@@ -3895,65 +4042,95 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         with connection.cursor() as cursor:
             cursor.execute(query, params)
             rows = cursor.fetchall()
+
     def number(value):
         try:
             result = float(value) if value is not None else None
             return result if result is not None and result == result and abs(result) != float("inf") else None
         except (TypeError, ValueError):
             return None
-    def classify(baseline, reference):
-        if baseline is None or reference is None: return "Sem referência", None
-        if reference == 0: return ("Acima", None) if baseline > 0 else ("Próximo", 0.0)
-        pct = (baseline - reference) / abs(reference) * 100
-        if pct > 10: return "Acima", round(pct, 1)
-        if pct < -10: return "Abaixo", round(pct, 1)
+
+    def classify(allowed, league_average):
+        if allowed is None or league_average is None:
+            return "Sem referência", None
+        if league_average == 0:
+            return ("Acima", None) if allowed > 0 else ("Próximo", 0.0)
+        pct = (allowed - league_average) / abs(league_average) * 100
+        if pct > 10:
+            return "Acima", round(pct, 1)
+        if pct < -10:
+            return "Abaixo", round(pct, 1)
         return "Próximo", round(pct, 1)
+
     detailed = []
     legacy_records = 0
     for row in rows:
-        (game_date, player_id, player, team, opponent, position, score, l5, l10, ref5_raw, ref10_raw,
-         games5_raw, games10_raw, apps5_raw, apps10_raw, reference_version, actual_raw) = row
-        actual, baseline5, baseline10 = number(actual_raw), number(l5), number(l10)
-        ref5, ref10 = number(ref5_raw), number(ref10_raw)
+        (game_date, player_id, player, team, opponent, position, score, l5, l10,
+         allowed5_raw, allowed10_raw, league5_raw, league10_raw, games5_raw, games10_raw,
+         league_games5_raw, league_games10_raw, reference_version, actual_raw) = row
+        actual = number(actual_raw)
+        allowed5, allowed10 = number(allowed5_raw), number(allowed10_raw)
+        league5, league10 = number(league5_raw), number(league10_raw)
         games5, games10 = int(number(games5_raw) or 0), int(number(games10_raw) or 0)
-        apps5, apps10 = int(number(apps5_raw) or 0), int(number(apps10_raw) or 0)
-        if reference_version is None: legacy_records += 1
-        class5, pct5 = classify(baseline5, ref5)
-        class10, pct10 = classify(baseline10, ref10)
-        def actual_delta(ref): return round(actual - ref, 2) if actual is not None and ref is not None else None
-        def period(label, baseline, ref, pct, games, apps):
-            return {"classification": label, "baseline": baseline, "defense_reference": ref,
-                    "difference": round(baseline - ref, 2) if baseline is not None and ref is not None else None,
-                    "difference_pct": pct, "actual_minus_defense": actual_delta(ref),
-                    "games": games, "player_appearances": apps}
-        detailed.append({"date": game_date.isoformat() if game_date else None, "player_id": str(player_id),
-            "player": player, "team": team, "opponent": opponent, "position": position, "score": number(score),
-            "actual": actual, "l5": period(class5, baseline5, ref5, pct5, games5, apps5),
-            "l10": period(class10, baseline10, ref10, pct10, games10, apps10)})
+        league_games5 = int(number(league_games5_raw) or 0)
+        league_games10 = int(number(league_games10_raw) or 0)
+
+        if int(number(reference_version) or 0) < 2:
+            legacy_records += 1
+            allowed5 = allowed10 = league5 = league10 = None
+            games5 = games10 = league_games5 = league_games10 = 0
+
+        class5, pct5 = classify(allowed5, league5)
+        class10, pct10 = classify(allowed10, league10)
+
+        def period(label, allowed, league_average, pct, games, league_games):
+            return {
+                "classification": label,
+                "defense_allowed": allowed,
+                "league_average": league_average,
+                "difference": round(allowed - league_average, 2) if allowed is not None and league_average is not None else None,
+                "difference_pct": pct,
+                "games": games,
+                "league_games": league_games
+            }
+
+        detailed.append({
+            "date": game_date.isoformat() if game_date else None,
+            "player_id": str(player_id), "player": player, "team": team, "opponent": opponent,
+            "position": position, "score": number(score), "actual": actual,
+            "l5": period(class5, allowed5, league5, pct5, games5, league_games5),
+            "l10": period(class10, allowed10, league10, pct10, games10, league_games10)
+        })
+
     def summarize(period_key):
         output = {}
         for label in ("Acima", "Próximo", "Abaixo", "Sem referência"):
             group = [item for item in detailed if item[period_key]["classification"] == label]
             valid = [item for item in group if item["actual"] is not None]
-            refs = [item[period_key]["defense_reference"] for item in valid if item[period_key]["defense_reference"] is not None]
-            baselines = [item[period_key]["baseline"] for item in valid if item[period_key]["baseline"] is not None]
-            deltas = [item[period_key]["actual_minus_defense"] for item in valid if item[period_key]["actual_minus_defense"] is not None]
-            def avg(values): return round(sum(values) / len(values), 2) if values else None
-            output[label] = {"count": len(group), "completed": len(valid), "baseline_average": avg(baselines),
-                "defense_reference_average": avg(refs), "actual_average": avg([x["actual"] for x in valid]),
-                "actual_above_reference": sum(1 for x in valid if x[period_key]["actual_minus_defense"] is not None and x[period_key]["actual_minus_defense"] > 0),
-                "actual_equal_reference": sum(1 for x in valid if x[period_key]["actual_minus_defense"] == 0),
-                "actual_below_reference": sum(1 for x in valid if x[period_key]["actual_minus_defense"] is not None and x[period_key]["actual_minus_defense"] < 0),
-                "actual_minus_defense_average": avg(deltas),
-                "games_average": avg([x[period_key]["games"] for x in group if x[period_key]["games"] > 0]),
-                "appearances_average": avg([x[period_key]["player_appearances"] for x in group if x[period_key]["player_appearances"] > 0])}
+            def avg(values):
+                return round(sum(values) / len(values), 2) if values else None
+            output[label] = {
+                "count": len(group),
+                "completed": len(valid),
+                "defense_allowed_average": avg([x[period_key]["defense_allowed"] for x in group if x[period_key]["defense_allowed"] is not None]),
+                "league_average": avg([x[period_key]["league_average"] for x in group if x[period_key]["league_average"] is not None]),
+                "actual_player_average": avg([x["actual"] for x in valid]),
+                "deviation_pct_average": avg([x[period_key]["difference_pct"] for x in group if x[period_key]["difference_pct"] is not None]),
+                "defense_games_average": avg([x[period_key]["games"] for x in group if x[period_key]["games"] > 0]),
+                "league_games_average": avg([x[period_key]["league_games"] for x in group if x[period_key]["league_games"] > 0])
+            }
         return output
-    return {"status": "ok", "market": market, "market_label": MARKETS[market]["label"],
+
+    return {
+        "status": "ok", "market": market, "market_label": MARKETS[market]["label"],
         "cohort": cohort, "cohort_label": "Top 10 exibidos" if cohort == "top10" else "Todos os elegíveis",
         "score_band": score_band, "completed_records": len(detailed),
         "legacy_records_without_new_reference": legacy_records, "classification_margin_pct": 10,
-        "periods": {"l5": summarize("l5"), "l10": summarize("l10")}, "records": detailed,
-        "method_note": "Referência = média por aparição de jogadores da mesma posição em cada partida, consolidada com peso igual por partida, sem corte mínimo de minutos. Acima/Próximo/Abaixo usa margem de 10%. Snapshots antigos não possuem a nova referência e ficam sem referência."}
+        "periods": {"l5": summarize("l5"), "l10": summarize("l10")},
+        "records": detailed,
+        "method_note": "Contexto defensivo = total da estatística cedida aos jogadores da posição por partida, comparado à média da liga para a mesma posição e período. Acima significa que a defesa permite mais de 10% que a liga; Abaixo, menos de 10%; Próximo, dentro de ±10%. A média real exibida é a produção individual dos candidatos agrupados pela classificação defensiva. Snapshots antigos não possuem o benchmark da liga e ficam sem referência."
+    }
+
 
 # Página inicial do Scanner, servida pelo mesmo domínio da API no Render.
 INDEX_FILE = Path(__file__).resolve().parent.parent / "index.html"

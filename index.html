@@ -244,10 +244,10 @@
 
       <div class="scanner-legend" aria-label="Contexto defensivo por posição">
         <div><strong>Como interpretar o contexto defensivo:</strong></div>
-        <div><span class="text-emerald-400">Acima</span> — média do jogador pelo menos 10% superior à referência da posição.</div>
-        <div><span class="text-amber-300">Próximo</span> — diferença dentro de ±10% da referência.</div>
-        <div><span class="text-red-400">Abaixo</span> — média do jogador pelo menos 10% inferior à referência.</div>
-        <div>Referência calculada com jogadores da mesma posição, sem corte mínimo de minutos e com peso igual por partida.</div>
+        <div><span class="text-emerald-400">Acima</span> — defesa permite mais de 10% que a média da liga para a posição.</div>
+        <div><span class="text-amber-300">Próximo</span> — defesa dentro de ±10% da média da liga.</div>
+        <div><span class="text-red-400">Abaixo</span> — defesa permite menos de 10% que a média da liga.</div>
+        <div>Referência: total cedido à posição por partida; média da liga calculada com os últimos 5/10 jogos de cada equipe. Sem corte mínimo de minutos.</div>
       </div>
 
       <div id="resultado"></div>
@@ -380,7 +380,7 @@
     <div class="glass-panel p-3 space-y-3">
       <div>
         <h3 class="text-xs font-semibold text-white">🛡️ Auditoria do contexto defensivo</h3>
-        <p class="text-[10px] text-gray-400 mt-1">Compara a média pré-jogo do jogador com a produção média permitida pela defesa para atletas da mesma posição. Também mostra como foi o resultado real em relação à referência.</p>
+        <p class="text-[10px] text-gray-400 mt-1">Classifica a defesa conforme o total que cede à posição, comparado à média da liga. A média real mostra a produção individual dos candidatos que enfrentaram cada perfil defensivo.</p>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div>
@@ -404,14 +404,14 @@
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Comparação pré-jogo</th><th>Amostra</th><th>Média jogador</th><th>Referência</th><th>Média real</th><th>Real acima / igual / abaixo</th></tr></thead>
+          <thead><tr><th>Perfil defensivo</th><th>Registros</th><th>Total cedido/jogo</th><th>Média da liga</th><th>Média real jogador</th></tr></thead>
           <tbody id="gap-summary-table" class="text-gray-300">
-            <tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>
+            <tr><td colspan="5" class="text-gray-400">Carregando auditoria defensiva...</td></tr>
           </tbody>
         </table>
       </div>
       <p id="gap-audit-note" class="text-[10px] text-gray-400">Aguardando dados concluídos...</p>
-      <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da referência. A tabela compara o contexto pré-jogo com os resultados reais; não representa taxa de acerto de apostas nem rentabilidade. Snapshots antigos sem a nova referência aparecem como “Sem referência”.</p>
+      <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da média da liga para a mesma posição. A média real é a produção individual dos jogadores agrupados pelo perfil defensivo enfrentado; não representa taxa de acerto de apostas nem rentabilidade. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
     </div>
 
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
@@ -640,19 +640,17 @@ function celulaParticipacaoEquipe(p){
     '</div></td>';
 }
 
-function diferencaVsDefesa(vJogador, referencia){
-  if(vJogador === null || vJogador === undefined || referencia === null || referencia === undefined) return null;
-  const j = Number(vJogador), d = Number(referencia);
-  if(!Number.isFinite(j) || !Number.isFinite(d)) return null;
-  return j - d;
+function desvioDefensivoPct(totalCedido, mediaLiga){
+  if(totalCedido === null || totalCedido === undefined || mediaLiga === null || mediaLiga === undefined) return null;
+  const defesa = Number(totalCedido), liga = Number(mediaLiga);
+  if(!Number.isFinite(defesa) || !Number.isFinite(liga)) return null;
+  if(liga === 0) return defesa > 0 ? null : 0;
+  return (defesa - liga) / Math.abs(liga) * 100;
 }
 
-function classificarContextoDefensivo(vJogador, referencia){
-  const diferenca = diferencaVsDefesa(vJogador, referencia);
-  if(diferenca === null) return 'Sem referência';
-  const defesa = Number(referencia);
-  if(defesa === 0) return diferenca > 0 ? 'Acima' : 'Próximo';
-  const percentual = diferenca / Math.abs(defesa) * 100;
+function classificarContextoDefensivo(totalCedido, mediaLiga){
+  const percentual = desvioDefensivoPct(totalCedido, mediaLiga);
+  if(percentual === null) return 'Sem referência';
   if(percentual > 10) return 'Acima';
   if(percentual < -10) return 'Abaixo';
   return 'Próximo';
@@ -672,14 +670,15 @@ function classeContextoDefensivo(status){
   return 'text-gray-500';
 }
 
-function celulaDiferenca(jogador5, defesa5, jogador10, defesa10){
-  const status5 = classificarContextoDefensivo(jogador5, defesa5);
-  const status10 = classificarContextoDefensivo(jogador10, defesa10);
-  const delta5 = diferencaVsDefesa(jogador5, defesa5);
-  const delta10 = diferencaVsDefesa(jogador10, defesa10);
+function celulaDiferenca(cedido5, liga5, cedido10, liga10){
+  const status5 = classificarContextoDefensivo(cedido5, liga5);
+  const status10 = classificarContextoDefensivo(cedido10, liga10);
+  const delta5 = desvioDefensivoPct(cedido5, liga5);
+  const delta10 = desvioDefensivoPct(cedido10, liga10);
+  const pct = value => value === null ? '—' : (value > 0 ? '+' : '') + value.toFixed(1) + '%';
   return '<td class="difference-cell"><div class="split-metric">' +
-    '<div class="split-item"><span class="period-label">L5</span><span class="difference-value ' + classeContextoDefensivo(status5) + '">' + status5 + '</span><span class="sample">Dif.: ' + formatarDiferenca(delta5) + '</span></div>' +
-    '<div class="split-item"><span class="period-label">L10</span><span class="difference-value ' + classeContextoDefensivo(status10) + '">' + status10 + '</span><span class="sample">Dif.: ' + formatarDiferenca(delta10) + '</span></div>' +
+    '<div class="split-item"><span class="period-label">L5</span><span class="difference-value ' + classeContextoDefensivo(status5) + '">' + status5 + '</span><span class="sample">vs liga: ' + pct(delta5) + '</span></div>' +
+    '<div class="split-item"><span class="period-label">L10</span><span class="difference-value ' + classeContextoDefensivo(status10) + '">' + status10 + '</span><span class="sample">vs liga: ' + pct(delta10) + '</span></div>' +
     '</div></td>';
 }
 
@@ -783,9 +782,9 @@ function filtrosHtml(){
       <label for="filtroDiferenca">CONTEXTO DEFENSIVO</label>
       <select id="filtroDiferenca">
         <option value="all">Todos</option>
-        <option value="above">Acima</option>
-        <option value="close">Próximo</option>
-        <option value="below">Abaixo</option>
+        <option value="above">Defesa acima da média</option>
+        <option value="close">Próxima da média</option>
+        <option value="below">Defesa abaixo da média</option>
       </select>
     </div>
     <div class="filter-group">
@@ -812,7 +811,7 @@ function filtrosHtml(){
 }
 
 function obterDiferenca(jogador){
-  return diferencaVsDefesa(jogador.last5_avg, jogador.opponent_position_equal_game_defense_l5_avg);
+  return desvioDefensivoPct(jogador.opponent_position_allowed_l5_avg, jogador.league_position_allowed_l5_avg);
 }
 
 function filtrarCandidatos(){
@@ -826,7 +825,7 @@ function filtrarCandidatos(){
     const minutos = Number(p.minutes_last5_avg);
     const triage = Number(p.triage_score);
     const pos = String(p.position || '').toUpperCase();
-    const defensiveClass = classificarContextoDefensivo(p.last5_avg, p.opponent_position_equal_game_defense_l5_avg);
+    const defensiveClass = classificarContextoDefensivo(p.opponent_position_allowed_l5_avg, p.league_position_allowed_l5_avg);
 
     if(min > 0 && (!Number.isFinite(minutos) || minutos < min)) return false;
     if(score > 0 && (!Number.isFinite(triage) || triage < score)) return false;
@@ -864,11 +863,11 @@ function renderizarResultados(){
   }
 
   html += '<div class="tablewrap"><table>';
-  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Defesa posição</th><th>Comparação</th><th>Ação</th></tr>';
+  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Total cedido à posição</th><th>Defesa vs liga</th><th>Ação</th></tr>';
 
   filtrados.forEach(p => {
-    const proj5 = p.opponent_position_equal_game_defense_l5_avg;
-    const proj10 = p.opponent_position_equal_game_defense_l10_avg;
+    const proj5 = p.opponent_position_allowed_l5_avg;
+    const proj10 = p.opponent_position_allowed_l10_avg;
 
     html += '<tr>';
     html += '<td><b>' + escapeHtml(p.player) + '</b></td>';
@@ -881,7 +880,7 @@ function renderizarResultados(){
     html += celulaParticipacaoEquipe(p);
     html += '<td class="metric">' + numero(p.triage_score) + '</td>';
     html += '<td class="new-metric"><div class="split-metric">' + blocoPeriodo(proj5, 'L5') + blocoPeriodo(proj10, 'L10') + '</div></td>';
-    html += celulaDiferenca(p.last5_avg, proj5, p.last10_avg, proj10);
+    html += celulaDiferenca(proj5, p.league_position_allowed_l5_avg, proj10, p.league_position_allowed_l10_avg);
     html += '<td><button class="analisar" onclick="abrirAnalise(' + candidatosAtuais.indexOf(p) + ')">Analisar</button></td>';
     html += '</tr>';
   });
@@ -914,19 +913,21 @@ function abrirAnalise(indice){
   document.getElementById('modalPlayer').innerText = p.player || 'Jogador';
   document.getElementById('modalMeta').innerText = (p.team || '—') + ' · ' + (p.position || '—') + ' vs ' + (p.opponent || '—');
 
-  const proj5 = p.opponent_position_equal_game_defense_l5_avg;
-  const proj10 = p.opponent_position_equal_game_defense_l10_avg;
-  const difference5 = diferencaVsDefesa(p.last5_avg, proj5);
-  const difference10 = diferencaVsDefesa(p.last10_avg, proj10);
-  const status5 = classificarContextoDefensivo(p.last5_avg, proj5);
-  const status10 = classificarContextoDefensivo(p.last10_avg, proj10);
+  const proj5 = p.opponent_position_allowed_l5_avg;
+  const proj10 = p.opponent_position_allowed_l10_avg;
+  const league5 = p.league_position_allowed_l5_avg;
+  const league10 = p.league_position_allowed_l10_avg;
+  const status5 = classificarContextoDefensivo(proj5, league5);
+  const status10 = classificarContextoDefensivo(proj10, league10);
+  const deviation5 = desvioDefensivoPct(proj5, league5);
+  const deviation10 = desvioDefensivoPct(proj10, league10);
 
   let html = '<div class="analysis-grid">';
   html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
 
   html += '<div class="analysis-card"><h3>🏟️ Participação</h3><table class="analysis-table"><tr><th>Período</th><th>Jogos</th><th>Taxa</th></tr><tr><td>L5</td><td><b>' + participacoes(p.team_games_last5_played) + '/' + participacoes(p.team_games_last5_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</b></td></tr><tr><td>L10</td><td><b>' + participacoes(p.team_games_last10_played) + '/' + participacoes(p.team_games_last10_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</b></td></tr></table></div>';
 
-  html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média jogador</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Referência da defesa</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Comparação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos usados</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_games) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_games) + '</td></tr><tr><td>Aparições</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_appearances) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_appearances) + '</td></tr></table><div class="analysis-note">Média da produção por aparição de jogadores da mesma posição em cada partida; depois, média entre partidas com peso igual. Sem corte mínimo de minutos. Próximo: diferença dentro de ±10%.</div></div>';
+  html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Total cedido por jogo</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Média da liga</td><td><b>' + numero(league5) + '</b></td><td><b>' + numero(league10) + '</b></td></tr><tr><td>Desvio vs liga</td><td><b>' + (deviation5 == null ? '—' : (deviation5 > 0 ? '+' : '') + deviation5.toFixed(1) + '%') + '</b></td><td><b>' + (deviation10 == null ? '—' : (deviation10 > 0 ? '+' : '') + deviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Classificação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos da defesa</td><td>' + participacoes(p.opponent_position_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_defense_games_l10) + '</td></tr><tr><td>Jogos da liga</td><td>' + participacoes(p.league_position_allowed_l5_games) + '</td><td>' + participacoes(p.league_position_allowed_l10_games) + '</td></tr></table><div class="analysis-note">Total da estatística cedida a todos os jogadores da posição em cada partida, comparado à média dos totais por partida das 30 equipes. Acima: defesa permite mais de 10%; Abaixo: menos de 10%; Próximo: dentro de ±10%. Sem corte mínimo de minutos.</div></div>';
   html += '</div>';
 
   document.getElementById('modalBody').innerHTML = html;
@@ -1105,7 +1106,7 @@ function limparIndicadoresAuditoria() {
   const gapScoreBand = document.getElementById('gap-score-band-select');
   if (gapScoreBand) gapScoreBand.value = 'all';
   const gapSummary = document.getElementById('gap-summary-table');
-  if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>';
+  if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando auditoria defensiva...</td></tr>';
   const gapRecords = document.getElementById('gap-records-table');
   if (gapRecords) gapRecords.innerHTML = '<tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>';
 
@@ -1132,7 +1133,7 @@ function renderGapAudit() {
   const note = document.getElementById('gap-audit-note');
   const periodSelect = document.getElementById('gap-period-select');
   if(!summaryTable || !periodSelect) return;
-  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="6" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
+  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
   const periodKey = periodSelect.value || 'l5';
   const groups = gapAuditData.periods?.[periodKey] || {};
   const rows = [
@@ -1143,19 +1144,17 @@ function renderGapAudit() {
   ];
   summaryTable.innerHTML = rows.map(row => {
     const group = groups[row.key] || {};
-    const outcomes = Number(group.actual_above_reference || 0) + ' / ' + Number(group.actual_equal_reference || 0) + ' / ' + Number(group.actual_below_reference || 0);
     return '<tr><td class="font-semibold ' + row.color + '">' + row.key + '</td>' +
       '<td class="font-bold text-white">' + Number(group.count || 0) + '</td>' +
-      '<td>' + (group.baseline_average == null ? '—' : numero(group.baseline_average)) + '</td>' +
-      '<td>' + (group.defense_reference_average == null ? '—' : numero(group.defense_reference_average)) + '</td>' +
-      '<td class="font-bold text-white">' + (group.actual_average == null ? '—' : numero(group.actual_average)) + '</td>' +
-      '<td>' + (Number(group.completed || 0) ? outcomes : '—') + '</td></tr>';
+      '<td>' + (group.defense_allowed_average == null ? '—' : numero(group.defense_allowed_average)) + '</td>' +
+      '<td>' + (group.league_average == null ? '—' : numero(group.league_average)) + '</td>' +
+      '<td class="font-bold text-white">' + (group.actual_player_average == null ? '—' : numero(group.actual_player_average)) + '</td></tr>';
   }).join('');
   const scoreBand = gapAuditData.score_band || 'all';
   note.innerText = (gapAuditData.completed_records || 0) + ' resultados concluídos · População: ' +
     (gapAuditData.cohort_label || 'Todos os elegíveis') + ' · Score: ' + (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
-    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Real acima / igual / abaixo da referência. ' +
-    Number(gapAuditData.legacy_records_without_new_reference || 0) + ' registros antigos sem a nova referência.';
+    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Média real individual agrupada pela classificação da defesa. ' +
+    Number(gapAuditData.legacy_records_without_new_reference || 0) + ' registros antigos sem benchmark da liga.';
 }
 async function fetchGapValidation(market) {
   const requestId = ++gapValidationRequestId;
@@ -1174,7 +1173,7 @@ async function fetchGapValidation(market) {
   } catch(error) {
     if(requestId !== gapValidationRequestId) return;
     gapAuditData = null;
-    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
+    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
