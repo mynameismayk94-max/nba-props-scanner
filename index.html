@@ -863,7 +863,7 @@ function renderizarResultados(){
   }
 
   html += '<div class="tablewrap"><table>';
-  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Defesa posição</th><th>Comparação</th><th>Ação</th></tr>';
+  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Total cedido à posição</th><th>Defesa vs liga</th><th>Ação</th></tr>';
 
   filtrados.forEach(p => {
     const proj5 = p.opponent_position_allowed_l5_avg;
