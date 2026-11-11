@@ -2474,7 +2474,8 @@ def build_player_result(
             defense_games_sample_l10, position, position_stat_key
         )
 
-    team_game_counts = get_player_team_game_counts(        games,
+    team_game_counts = get_player_team_game_counts(
+        games,
         player["team"],
         target_date,
         season_year(target_date)
@@ -2565,6 +2566,7 @@ def build_player_result(
         "opponent_position_equal_game_defense_l10_games": position_equal_game_l10.get("games_analyzed", 0) if position_equal_game_l10 else 0,
         "opponent_position_equal_game_defense_l5_appearances": position_equal_game_l5.get("player_appearances", 0) if position_equal_game_l5 else 0,
         "opponent_position_equal_game_defense_l10_appearances": position_equal_game_l10.get("player_appearances", 0) if position_equal_game_l10 else 0
+        , "opponent_position_equal_game_reference_version": 1
     }
 
 
@@ -3870,6 +3872,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
                s.payload->>'opponent_position_equal_game_defense_l10_games',
                s.payload->>'opponent_position_equal_game_defense_l5_appearances',
                s.payload->>'opponent_position_equal_game_defense_l10_appearances',
+               s.payload->>'opponent_position_equal_game_reference_version',
                r.actual_value
         FROM ranked_snapshots s INNER JOIN candidate_results r
           ON r.selected_date = s.selected_date AND r.market = s.market AND r.player_id = s.player_id
@@ -3909,12 +3912,12 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
     legacy_records = 0
     for row in rows:
         (game_date, player_id, player, team, opponent, position, score, l5, l10, ref5_raw, ref10_raw,
-         games5_raw, games10_raw, apps5_raw, apps10_raw, actual_raw) = row
+         games5_raw, games10_raw, apps5_raw, apps10_raw, reference_version, actual_raw) = row
         actual, baseline5, baseline10 = number(actual_raw), number(l5), number(l10)
         ref5, ref10 = number(ref5_raw), number(ref10_raw)
         games5, games10 = int(number(games5_raw) or 0), int(number(games10_raw) or 0)
         apps5, apps10 = int(number(apps5_raw) or 0), int(number(apps10_raw) or 0)
-        if ref5 is None and ref10 is None and games5 == 0 and games10 == 0: legacy_records += 1
+        if reference_version is None: legacy_records += 1
         class5, pct5 = classify(baseline5, ref5)
         class10, pct10 = classify(baseline10, ref10)
         def actual_delta(ref): return round(actual - ref, 2) if actual is not None and ref is not None else None
