@@ -3,7 +3,7 @@ name: Auto collect pending results
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 4,10,16,22 * * *"
+    - cron: "15 10 * * *"
       timezone: "America/Sao_Paulo"
 
 jobs:
@@ -14,4 +14,6 @@ jobs:
     steps:
       - name: Collect pending results
         run: |
-          curl --fail --show-error --silent             --max-time 600             "https://nba-props-scanner.onrender.com/collect-pending-results?max_combinations=100"
+          curl --fail --show-error --silent \
+            --max-time 600 \
+            "https://nba-props-scanner.onrender.com/collect-pending-results?max_combinations=100"
