@@ -3096,6 +3096,114 @@ def collect_results(
     }
 
 
+@app.get("/collect-pending-results")
+def collect_pending_results(
+    max_combinations: int = Query(default=100, ge=1, le=200)
+):
+    """
+    Coleta automaticamente resultados de todos os snapshots pendentes.
+
+    Procura combinações data/mercado que ainda não possuem resultado,
+    tenta processá-las pelo mesmo fluxo usado pela coleta manual e
+    deixa pendente apenas o que ainda não pôde ser resolvido.
+    """
+
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    today = date.today()
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT
+                    s.selected_date,
+                    s.market
+                FROM candidate_snapshots s
+                LEFT JOIN candidate_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                WHERE
+                    r.id IS NULL
+                    AND s.selected_date <= %s
+                    AND s.market = ANY(%s)
+                ORDER BY
+                    s.selected_date ASC,
+                    s.market ASC
+                LIMIT %s
+                """,
+                (
+                    today,
+                    list(ACTIVE_MARKETS),
+                    max_combinations
+                )
+            )
+            pending_combinations = cursor.fetchall()
+
+    processed = []
+    total_saved = 0
+    total_pending = 0
+    total_errors = 0
+
+    for selected_date, market in pending_combinations:
+        try:
+            result = collect_results(
+                selected_date=selected_date.isoformat(),
+                market=market
+            )
+
+            saved = int(
+                result.get("results_saved_this_run", 0)
+            )
+            pending = int(
+                result.get("pending", 0)
+            )
+
+            total_saved += saved
+            total_pending += pending
+
+            processed.append({
+                "date": selected_date.isoformat(),
+                "market": market,
+                "results_saved": saved,
+                "pending": pending,
+                "status": result.get("status", "processed")
+            })
+
+        except Exception as error:
+            total_errors += 1
+
+            logger.exception(
+                "Falha na coleta automática: data=%s mercado=%s",
+                selected_date,
+                market
+            )
+
+            processed.append({
+                "date": selected_date.isoformat(),
+                "market": market,
+                "results_saved": 0,
+                "pending": None,
+                "status": "error",
+                "error": str(error)
+            })
+
+    return {
+        "status": "processed",
+        "combinations_found": len(pending_combinations),
+        "combinations_limit": max_combinations,
+        "results_saved_this_run": total_saved,
+        "pending_after_processing": total_pending,
+        "errors": total_errors,
+        "processed": processed
+    }
+
+
 @app.get("/validation-history")
 def validation_history(
     market: str = Query(
