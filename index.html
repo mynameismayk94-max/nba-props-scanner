@@ -1161,7 +1161,7 @@ async function fetchGapValidation(market) {
   const requestId = ++gapValidationRequestId;
   const summaryTable = document.getElementById('gap-summary-table');
   const note = document.getElementById('gap-audit-note');
-  if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="4" class="text-gray-400">Carregando validação do GAP...</td></tr>';
+  if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>';
   if(note) note.innerText = 'Consultando snapshots e resultados reais...';
 
   try {
@@ -1174,7 +1174,7 @@ async function fetchGapValidation(market) {
   } catch(error) {
     if(requestId !== gapValidationRequestId) return;
     gapAuditData = null;
-    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="4" class="text-red-400">Não foi possível carregar a validação do GAP.</td></tr>';
+    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
