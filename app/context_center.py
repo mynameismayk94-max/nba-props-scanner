@@ -80,6 +80,49 @@ def create_context_router(
                 detail="Data inválida. Utilize AAAA-MM-DD."
             )
 
+    def build_venue_windows(history, venue):
+        games = [
+            game for game in history.get("games", [])
+            if game.get("home_away") == venue
+        ]
+        output = {}
+        for window_size in (5, 10):
+            sample = games[:window_size]
+            positions = {}
+            for position in ("G", "F", "C"):
+                averages = {}
+                stat_games = {}
+                appearances = {}
+                position_games = [
+                    game.get("positions", {}).get(position, {})
+                    for game in sample
+                    if game.get("positions", {}).get(position, {}).get("players_count", 0) > 0
+                ]
+                for stat in STAT_KEYS:
+                    values = [
+                        item.get(stat) for item in position_games
+                        if item.get(stat) is not None
+                    ]
+                    averages[stat] = round(sum(values) / len(values), 1) if values else None
+                    stat_games[stat] = len(values)
+                    appearances[stat] = sum(
+                        item.get("stat_players_count", {}).get(stat, 0)
+                        for item in position_games
+                    )
+                player_counts = [item.get("players_count", 0) for item in position_games]
+                positions[position] = {
+                    "games_analyzed": len(position_games),
+                    "players_per_game_avg": round(sum(player_counts) / len(player_counts), 1) if player_counts else 0,
+                    "averages": averages,
+                    "stat_games_analyzed": stat_games,
+                    "stat_player_appearances": appearances
+                }
+            output[f"L{window_size}"] = {
+                "games_analyzed": len(sample),
+                "positions": positions
+            }
+        return output
+
     def load_snapshots(target_date):
         try:
             with get_database_connection() as connection:
@@ -121,7 +164,7 @@ def create_context_router(
         # em paralelo internamente. A atualização é explícita e nunca ocorre
         # durante a abertura dos painéis de leitura.
         def fetch_team(team):
-            return team, get_team_defense_history(team, 10, target_date)
+            return team, get_team_defense_history(team, 20, target_date)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
@@ -133,6 +176,10 @@ def create_context_router(
                 try:
                     _, history = future.result()
                     if history and history.get("games_analyzed", 0) > 0:
+                        history["venue_windows"] = {
+                            venue: build_venue_windows(history, venue)
+                            for venue in ("home", "away")
+                        }
                         results[team] = history
                     else:
                         errors[team] = "Sem jogos válidos na amostra."
@@ -202,11 +249,16 @@ def create_context_router(
         selected_date: str = Query(alias="date"),
         position: str = Query(default="G"),
         stat: str = Query(default="points"),
-        window: str = Query(default="L5")
+        window: str = Query(default="L5"),
+        venue: str = Query(default="all")
     ):
         target_date = parse_date(selected_date)
         position = position.upper()
         window = window.upper()
+        venue = venue.lower()
+
+        if venue not in {"all", "home", "away"}:
+            raise HTTPException(status_code=400, detail="Local inválido. Use all, home ou away.")
 
         if position not in POSITIONS:
             raise HTTPException(status_code=400, detail="Posição inválida. Use G, F ou C.")
@@ -227,7 +279,10 @@ def create_context_router(
         ranking = []
         for team, record in stored.items():
             payload = record["payload"] or {}
-            period = payload.get(window, {})
+            if venue == "all":
+                period = payload.get(window, {})
+            else:
+                period = payload.get("venue_windows", {}).get(venue, {}).get(window, {})
             position_data = period.get("positions", {}).get(position, {})
             value = position_data.get("averages", {}).get(stat)
             games = position_data.get("stat_games_analyzed", {}).get(stat, 0)
@@ -256,6 +311,7 @@ def create_context_router(
             "stat": stat,
             "stat_label": STAT_LABELS[stat],
             "window": window,
+            "venue": venue,
             "teams_available": len(ranking),
             "ranking": ranking
         }
