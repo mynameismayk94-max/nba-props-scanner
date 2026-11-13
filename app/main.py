@@ -4331,3 +4331,19 @@ def home():
     if not INDEX_FILE.is_file():
         raise HTTPException(status_code=404, detail="Arquivo index.html não encontrado.")
     return FileResponse(INDEX_FILE, media_type="text/html")
+
+
+# ============================================================
+# CENTRAL DE CONTEXTO NBA (MÓDULO INDEPENDENTE)
+# ============================================================
+# A Central usa armazenamento próprio e não participa do fluxo de
+# candidatos, do triage_score ou das tabelas da Auditoria.
+from app.context_center import create_context_router
+
+app.include_router(
+    create_context_router(
+        get_database_connection,
+        get_team_defense_history,
+        NBA_TEAM_ABBREVIATIONS
+    )
+)
