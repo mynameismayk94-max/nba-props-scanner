@@ -19,6 +19,11 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.teammate_context import (
+    build_candidate_teammate_context,
+    extract_team_player_status,
+)
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nba_props_scanner")
@@ -2325,6 +2330,7 @@ def get_league_position_defense_baseline(year, target_date_iso):
     }
 
     summaries = {}
+    player_status_by_game = {}
 
     def fetch_summary(game_id):
         return game_id, get_game_summary(game_id)
@@ -2337,6 +2343,22 @@ def get_league_position_defense_baseline(year, target_date_iso):
                 summaries[game_id] = summary
             except Exception as error:
                 logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
+
+    # Aproveita os mesmos boxscores já carregados pelo benchmark defensivo.
+    # Não dispara nenhuma chamada adicional à ESPN para o contexto de companheiros.
+    for game_id, summary in summaries.items():
+        status_index = {}
+        player_blocks = (summary.get("boxscore") or {}).get("players") or []
+        team_abbreviations = {
+            str((block.get("team") or {}).get("abbreviation") or "").upper()
+            for block in player_blocks
+            if (block.get("team") or {}).get("abbreviation")
+        }
+        for team_abbr in team_abbreviations:
+            status_index.update(
+                extract_team_player_status(summary, team_abbr)
+            )
+        player_status_by_game[str(game_id)] = status_index
 
     stat_keys = ("points", "assists", "rebounds", "fga", "three_pa", "two_pa", "fgm")
     samples = {
@@ -2394,7 +2416,8 @@ def get_league_position_defense_baseline(year, target_date_iso):
         "positions": {},
         "minute_player_samples": minute_player_samples,
         "teams_analyzed": len(team_samples),
-        "unique_games": len(summaries)
+        "unique_games": len(summaries),
+        "player_status_by_game": player_status_by_game
     }
     for position in ("G", "F", "C"):
         result["positions"][position] = {}
@@ -3274,6 +3297,60 @@ def collect_candidates(
     )
 
     final_limit = min(limit, 10)
+
+    # O contexto é anexado somente à resposta, depois do snapshot imutável.
+    # Assim não altera candidate_snapshots, Auditoria nem triage_score.
+    context_start = time.perf_counter()
+    if league_baseline and league_baseline.get("player_status_by_game"):
+        player_logs_by_id = player_logs
+        roster_by_team = {}
+        for roster_player in players:
+            roster_by_team.setdefault(
+                str(roster_player.get("team") or "").upper(), []
+            ).append(roster_player)
+
+        candidate_lookup = {
+            str(player.get("id")): (player, logs)
+            for player, logs in eligible_players
+        }
+        status_index = league_baseline["player_status_by_game"]
+
+        for result in results[:final_limit]:
+            candidate_id = str(result.get("player_id") or "")
+            candidate_entry = candidate_lookup.get(candidate_id)
+            if not candidate_entry:
+                continue
+            candidate_player, candidate_logs = candidate_entry
+            team = str(candidate_player.get("team") or "").upper()
+            team_games = [
+                game for game in get_team_regular_season_schedule(team, year)
+                if (game.get("date") or "")[:10] < target_date.isoformat()
+            ]
+            team_games.sort(
+                key=lambda game: game.get("date") or "", reverse=True
+            )
+            team_games = team_games[:10]
+
+            # Garante que o próprio histórico do candidato seja a fonte
+            # usada no split, sem uma segunda consulta de atleta.
+            player_logs_by_id[candidate_id] = (candidate_player, candidate_logs)
+            result["teammate_context"] = build_candidate_teammate_context(
+                candidate_id=candidate_id,
+                team=team,
+                roster=roster_by_team.get(team, []),
+                player_logs_by_id=player_logs_by_id,
+                team_games=team_games,
+                teammate_status_by_game=status_index
+            )
+    context_elapsed = time.perf_counter() - context_start
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=contexto_companheiros candidatos=%s jogos_boxscore=%s tempo=%.2fs",
+        selected_date,
+        market,
+        sum(1 for item in results[:final_limit] if item.get("teammate_context")),
+        len(league_baseline.get("player_status_by_game", {})) if league_baseline else 0,
+        context_elapsed
+    )
 
     return {
         "date": selected_date,
