@@ -139,22 +139,18 @@ class TeammateContextTests(unittest.TestCase):
     def test_full_context_compares_all_metrics_and_excludes_unknown(self):
         from app.teammate_context import build_candidate_teammate_context
 
-        game_ids = ["g1", "g2", "g3"]
+        game_ids = [f"g{i}" for i in range(1, 7)]
+        point_values = [20, 30, 25, 40, 22, 24]
         candidate_logs = [
-            {"event_id": "g1", "team": "BOS", "minutes": 30,
-             "points": 20, "assists": 5, "rebounds": 7,
-             "three_pa": 4, "two_pa": 8, "fgm": 8},
-            {"event_id": "g2", "team": "BOS", "minutes": 32,
-             "points": 30, "assists": 7, "rebounds": 9,
-             "three_pa": 6, "two_pa": 10, "fgm": 11},
-            {"event_id": "g3", "team": "BOS", "minutes": 28,
-             "points": 25, "assists": 6, "rebounds": 8,
-             "three_pa": 5, "two_pa": 9, "fgm": 9},
+            {"event_id": game_id, "team": "BOS", "minutes": 30,
+             "points": points, "assists": 5, "rebounds": 7,
+             "three_pa": 4, "two_pa": 8, "fgm": 8}
+            for game_id, points in zip(game_ids, point_values)
         ]
         teammate_logs = tuple(
             {"event_id": game_id, "team": "BOS", "minutes": 30,
              "points": 18, "assists": 4, "fga": 14}
-            for game_id in game_ids
+            for game_id in ("g1", "g2", "g4", "g5", "g6")
         )
         result = build_candidate_teammate_context(
             candidate_id="candidate",
@@ -171,14 +167,17 @@ class TeammateContextTests(unittest.TestCase):
             teammate_status_by_game={
                 "g1": {"mate": {"status": "played"}},
                 "g2": {"mate": {"status": "confirmed_absent"}},
-                # g3 sem prova: fica fora dos dois grupos.
+                "g3": {"mate": {"status": "unknown"}},
+                "g4": {"mate": {"status": "confirmed_absent"}},
+                "g5": {"mate": {"status": "played"}},
+                "g6": {"mate": {"status": "played"}},
             }
         )
         comparison = result["comparisons"]["mate"]["points"]
-        self.assertEqual(comparison["with_teammate"]["games"], 1)
-        self.assertEqual(comparison["confirmed_absent"]["games"], 1)
+        self.assertEqual(comparison["with_teammate"]["games"], 3)
+        self.assertEqual(comparison["confirmed_absent"]["games"], 2)
         self.assertEqual(comparison["unknown_games_excluded"], 1)
-        self.assertEqual(comparison["difference_absent_minus_played"], 10)
+        self.assertEqual(comparison["difference_absent_minus_played"], 13)
         self.assertIn("assists", result["comparisons"]["mate"])
         self.assertIn("minutes", result["comparisons"]["mate"])
 
