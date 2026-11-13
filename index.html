@@ -1505,9 +1505,20 @@ async function atualizarBaseContexto() {
     const response = await fetch(endereco() + '/context/defense/refresh?date=' + encodeURIComponent(p.date), { method: 'POST' });
     const result = await response.json();
     if(!response.ok) throw new Error(result.detail || 'Falha HTTP ' + response.status);
-    status.innerText = 'Atualização concluída: ' + result.teams_saved + '/' + result.teams_expected +
-      ' equipes salvas · ' + result.teams_with_errors + ' com falha.';
+    const collected = result.teams_collected ?? result.teams_saved ?? 0;
+    let updateMessage;
+    if(result.status === 'ok') {
+      updateMessage = 'Atualização completa: ' + result.teams_saved + '/' + result.teams_expected +
+        ' equipes salvas na mesma captura.';
+    } else if(result.status === 'partial') {
+      updateMessage = 'Atualização parcial: ' + collected + '/' + result.teams_expected +
+        ' equipes coletadas; nenhum dado novo foi gravado para evitar misturar capturas. ' +
+        result.teams_with_errors + ' falhas. Snapshot anterior preservado.';
+    } else {
+      updateMessage = 'Falha total: nenhuma equipe foi salva. Snapshot anterior preservado, se existente.';
+    }
     await carregarRankingContexto();
+    status.innerText = updateMessage;
   } catch(error) {
     status.innerText = 'Não foi possível atualizar a base: ' + error.message;
   } finally {
