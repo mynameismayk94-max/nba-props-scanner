@@ -1995,6 +1995,11 @@ def get_athlete_logs(
                 "opponent": (
                     metadata.get("opponent") or {}
                 ).get("abbreviation"),
+                "home_away": (
+                    str(metadata.get("homeAway") or "").strip().lower()
+                    if str(metadata.get("homeAway") or "").strip().lower() in {"home", "away"}
+                    else None
+                ),
                 "minutes": parse_minutes(
                     stats[0]
                 ),
@@ -2471,6 +2476,51 @@ def get_opponents_for_date(
     return opponents
 
 
+def build_player_venue_production(games, target_date, stat_key):
+    """
+    Produção individual por mando de quadra.
+    L10 é independente por local; a temporada considera todos os jogos
+    anteriores à data-alvo com homeAway válido.
+    """
+    previous_games = [
+        game for game in games
+        if game.get("date") and game["date"] < target_date.isoformat()
+    ]
+
+    result = {}
+    for venue in ("home", "away"):
+        venue_games = [
+            game for game in previous_games
+            if game.get("home_away") == venue
+            and game.get(stat_key) is not None
+        ]
+        last10 = venue_games[:10]
+
+        def summarize(sample):
+            if not sample:
+                return {
+                    "average": None,
+                    "games": 0,
+                    "minutes_avg": None
+                }
+            return {
+                "average": round(
+                    sum(float(game[stat_key]) for game in sample) / len(sample), 2
+                ),
+                "games": len(sample),
+                "minutes_avg": round(
+                    sum(float(game.get("minutes") or 0) for game in sample) / len(sample), 1
+                )
+            }
+
+        result[venue] = {
+            "season": summarize(venue_games),
+            "last10": summarize(last10)
+        }
+
+    return result
+
+
 def build_player_result(
     player,
     games,
@@ -2773,6 +2823,9 @@ def build_player_result(
         "last5_avg": round(avg5, 2),
         "last10_avg": round(avg10, 2),
         "minutes_last5_avg": round(minutes_avg, 1),
+        "venue_production": build_player_venue_production(
+            games, target_date, stat_key
+        ),
         "triage_score": round(score, 2),
         "games_last5": len(last5),
         "games_last10": len(last10),
