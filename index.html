@@ -552,6 +552,14 @@
       </div>
       <div class="context-secondary-grid">
         <div class="filter-group">
+          <label for="context-venue">Local</label>
+          <select id="context-venue">
+            <option value="all">Todos os jogos</option>
+            <option value="home">Em casa</option>
+            <option value="away">Fora de casa</option>
+          </select>
+        </div>
+        <div class="filter-group">
           <label for="context-position">Posição</label>
           <select id="context-position">
             <option value="G">Armadores (G)</option>
@@ -1499,10 +1507,11 @@ function nomeEquipeContexto(team) {
 
 function contextoParams() {
   const date = document.getElementById('context-date').value || data.value;
+  const venue = document.getElementById('context-venue').value;
   const position = document.getElementById('context-position').value;
   const stat = document.getElementById('context-stat').value;
   const window = document.getElementById('context-window').value;
-  return { date, position, stat, window };
+  return { date, venue, position, stat, window };
 }
 
 async function carregarRankingContexto() {
@@ -1513,7 +1522,8 @@ async function carregarRankingContexto() {
   status.innerText = 'Lendo snapshot contextual do Neon...';
   try {
     const query = '/context/defense/rankings?date=' + encodeURIComponent(p.date) +
-      '&position=' + p.position + '&stat=' + p.stat + '&window=' + p.window;
+      '&position=' + p.position + '&stat=' + p.stat + '&window=' + p.window +
+      '&venue=' + p.venue;
     const result = await requisicao(query);
     if(result.status === 'not_ready') {
       body.innerHTML = '<tr><td colspan="5" class="text-amber-300">Ainda não há dados para esta data. Use “Atualizar base contextual”.</td></tr>';
@@ -1533,8 +1543,9 @@ async function carregarRankingContexto() {
         '<td>' + (item.games_analyzed || 0) + '</td><td>' + label + '</td></tr>';
     }).join('') || '<tr><td colspan="5" class="text-gray-400">Sem amostra válida para os filtros selecionados.</td></tr>';
     document.getElementById('context-ranking-count').innerText = result.teams_available + ' equipes';
+    const venueLabel = p.venue === 'home' ? 'em casa' : p.venue === 'away' ? 'fora de casa' : 'todos os jogos';
     status.innerText = result.stat_label + ' · posição ' + result.position + ' · ' + result.window +
-      ' · ' + result.date + ' · menor valor = defesa mais forte.';
+      ' · ' + venueLabel + ' · ' + result.date + ' · menor valor = defesa mais forte.';
   } catch(error) {
     body.innerHTML = '<tr><td colspan="5" class="text-red-400">Falha ao consultar ranking contextual.</td></tr>';
     status.innerText = 'Erro: ' + error.message;
