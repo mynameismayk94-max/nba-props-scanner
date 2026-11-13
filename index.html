@@ -602,7 +602,8 @@ const api = document.getElementById('api');
 const status = document.getElementById('status');
 const data = document.getElementById('data');
 
-api.value = localStorage.getItem('nbaPropsApiBase') || 'https://nba-props-scanner.onrender.com';
+const isStagingHost = window.location.hostname === 'nba-props-scanner-staging.onrender.com';
+api.value = isStagingHost ? window.location.origin : (localStorage.getItem('nbaPropsApiBase') || 'https://nba-props-scanner.onrender.com');
 
 function endereco(){
   return api.value.trim().replace(/\/$/,'');
