@@ -186,7 +186,8 @@ class ContextReadTests(unittest.TestCase):
                             selected_date="2026-11-13",
                             position=position,
                             stat=stat,
-                            window=window
+                            window=window,
+                            venue="all"
                         )
                         self.assertEqual(result["status"], "ok")
                         self.assertEqual(result["teams_available"], 30)
@@ -222,7 +223,8 @@ class ContextReadTests(unittest.TestCase):
                 with self.assertRaises(HTTPException):
                     self.ranking_route.endpoint(
                         selected_date="2026-11-13",
-                        **case
+                        **case,
+                        venue="all"
                     )
 
 
