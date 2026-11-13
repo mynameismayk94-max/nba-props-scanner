@@ -1450,6 +1450,18 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 // CENTRAL DE CONTEXTO NBA — consultas somente ao Neon
 // ============================================================
+function nomeEquipeContexto(team) {
+  const aliases = {
+    GS: 'GSW',
+    NO: 'NOP',
+    NY: 'NYK',
+    SA: 'SAS',
+    WSH: 'WAS',
+    UTAH: 'UTA'
+  };
+  return aliases[team] || team;
+}
+
 function contextoParams() {
   const date = document.getElementById('context-date').value || data.value;
   const position = document.getElementById('context-position').value;
@@ -1481,7 +1493,7 @@ async function carregarRankingContexto() {
           ? '<span class="text-red-400">Mais vulnerável</span>'
           : '<span class="text-gray-400">Intermediária</span>';
       return '<tr class="cursor-pointer" onclick="carregarDetalheContexto(\'' + escapeHtml(item.team) + '\')">' +
-        '<td>' + item.rank + '</td><td class="font-bold text-white">' + escapeHtml(item.team) + '</td>' +
+        '<td>' + item.rank + '</td><td class="font-bold text-white">' + escapeHtml(nomeEquipeContexto(item.team)) + '</td>' +
         '<td class="font-bold text-white">' + numero(item.allowed_per_game, 1) + '</td>' +
         '<td>' + (item.games_analyzed || 0) + '</td><td>' + label + '</td></tr>';
     }).join('') || '<tr><td colspan="5" class="text-gray-400">Sem amostra válida para os filtros selecionados.</td></tr>';
@@ -1530,7 +1542,8 @@ async function atualizarBaseContexto() {
 async function carregarDetalheContexto(team) {
   const p = contextoParams();
   const box = document.getElementById('context-team-detail');
-  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-gray-400">Carregando histórico...</p>';
+  const teamLabel = nomeEquipeContexto(team);
+  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><p class="text-[10px] text-gray-400">Carregando histórico...</p>';
   try {
     const result = await requisicao('/context/defense/team/' + encodeURIComponent(team) + '?date=' + encodeURIComponent(p.date));
     const history = result.history || {};
@@ -1538,7 +1551,7 @@ async function carregarDetalheContexto(team) {
       ['points','Pontos'],['assists','Assistências'],['rebounds','Rebotes'],
       ['three_pa','Tentativas de 3 pts'],['two_pa','Tentativas de 2 pts'],['fga','Tentativas totais'],['fgm','Cestas convertidas']
     ];
-    let html = '<div class="flex items-center justify-between gap-2"><h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><span class="text-[9px] text-gray-500">Atualizado: ' + escapeHtml(result.captured_at || '—') + '</span></div>';
+    let html = '<div class="flex items-center justify-between gap-2"><h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><span class="text-[9px] text-gray-500">Atualizado: ' + escapeHtml(result.captured_at || '—') + '</span></div>';
     html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">';
     ['G','F','C'].forEach(position => {
       html += '<div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><div class="text-[10px] font-bold text-teal-300 mb-2">' +
