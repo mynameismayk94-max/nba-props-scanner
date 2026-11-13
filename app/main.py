@@ -2018,6 +2018,43 @@ def get_athlete_logs(
                 )
             }
 
+    # O endpoint de game log nem sempre inclui homeAway em events.
+    # Completa o mando pela agenda oficial da equipe, que já expõe
+    # competitor.homeAway e é compartilhada em cache por equipe/temporada.
+    teams_missing_venue = {
+        game.get("team")
+        for game in games.values()
+        if not game.get("home_away") and game.get("team")
+    }
+
+    for team_abbr in teams_missing_venue:
+        try:
+            team_schedule = get_team_regular_season_schedule(
+                team_abbr.upper(),
+                year
+            )
+            venue_by_event = {
+                str(team_game.get("game_id")): team_game.get("home_away")
+                for team_game in team_schedule
+                if team_game.get("home_away") in {"home", "away"}
+            }
+
+            for game in games.values():
+                if (
+                    game.get("team", "").upper() == team_abbr.upper()
+                    and not game.get("home_away")
+                ):
+                    game["home_away"] = venue_by_event.get(
+                        str(game.get("event_id"))
+                    )
+        except Exception as error:
+            logger.warning(
+                "Não foi possível completar mando do game log para %s/%s: %s",
+                team_abbr,
+                year,
+                error
+            )
+
     ordered = sorted(
         games.values(),
         key=lambda game: game["date"],
