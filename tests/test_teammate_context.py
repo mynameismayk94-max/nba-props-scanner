@@ -135,6 +135,53 @@ class TeammateContextTests(unittest.TestCase):
         self.assertEqual(result["10"]["status"], "played")
         self.assertEqual(result["10"]["minutes"], 28)
 
+
+    def test_full_context_compares_all_metrics_and_excludes_unknown(self):
+        from app.teammate_context import build_candidate_teammate_context
+
+        game_ids = ["g1", "g2", "g3"]
+        candidate_logs = [
+            {"event_id": "g1", "team": "BOS", "minutes": 30,
+             "points": 20, "assists": 5, "rebounds": 7,
+             "three_pa": 4, "two_pa": 8, "fgm": 8},
+            {"event_id": "g2", "team": "BOS", "minutes": 32,
+             "points": 30, "assists": 7, "rebounds": 9,
+             "three_pa": 6, "two_pa": 10, "fgm": 11},
+            {"event_id": "g3", "team": "BOS", "minutes": 28,
+             "points": 25, "assists": 6, "rebounds": 8,
+             "three_pa": 5, "two_pa": 9, "fgm": 9},
+        ]
+        teammate_logs = tuple(
+            {"event_id": game_id, "team": "BOS", "minutes": 30,
+             "points": 18, "assists": 4, "fga": 14}
+            for game_id in game_ids
+        )
+        result = build_candidate_teammate_context(
+            candidate_id="candidate",
+            team="BOS",
+            roster=[
+                {"id": "candidate", "player": "Candidate"},
+                {"id": "mate", "player": "Important teammate"},
+            ],
+            player_logs_by_id={
+                "candidate": ({"player": "Candidate"}, tuple(candidate_logs)),
+                "mate": ({"player": "Important teammate"}, teammate_logs),
+            },
+            team_games=[{"game_id": game_id} for game_id in game_ids],
+            teammate_status_by_game={
+                "g1": {"mate": {"status": "played"}},
+                "g2": {"mate": {"status": "confirmed_absent"}},
+                # g3 sem prova: fica fora dos dois grupos.
+            }
+        )
+        comparison = result["comparisons"]["mate"]["points"]
+        self.assertEqual(comparison["with_teammate"]["games"], 1)
+        self.assertEqual(comparison["confirmed_absent"]["games"], 1)
+        self.assertEqual(comparison["unknown_games_excluded"], 1)
+        self.assertEqual(comparison["difference_absent_minus_played"], 10)
+        self.assertIn("assists", result["comparisons"]["mate"])
+        self.assertIn("minutes", result["comparisons"]["mate"])
+
     def test_wrong_team_is_not_read(self):
         summary = self._summary([
             {"athlete": {"id": "10"}, "stats": ["0:00", "--"]}
