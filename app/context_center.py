@@ -125,7 +125,7 @@ def create_context_router(
         def fetch_team(team):
             return team, get_team_defense_history(team, 10, target_date)
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
                 executor.submit(fetch_team, team): team
                 for team in teams
