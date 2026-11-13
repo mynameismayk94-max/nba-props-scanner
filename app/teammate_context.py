@@ -210,6 +210,52 @@ def build_teammate_shortlist(
     return candidates[:max(0, min(int(limit), 3))]
 
 
+
+def build_candidate_teammate_context(
+    candidate_id: str,
+    team: str,
+    roster: list[dict],
+    player_logs_by_id: dict[str, tuple],
+    team_games: list[dict],
+    teammate_status_by_game: dict[str, dict],
+    stat_keys: tuple[str, ...] = (
+        "points", "assists", "rebounds", "three_pa",
+        "two_pa", "fgm", "minutes"
+    )
+) -> dict:
+    """Monta shortlist e splits para todas as métricas em uma passagem."""
+    shortlist = build_teammate_shortlist(
+        candidate_id=candidate_id,
+        team=team,
+        roster=roster,
+        player_logs_by_id=player_logs_by_id,
+        team_games=team_games,
+        limit=3
+    )
+    comparisons = {}
+    for teammate in shortlist:
+        teammate_id = teammate["player_id"]
+        comparisons[teammate_id] = {
+            stat_key: compare_candidate_with_teammate(
+                candidate_logs=list(player_logs_by_id.get(str(candidate_id), ({}, ()))[1]),
+                team_games=team_games,
+                teammate_status_by_game=teammate_status_by_game,
+                teammate_id=teammate_id,
+                stat_key=stat_key
+            )
+            for stat_key in stat_keys
+        }
+
+    return {
+        "algorithm_version": 1,
+        "window": "team_last_10_games",
+        "team": str(team or "").upper(),
+        "shortlist": shortlist,
+        "comparisons": comparisons,
+        "absence_rule": "explicit_zero_minutes_or_explicit_dnp_only"
+    }
+
+
 def summarize_production(games: list[dict], stat_key: str) -> dict:
     valid = [
         game for game in games
