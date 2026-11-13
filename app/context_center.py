@@ -276,6 +276,18 @@ def create_context_router(
                 "ranking": []
             }
 
+        if venue != "all" and not any(
+            (record["payload"] or {}).get("venue_windows", {}).get(venue)
+            for record in stored.values()
+        ):
+            return {
+                "status": "not_ready",
+                "date": selected_date,
+                "venue": venue,
+                "message": "Este snapshot ainda não contém a separação Casa/Fora. Atualize a base contextual para gerar as novas amostras.",
+                "ranking": []
+            }
+
         ranking = []
         for team, record in stored.items():
             payload = record["payload"] or {}
