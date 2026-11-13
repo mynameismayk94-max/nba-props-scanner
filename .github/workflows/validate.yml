@@ -33,7 +33,7 @@ jobs:
           python - <<'PY'
           from app.main import app
 
-          paths = {route.path for route in app.routes}
+          paths = set(app.openapi().get("paths", {}))
           required = {
               "/context/defense/refresh",
               "/context/defense/rankings",
@@ -51,7 +51,7 @@ jobs:
           from pathlib import Path
 
           html = Path("index.html").read_text(encoding="utf-8")
-          scripts = re.findall(r"<script\b[^>]*>([\s\S]*?)</script>", html, flags=re.IGNORECASE)
-          Path("/tmp/index-inline.js").write_text("\n".join(scripts), encoding="utf-8")
+          scripts = re.findall(r"<script\\b[^>]*>([\\s\\S]*?)</script>", html, flags=re.IGNORECASE)
+          Path("/tmp/index-inline.js").write_text("\\n".join(scripts), encoding="utf-8")
           PY
           node --check /tmp/index-inline.js
