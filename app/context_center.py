@@ -141,7 +141,13 @@ def create_context_router(
                 except Exception as error:
                     errors[team] = str(error)[:300]
 
-        if results:
+        # A captura só é publicada quando todas as equipes foram coletadas.
+        # Assim, um refresh parcial nunca mistura snapshots de execuções diferentes.
+        complete = len(results) == len(teams) and not errors
+        status = "ok" if complete else ("partial" if results else "error")
+        teams_saved = 0
+
+        if complete:
             try:
                 with get_database_connection() as connection:
                     with connection.cursor() as cursor:
@@ -160,23 +166,37 @@ def create_context_router(
                                 for team, payload in results.items()
                             ]
                         )
+                teams_saved = len(results)
             except Exception as error:
                 raise HTTPException(
                     status_code=503,
                     detail=f"Falha ao persistir a atualização contextual: {error}"
                 )
 
+        if complete:
+            message = (
+                "Atualização completa. Todas as equipes foram salvas na mesma execução."
+            )
+        elif results:
+            message = (
+                "Atualização parcial: nenhum dado novo foi gravado para evitar misturar "
+                "capturas. O snapshot completo anterior, se existir, foi preservado."
+            )
+        else:
+            message = (
+                "Falha total na coleta: nenhum dado novo foi gravado. "
+                "O snapshot completo anterior, se existir, foi preservado."
+            )
+
         return {
-            "status": "ok" if results else "partial",
+            "status": status,
             "date": selected_date,
             "teams_expected": len(teams),
-            "teams_saved": len(results),
+            "teams_collected": len(results),
+            "teams_saved": teams_saved,
             "teams_with_errors": len(errors),
             "errors": errors,
-            "message": (
-                "Atualização contextual concluída. Os painéis de leitura usarão "
-                "estes dados persistidos, sem consultar a ESPN novamente."
-            )
+            "message": message
         }
 
     @router.get("/context/defense/rankings")
