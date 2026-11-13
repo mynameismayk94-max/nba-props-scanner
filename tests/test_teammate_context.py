@@ -114,6 +114,27 @@ class TeammateContextTests(unittest.TestCase):
         self.assertLessEqual(len(shortlist), 3)
         self.assertNotIn("p0", [item["player_id"] for item in shortlist])
 
+
+    def test_later_stat_block_does_not_overwrite_confirmed_minutes(self):
+        summary = {
+            "boxscore": {
+                "players": [{
+                    "team": {"abbreviation": "BOS"},
+                    "statistics": [
+                        {"keys": ["MIN"], "athletes": [
+                            {"athlete": {"id": "10"}, "stats": ["28:00"]}
+                        ]},
+                        {"keys": ["PTS", "AST"], "athletes": [
+                            {"athlete": {"id": "10"}, "stats": ["18", "4"]}
+                        ]}
+                    ]
+                }]
+            }
+        }
+        result = extract_team_player_status(summary, "BOS")
+        self.assertEqual(result["10"]["status"], "played")
+        self.assertEqual(result["10"]["minutes"], 28)
+
     def test_wrong_team_is_not_read(self):
         summary = self._summary([
             {"athlete": {"id": "10"}, "stats": ["0:00", "--"]}
