@@ -112,11 +112,24 @@ def extract_team_player_status(summary: dict, team: str) -> dict[str, dict]:
                     status = "unknown"
                     evidence = "insufficient_boxscore_data"
 
-                result[player_id] = {
-                    "status": status,
-                    "minutes": minutes,
-                    "evidence": evidence
+                # ESPN pode repetir atletas em blocos (estatísticas tradicionais,
+                # avançadas etc.). Um bloco posterior sem MIN não pode apagar
+                # uma evidência positiva já encontrada.
+                priority = {
+                    "unknown": 0,
+                    "confirmed_absent": 1,
+                    "played": 2
                 }
+                existing = result.get(player_id)
+                if (
+                    existing is None
+                    or priority[status] > priority.get(existing.get("status"), -1)
+                ):
+                    result[player_id] = {
+                        "status": status,
+                        "minutes": minutes,
+                        "evidence": evidence
+                    }
 
     return result
 
