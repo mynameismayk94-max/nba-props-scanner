@@ -51,8 +51,8 @@ jobs:
           from pathlib import Path
 
           html = Path("index.html").read_text(encoding="utf-8")
-          scripts = re.findall(r"<script\\b[^>]*>([\\s\\S]*?)</script>", html, flags=re.IGNORECASE)
-          Path("/tmp/index-inline.js").write_text("\\n".join(scripts), encoding="utf-8")
+          scripts = re.findall(r"<script\b[^>]*>([\s\S]*?)</script>", html, flags=re.IGNORECASE)
+          Path("/tmp/index-inline.js").write_text("\n".join(scripts), encoding="utf-8")
           assert scripts, "No inline JavaScript blocks found"
           PY
           node --check /tmp/index-inline.js
