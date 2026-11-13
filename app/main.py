@@ -1316,18 +1316,33 @@ def get_game_summary(
 def get_team_defense_history(
     team_abbr,
     limit=10,
-    target_date=None
+    target_date=None,
+    force_refresh=False
 ):
 
     if target_date is None:
         target_date = date.today()
 
-    games = [
-        game
-        for game in get_team_regular_season_schedule(
+    if force_refresh:
+        schedule = request_json(
+            f"https://site.api.espn.com/apis/site/v2/sports/"
+            f"basketball/nba/teams/{team_abbr.lower()}/schedule",
+            {"season": season_year(target_date)}
+        )
+        schedule_games = get_completed_team_games(
+            schedule,
+            team_abbr.upper(),
+            1000
+        )
+    else:
+        schedule_games = get_team_regular_season_schedule(
             team_abbr.upper(),
             season_year(target_date)
         )
+
+    games = [
+        game
+        for game in schedule_games
         if (
             game.get("date") or ""
         )[:10] < target_date.isoformat()
@@ -1343,9 +1358,15 @@ def get_team_defense_history(
 
     def fetch_game_defense(game):
 
-        summary = get_game_summary(
-            str(game["game_id"])
-        )
+        if force_refresh:
+            summary = request_json(
+                SUMMARY_URL,
+                {"event": str(game["game_id"])}
+            )
+        else:
+            summary = get_game_summary(
+                str(game["game_id"])
+            )
 
         stats = extract_team_defense_stats(
             summary,
@@ -1580,6 +1601,20 @@ def get_team_defense_history(
         }
 
     return history
+
+
+def get_team_defense_history_fresh(
+    team_abbr,
+    limit=10,
+    target_date=None
+):
+    """Atualiza a Central sem ler/escrever nos caches compartilhados do Scanner."""
+    return get_team_defense_history.__wrapped__(
+        team_abbr,
+        limit,
+        target_date,
+        True
+    )
 
 
 def fetch_espn_games(
@@ -4343,7 +4378,7 @@ from app.context_center import create_context_router
 app.include_router(
     create_context_router(
         get_database_connection,
-        get_team_defense_history,
+        get_team_defense_history_fresh,
         NBA_TEAM_ABBREVIATIONS
     )
 )
