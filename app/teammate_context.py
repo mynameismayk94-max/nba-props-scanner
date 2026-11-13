@@ -1,0 +1,188 @@
+"""Motor isolado de contexto de companheiros; não altera Scanner nem triage_score."""
+from __future__ import annotations
+
+from typing import Any
+
+
+def _team_abbr(block: dict) -> str:
+    return str((block.get("team") or {}).get("abbreviation") or "").strip().upper()
+
+
+def _athlete_id(entry: dict) -> str | None:
+    athlete = entry.get("athlete") or {}
+    value = athlete.get("id")
+    return str(value).strip() if value is not None else None
+
+
+def _minutes_value(entry: dict, keys: list[str]) -> tuple[bool, float | None]:
+    raw = entry.get("stats", entry.get("statistics"))
+    if raw is None:
+        return False, None
+
+    if isinstance(raw, dict):
+        value = raw.get("minutes", raw.get("MIN"))
+        present = "minutes" in raw or "MIN" in raw
+    elif isinstance(raw, list):
+        index = next((i for i, key in enumerate(keys) if str(key).strip().lower() in {"minutes", "min"}), None)
+        present = index is not None and index < len(raw)
+        value = raw[index] if present else None
+    else:
+        return False, None
+
+    if isinstance(value, dict):
+        value = value.get("displayValue", value.get("value"))
+
+    if value is None:
+        return present, None
+
+    text = str(value).strip()
+    if text in {"", "--", "-", "N/A"}:
+        return present, None
+
+    try:
+        if ":" in text:
+            mins, secs = text.split(":", 1)
+            return present, float(mins) + float(secs) / 60
+        return present, float(text)
+    except (TypeError, ValueError):
+        return present, None
+
+
+def _explicit_dnp(entry: dict) -> bool:
+    """Só aceita marcadores explícitos de não participação."""
+    values = [
+        entry.get("didNotPlay"),
+        entry.get("did_not_play"),
+        entry.get("status"),
+        entry.get("reason"),
+        entry.get("displayStatus"),
+        entry.get("shortComment")
+    ]
+    for value in values:
+        if value is True:
+            return True
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {
+                "dnp", "did not play", "did not dress",
+                "inactive", "not active", "coach's decision",
+                "injury", "illness", "suspended"
+            }:
+                return True
+    return False
+
+
+def extract_team_player_status(summary: dict, team: str) -> dict[str, dict]:
+    """Mapeia atleta -> played/confirmed_absent/unknown a partir do boxscore bruto.
+
+    Ausência de atleta no boxscore nunca é interpretada como DNP.
+    """
+    team = str(team or "").strip().upper()
+    result: dict[str, dict] = {}
+    blocks = (summary.get("boxscore") or {}).get("players") or []
+
+    for block in blocks:
+        if _team_abbr(block) != team:
+            continue
+        stat_blocks = block.get("statistics") or []
+        if isinstance(stat_blocks, dict):
+            stat_blocks = [stat_blocks]
+
+        for stat_block in stat_blocks:
+            if not isinstance(stat_block, dict):
+                continue
+            keys = stat_block.get("keys") or stat_block.get("names") or stat_block.get("labels") or []
+            for entry in stat_block.get("athletes") or []:
+                if not isinstance(entry, dict):
+                    continue
+                player_id = _athlete_id(entry)
+                if not player_id:
+                    continue
+                minutes_present, minutes = _minutes_value(entry, keys)
+                if minutes is not None and minutes > 0:
+                    status = "played"
+                    evidence = "positive_minutes"
+                elif minutes_present and minutes == 0:
+                    status = "confirmed_absent"
+                    evidence = "explicit_zero_minutes"
+                elif _explicit_dnp(entry):
+                    status = "confirmed_absent"
+                    evidence = "explicit_dnp_status"
+                else:
+                    status = "unknown"
+                    evidence = "insufficient_boxscore_data"
+
+                result[player_id] = {
+                    "status": status,
+                    "minutes": minutes,
+                    "evidence": evidence
+                }
+
+    return result
+
+
+def summarize_production(games: list[dict], stat_key: str) -> dict:
+    valid = [
+        game for game in games
+        if game.get("minutes") is not None
+        and float(game.get("minutes") or 0) > 0
+        and game.get(stat_key) is not None
+    ]
+    if not valid:
+        return {"games": 0, "average": None, "minutes_average": None}
+    return {
+        "games": len(valid),
+        "average": round(sum(float(g[stat_key]) for g in valid) / len(valid), 2),
+        "minutes_average": round(sum(float(g["minutes"]) for g in valid) / len(valid), 1)
+    }
+
+
+def compare_candidate_with_teammate(
+    candidate_logs: list[dict],
+    team_games: list[dict],
+    teammate_status_by_game: dict[str, dict],
+    teammate_id: str,
+    stat_key: str
+) -> dict:
+    """Compara produção do candidato em jogos com/sem o companheiro.
+
+    Apenas jogos anteriores à data-alvo devem ser fornecidos em team_games.
+    Jogos sem status comprovado ficam fora dos dois grupos.
+    """
+    candidate_by_game = {
+        str(game.get("event_id")): game
+        for game in candidate_logs
+        if game.get("event_id")
+        and float(game.get("minutes") or 0) > 0
+        and game.get(stat_key) is not None
+    }
+    played, absent, unknown = [], [], []
+
+    for team_game in team_games:
+        game_id = str(team_game.get("game_id") or "")
+        candidate_game = candidate_by_game.get(game_id)
+        if not candidate_game:
+            continue
+        status = (teammate_status_by_game.get(game_id) or {}).get(str(teammate_id), {})
+        label = status.get("status", "unknown")
+        if label == "played":
+            played.append(candidate_game)
+        elif label == "confirmed_absent":
+            absent.append(candidate_game)
+        else:
+            unknown.append(candidate_game)
+
+    with_teammate = summarize_production(played, stat_key)
+    without_teammate = summarize_production(absent, stat_key)
+    difference = None
+    if with_teammate["average"] is not None and without_teammate["average"] is not None:
+        difference = round(without_teammate["average"] - with_teammate["average"], 2)
+
+    return {
+        "with_teammate": with_teammate,
+        "confirmed_absent": without_teammate,
+        "difference_absent_minus_played": difference,
+        "unknown_games_excluded": len(unknown),
+        "interpretation": "observational_difference",
+        "status": "ok" if played or absent else "insufficient_data"
+    }
