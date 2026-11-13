@@ -69,10 +69,25 @@
   }
 
   .filter-group { display: flex; flex-direction: column; width: 100%; }
-  /* Central de Contexto: impede que o controle nativo de data ultrapasse sua coluna */
-  .context-filter-grid > .filter-group { min-width: 0; }
-  .context-date-filter { min-width: 0; }
-  .context-date-input { display: block; width: 100%; min-width: 0; max-width: 100%; padding-left: 5px !important; padding-right: 5px !important; font-size: 11px !important; }
+  /* Central de Contexto: data em linha própria; filtros restantes enquadrados abaixo */
+  .context-date-filter { min-width: 0; width: 100%; }
+  .context-date-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding-left: 5px !important;
+    padding-right: 5px !important;
+    font-size: 11px !important;
+  }
+  .context-secondary-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  @media (min-width: 640px) {
+    .context-secondary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
   .filter-group label { font-size: 10px; font-weight: bold; color: #9ca3af; margin-bottom: 3px; }
   .filter-group select, input[type="date"], input[type="text"] { width: 100%; min-width: 0; max-width: 100%; background: #030712; border: 1px solid #374151; color: #f3f4f6; padding: 7px; border-radius: 6px; font-size: 12px; height: 36px; }
   
@@ -515,11 +530,13 @@
     </div>
 
     <div class="glass-panel p-3 space-y-3">
-      <div class="context-filter-grid grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
-        <div class="filter-group context-date-filter">
+      <div class="context-date-filter">
+        <div class="filter-group">
           <label for="context-date">Data de referência</label>
           <input type="date" id="context-date" class="context-date-input">
         </div>
+      </div>
+      <div class="context-secondary-grid">
         <div class="filter-group">
           <label for="context-position">Posição</label>
           <select id="context-position">
