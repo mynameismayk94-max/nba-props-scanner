@@ -1245,6 +1245,7 @@ def get_completed_team_games(
             continue
 
         opponent = None
+        home_away = None
 
         for competitor in competition.get(
             "competitors",
@@ -1256,19 +1257,19 @@ def get_completed_team_games(
                 .get("abbreviation")
             )
 
-            if competitor_team != team_abbr:
+            if competitor_team == team_abbr:
+                home_away = competitor.get("homeAway")
+            else:
                 opponent = competitor_team
-                break
 
-        if not opponent:
+        if not opponent or home_away not in {"home", "away"}:
             continue
 
         games.append({
-            "game_id": str(
-                event.get("id")
-            ),
+            "game_id": str(event.get("id")),
             "date": event.get("date"),
-            "opponent": opponent
+            "opponent": opponent,
+            "home_away": home_away
         })
 
     games.sort(
