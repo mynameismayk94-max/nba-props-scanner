@@ -1,8 +1,6 @@
 """Motor isolado de contexto de companheiros; não altera Scanner nem triage_score."""
 from __future__ import annotations
 
-from typing import Any
-
 
 def _team_abbr(block: dict) -> str:
     return str((block.get("team") or {}).get("abbreviation") or "").strip().upper()
@@ -50,8 +48,10 @@ def _minutes_value(entry: dict, keys: list[str]) -> tuple[bool, float | None]:
 
 def _explicit_dnp(entry: dict) -> bool:
     """Só aceita marcadores explícitos de não participação."""
+    athlete = entry.get("athlete") or {}
     values = [
         entry.get("didNotPlay"),
+        athlete.get("didNotPlay"),
         entry.get("did_not_play"),
         entry.get("status"),
         entry.get("reason"),
@@ -119,6 +119,95 @@ def extract_team_player_status(summary: dict, team: str) -> dict[str, dict]:
                 }
 
     return result
+
+
+
+def build_teammate_shortlist(
+    candidate_id: str,
+    team: str,
+    roster: list[dict],
+    player_logs_by_id: dict[str, tuple],
+    team_games: list[dict],
+    limit: int = 3,
+    min_appearances: int = 5,
+    min_average_minutes: float = 20.0
+) -> list[dict]:
+    """Seleciona companheiros relevantes usando apenas dados anteriores.
+
+    team_games deve conter os últimos jogos concluídos da equipe, em ordem
+    decrescente. Logs de passagens por outras equipes são descartados.
+    """
+    team = str(team or "").strip().upper()
+    game_ids = {
+        str(game.get("game_id"))
+        for game in team_games
+        if game.get("game_id")
+    }
+    if not team or not game_ids:
+        return []
+
+    candidates = []
+    for teammate in roster:
+        teammate_id = str(teammate.get("id") or "")
+        if not teammate_id or teammate_id == str(candidate_id):
+            continue
+        player_entry = player_logs_by_id.get(teammate_id)
+        if not player_entry:
+            continue
+
+        player, raw_logs = player_entry
+        relevant_logs = [
+            log for log in raw_logs
+            if str(log.get("event_id") or "") in game_ids
+            and str(log.get("team") or "").upper() == team
+            and float(log.get("minutes") or 0) > 0
+        ]
+        # Deduplica por partida para evitar duplicidade de categorias/linhas.
+        by_game = {str(log["event_id"]): log for log in relevant_logs}
+        appearances = list(by_game.values())
+        if len(appearances) < min_appearances:
+            continue
+
+        average_minutes = sum(float(g["minutes"]) for g in appearances) / len(appearances)
+        if average_minutes < min_average_minutes:
+            continue
+
+        average_points = sum(float(g.get("points") or 0) for g in appearances) / len(appearances)
+        average_assists = sum(float(g.get("assists") or 0) for g in appearances) / len(appearances)
+        average_fga = sum(float(g.get("fga") or 0) for g in appearances) / len(appearances)
+        appearance_rate = len(appearances) / len(game_ids)
+        offensive_involvement = average_points + (1.5 * average_assists) + (0.5 * average_fga)
+        importance_score = (
+            (average_minutes * 0.5)
+            + (appearance_rate * 10)
+            + (offensive_involvement * 0.25)
+        )
+
+        candidates.append({
+            "player_id": teammate_id,
+            "player": player.get("player") or player.get("name") or teammate.get("player") or "Jogador",
+            "position": player.get("position") or teammate.get("position"),
+            "team": team,
+            "games_in_window": len(appearances),
+            "window_games": len(game_ids),
+            "appearance_rate": round(appearance_rate, 3),
+            "average_minutes": round(average_minutes, 1),
+            "average_points": round(average_points, 1),
+            "average_assists": round(average_assists, 1),
+            "average_fga": round(average_fga, 1),
+            "importance_score": round(importance_score, 3),
+            "selection_source": "automatic_shortlist"
+        })
+
+    candidates.sort(
+        key=lambda item: (
+            item["importance_score"],
+            item["average_minutes"],
+            item["games_in_window"]
+        ),
+        reverse=True
+    )
+    return candidates[:max(0, min(int(limit), 3))]
 
 
 def summarize_production(games: list[dict], stat_key: str) -> dict:
