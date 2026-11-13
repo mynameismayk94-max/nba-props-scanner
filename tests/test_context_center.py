@@ -125,7 +125,21 @@ class ContextReadTests(unittest.TestCase):
                     },
                     "players_per_game_avg": 4.0
                 }
-            self.rows.append((team, {"L5": {"positions": positions}, "L10": {"positions": positions}}, self.captured_at))
+            payload = {
+                "L5": {"positions": positions},
+                "L10": {"positions": positions},
+                "venue_windows": {
+                    "home": {
+                        "L5": {"positions": positions},
+                        "L10": {"positions": positions}
+                    },
+                    "away": {
+                        "L5": {"positions": positions},
+                        "L10": {"positions": positions}
+                    }
+                }
+            }
+            self.rows.append((team, payload, self.captured_at))
 
         @contextmanager
         def connection_factory():
@@ -210,3 +224,30 @@ class ContextReadTests(unittest.TestCase):
                         selected_date="2026-11-13",
                         **case
                     )
+
+
+    def test_home_and_away_rankings_read_their_own_persisted_windows(self):
+        for venue in ("home", "away"):
+            with self.subTest(venue=venue):
+                result = self.ranking_route.endpoint(
+                    selected_date="2026-11-13",
+                    position="G",
+                    stat="points",
+                    window="L5",
+                    venue=venue
+                )
+                self.assertEqual(result["status"], "ok")
+                self.assertEqual(result["venue"], venue)
+                self.assertEqual(result["teams_available"], 30)
+                self.assertEqual(len(result["ranking"]), 30)
+
+    def test_invalid_venue_is_rejected(self):
+        from fastapi import HTTPException
+        with self.assertRaises(HTTPException):
+            self.ranking_route.endpoint(
+                selected_date="2026-11-13",
+                position="G",
+                stat="points",
+                window="L5",
+                venue="neutral"
+            )
