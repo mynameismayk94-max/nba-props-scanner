@@ -18,7 +18,6 @@ STAT_KEYS = {
     "rebounds": "rebounds",
     "three_pa": "three_pa",
     "two_pa": "two_pa",
-    "fga": "fga",
     "fgm": "fgm",
 }
 STAT_LABELS = {
@@ -27,7 +26,6 @@ STAT_LABELS = {
     "rebounds": "Rebotes cedidos",
     "three_pa": "Tentativas de 3 pontos cedidas",
     "two_pa": "Tentativas de 2 pontos cedidas",
-    "fga": "Tentativas de arremesso cedidas",
     "fgm": "Cestas convertidas cedidas",
 }
 
