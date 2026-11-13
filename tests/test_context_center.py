@@ -181,7 +181,7 @@ class ContextReadTests(unittest.TestCase):
                         self.assertEqual(len(ranked_teams), len(set(ranked_teams)))
                         values = [item["allowed_per_game"] for item in result["ranking"]]
                         self.assertEqual(values, sorted(values))
-                        self.assertEqual(result["ranking"][0]["games_analyzed"], 5 if window == "L5" else 4)
+                        self.assertEqual(result["ranking"][0]["games_analyzed"], 4 if stat == "fgm" else 5)
 
     def test_team_detail_returns_saved_history_for_all_positions(self):
         result = self.detail_route.endpoint(team="TM00", selected_date="2026-11-13")
