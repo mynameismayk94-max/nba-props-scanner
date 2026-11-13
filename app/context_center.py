@@ -164,7 +164,7 @@ def create_context_router(
         # em paralelo internamente. A atualização é explícita e nunca ocorre
         # durante a abertura dos painéis de leitura.
         def fetch_team(team):
-            return team, get_team_defense_history(team, 20, target_date)
+            return team, get_team_defense_history(team, 40, target_date)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
