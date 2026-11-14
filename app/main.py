@@ -35,7 +35,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.16.0"
+    version="3.17.0"
 )
 
 app.add_middleware(
@@ -3429,7 +3429,7 @@ def health():
     return {
         "status": "ok",
         "service": "NBA Props Scanner",
-        "version": "3.15.0",
+        "version": "3.17.0",
         "source": "ESPN"
     }
 
