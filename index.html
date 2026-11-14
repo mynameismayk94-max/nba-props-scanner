@@ -69,6 +69,39 @@
   }
 
   .filter-group { display: flex; flex-direction: column; width: 100%; }
+  /* Central de Contexto: campo de data compacto e isolado dos demais filtros */
+  .context-date-filter {
+    width: 100%;
+    max-width: 260px;
+    min-width: 0;
+    margin-bottom: 4px;
+    padding-right: 10px;
+  }
+  .context-date-filter .filter-group { width: 100%; min-width: 0; }
+  .context-date-input {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    font-size: 12px !important;
+  }
+  .context-secondary-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+  .context-secondary-grid > .filter-group { min-width: 0; }
+  @media (min-width: 640px) {
+    .context-secondary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  @media (max-width: 639px) {
+    .context-date-filter { max-width: 100%; }
+  }
   .filter-group label { font-size: 10px; font-weight: bold; color: #9ca3af; margin-bottom: 3px; }
   .filter-group select, input[type="date"], input[type="text"] { width: 100%; min-width: 0; max-width: 100%; background: #030712; border: 1px solid #374151; color: #f3f4f6; padding: 7px; border-radius: 6px; font-size: 12px; height: 36px; }
   
@@ -197,6 +230,9 @@
       </button>
       <button id="tab-history-btn" onclick="switchTab('history')" class="tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Auditoria
+      </button>
+      <button id="tab-context-btn" onclick="switchTab('context')" class="tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+        Contexto NBA
       </button>
     </nav>
   </div>
@@ -500,6 +536,86 @@
 
   </section>
 
+  <!-- ==================== TAB 3: CENTRAL DE CONTEXTO NBA ==================== -->
+  <section id="tab-context" class="space-y-3 hidden">
+    <div class="glass-panel p-3 border-l-4 border-l-teal-500">
+      <h2 class="text-xs font-bold text-white uppercase tracking-wide mb-1">Central de Contexto NBA</h2>
+      <p class="text-[10px] text-gray-400">Explore o que cada defesa permite por posição. Esta área é independente do Scanner e da Auditoria.</p>
+    </div>
+
+    <div class="glass-panel p-3 space-y-3">
+      <div class="context-date-filter">
+        <div class="filter-group">
+          <label for="context-date">Data de referência</label>
+          <input type="date" id="context-date" class="context-date-input">
+        </div>
+      </div>
+      <div class="context-secondary-grid">
+        <div class="filter-group">
+          <label for="context-venue">Local</label>
+          <select id="context-venue">
+            <option value="all">Todos os jogos</option>
+            <option value="home">Em casa</option>
+            <option value="away">Fora de casa</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="context-position">Posição</label>
+          <select id="context-position">
+            <option value="G">Armadores (G)</option>
+            <option value="F">Alas (F)</option>
+            <option value="C">Pivôs (C)</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="context-stat">Estatística cedida</label>
+          <select id="context-stat">
+            <option value="points">Pontos</option>
+            <option value="assists">Assistências</option>
+            <option value="rebounds">Rebotes</option>
+            <option value="three_pa">Tentativas de 3 pts</option>
+            <option value="two_pa">Tentativas de 2 pts</option>
+            <option value="fgm">Cestas convertidas</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="context-window">Janela</label>
+          <select id="context-window">
+            <option value="L5">Últimos 5 jogos</option>
+            <option value="L10">Últimos 10 jogos</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-2">
+        <button type="button" onclick="carregarRankingContexto()" class="market-button flex-1">Consultar ranking</button>
+        <button type="button" onclick="atualizarBaseContexto()" id="context-refresh-btn" class="secondary flex-1">Atualizar base contextual</button>
+      </div>
+      <p class="text-[9px] text-gray-500">A atualização consulta a ESPN para as 30 equipes e pode demorar na primeira execução. Depois, as consultas desta data usam o banco Neon e não repetem a coleta. Atualizar novamente substitui somente o snapshot contextual da mesma data.</p>
+      <div id="context-status" class="text-[10px] text-gray-400" aria-live="polite">Selecione os filtros e consulte o ranking. Se ainda não houver dados, atualize a base contextual.</div>
+    </div>
+
+    <div class="glass-panel p-3 space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-xs font-semibold text-white">Ranking defensivo</h3>
+        <span id="context-ranking-count" class="text-[9px] text-gray-500">— equipes</span>
+      </div>
+      <p class="text-[9px] text-gray-500">Menor média cedida = defesa mais forte. Clique em uma equipe para abrir o detalhamento.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>#</th><th>Equipe</th><th>Total cedido/jogo</th><th>Jogos</th><th>Perfil</th></tr></thead>
+          <tbody id="context-ranking-table" class="text-gray-300">
+            <tr><td colspan="5" class="text-gray-400">Aguardando consulta.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="context-team-detail" class="glass-panel p-3 space-y-2">
+      <h3 class="text-xs font-semibold text-white">Detalhamento da equipe</h3>
+      <p class="text-[10px] text-gray-500">Selecione uma equipe no ranking para ver o contexto das três posições.</p>
+    </div>
+  </section>
+
 </main>
 
 <!-- Footer -->
@@ -528,7 +644,8 @@ const api = document.getElementById('api');
 const status = document.getElementById('status');
 const data = document.getElementById('data');
 
-api.value = localStorage.getItem('nbaPropsApiBase') || 'https://nba-props-scanner.onrender.com';
+const isStagingHost = window.location.hostname === 'nba-props-scanner-staging.onrender.com';
+api.value = isStagingHost ? window.location.origin : (localStorage.getItem('nbaPropsApiBase') || 'https://nba-props-scanner.onrender.com');
 
 function endereco(){
   return api.value.trim().replace(/\/$/,'');
@@ -581,29 +698,34 @@ function setAuditCohort(cohort) {
 }
 
 function switchTab(tab) {
-  const scannerTab = document.getElementById('tab-scanner');
-  const historyTab = document.getElementById('tab-history');
-  const scannerBtn = document.getElementById('tab-scanner-btn');
-  const historyBtn = document.getElementById('tab-history-btn');
-
+  const tabs = {
+    scanner: document.getElementById('tab-scanner'),
+    history: document.getElementById('tab-history'),
+    context: document.getElementById('tab-context')
+  };
+  const buttons = {
+    scanner: document.getElementById('tab-scanner-btn'),
+    history: document.getElementById('tab-history-btn'),
+    context: document.getElementById('tab-context-btn')
+  };
   const inactiveClass = "tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center";
   const activeClass = "tab-button active px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-emerald-500 text-gray-950 shadow h-6 flex items-center";
 
-  scannerBtn.className = tab === 'scanner' ? activeClass : inactiveClass;
-  historyBtn.className = tab === 'history' ? activeClass : inactiveClass;
+  Object.keys(tabs).forEach(key => {
+    tabs[key].classList.toggle('hidden', key !== tab);
+    buttons[key].className = key === tab ? activeClass : inactiveClass;
+  });
 
-  if (tab === 'scanner') {
-    scannerTab.classList.remove('hidden');
-    historyTab.classList.add('hidden');
-  } else {
-    scannerTab.classList.add('hidden');
-    historyTab.classList.remove('hidden');
-    // Reaplica o estado visual do padrão mesmo na primeira abertura da aba.
+  if (tab === 'history') {
     setAuditCohort(auditCohort);
     const auditDate = document.getElementById('audit-collection-date');
     if(auditDate && !auditDate.value) auditDate.value = data.value;
     fetchMarketComparison();
     fetchHistoryValidation();
+  } else if (tab === 'context') {
+    const contextDate = document.getElementById('context-date');
+    if(contextDate && !contextDate.value) contextDate.value = data.value;
+    carregarRankingContexto();
   }
 }
 
@@ -950,9 +1072,28 @@ function abrirAnalise(indice){
   const bandLower = p.opponent_position_minute_band_lower;
   const bandUpper = p.opponent_position_minute_band_upper;
 
+  const venueProduction = p.venue_production || {};
+  const venueValue = (venue, period, field) => {
+    const sample = venueProduction[venue] && venueProduction[venue][period];
+    return sample && sample[field] != null ? sample[field] : null;
+  };
+  const venueGames = (venue, period) => {
+    const sample = venueProduction[venue] && venueProduction[venue][period];
+    return sample ? sample.games || 0 : 0;
+  };
+  const venueAverage = (venue, period) => {
+    const value = venueValue(venue, period, 'average');
+    return value == null ? '—' : numero(value);
+  };
+  const venueMinutes = (venue, period) => {
+    const value = venueValue(venue, period, 'minutes_avg');
+    return value == null ? '—' : numero(value, 1);
+  };
+
   let html = '<div class="analysis-grid">';
   html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
 
+  html += '<div class="analysis-card"><h3>🏠 Produção por local</h3><table class="analysis-table"><tr><th></th><th>Casa</th><th>Fora</th></tr><tr><td>Temporada</td><td><b>' + venueAverage('home', 'season') + '</b></td><td><b>' + venueAverage('away', 'season') + '</b></td></tr><tr><td>Jogos · temporada</td><td>' + participacoes(venueGames('home', 'season')) + '</td><td>' + participacoes(venueGames('away', 'season')) + '</td></tr><tr><td>Últimos 10 por local</td><td><b>' + venueAverage('home', 'last10') + '</b></td><td><b>' + venueAverage('away', 'last10') + '</b></td></tr><tr><td>Jogos · recorte</td><td>' + participacoes(venueGames('home', 'last10')) + '</td><td>' + participacoes(venueGames('away', 'last10')) + '</td></tr><tr><td>Minutos · últimos 10</td><td>' + venueMinutes('home', 'last10') + '</td><td>' + venueMinutes('away', 'last10') + '</td></tr></table><div class="analysis-note">L10 calculado separadamente para jogos em casa e fora. Partidas sem mando identificado pela ESPN não entram nesta comparação. Não altera o Score.</div></div>';
   html += '<div class="analysis-card"><h3>🏟️ Participação</h3><table class="analysis-table"><tr><th>Período</th><th>Jogos</th><th>Taxa</th></tr><tr><td>L5</td><td><b>' + participacoes(p.team_games_last5_played) + '/' + participacoes(p.team_games_last5_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</b></td></tr><tr><td>L10</td><td><b>' + participacoes(p.team_games_last10_played) + '/' + participacoes(p.team_games_last10_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</b></td></tr></table></div>';
 
   html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Total cedido por jogo</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Média da liga</td><td><b>' + numero(league5) + '</b></td><td><b>' + numero(league10) + '</b></td></tr><tr><td>Desvio vs liga</td><td><b>' + (deviation5 == null ? '—' : (deviation5 > 0 ? '+' : '') + deviation5.toFixed(1) + '%') + '</b></td><td><b>' + (deviation10 == null ? '—' : (deviation10 > 0 ? '+' : '') + deviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Classificação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos da defesa</td><td>' + participacoes(p.opponent_position_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_defense_games_l10) + '</td></tr><tr><td>Jogos da liga</td><td>' + participacoes(p.league_position_allowed_l5_games) + '</td><td>' + participacoes(p.league_position_allowed_l10_games) + '</td></tr></table><div class="analysis-note">Total cedido à posição por jogo, comparado à média da liga. Classificação: diferença acima de +10%, abaixo de -10% ou dentro de ±10%.</div></div>';
@@ -984,6 +1125,61 @@ function atualizarMercadoSelecionado(){
   });
 }
 
+function renderizarResumoSelecao(selection) {
+  const summary = selection || {};
+  const analyzed = Number(summary.analyzed_candidates || 0);
+  const eligible = Number(summary.eligible_candidates || 0);
+  const displayed = Number(summary.displayed_candidates || candidatosAtuais.length);
+  const outside = Array.isArray(summary.outside_top10) ? summary.outside_top10 : [];
+  const unavailable = Array.isArray(summary.unavailable_from_initial_top10)
+    ? summary.unavailable_from_initial_top10 : [];
+
+  const playerRow = (player, extraLabel) => {
+    const score = player.triage_score == null ? '—' : numero(player.triage_score);
+    return '<div class="flex items-center justify-between gap-2 py-1.5 border-b border-gray-800 last:border-0">' +
+      '<div class="min-w-0"><div class="text-[11px] font-semibold text-white">' + escapeHtml(player.player || 'Jogador') + '</div>' +
+      '<div class="text-[9px] text-gray-500">' + escapeHtml(player.team || '—') + ' · ' + escapeHtml(player.position || '—') +
+      (extraLabel ? ' · ' + escapeHtml(extraLabel) : '') + '</div></div>' +
+      '<div class="text-[10px] text-gray-300 shrink-0">Score ' + score + '</div></div>';
+  };
+
+  const availability = resultadoAtual?.availability || {};
+  const reportWarning = availability.warning;
+  let content = '<div class="glass-panel p-2.5 space-y-1">' +
+    '<div class="flex items-center justify-between gap-2">' +
+    '<div class="text-[11px] font-bold text-white">' + displayed + ' exibidos</div>' +
+    '<div class="text-[10px] text-gray-400">' + analyzed + ' analisados</div></div>' +
+    '<div class="text-[9px] text-gray-500">' + eligible + ' permaneceram elegíveis após a verificação de disponibilidade.</div>' +
+    (reportWarning ? '<div class="text-[9px] text-amber-300 mt-1">' + escapeHtml(reportWarning) + '</div>' : '') +
+    '</div>';
+
+  if (!outside.length && !unavailable.length) return content;
+
+  content += '<details class="glass-panel p-2.5">' +
+    '<summary class="cursor-pointer text-[10px] font-semibold text-teal-300">Consulta complementar · ' +
+    outside.length + ' fora do Top 10 · ' + unavailable.length + ' retirados por indisponibilidade</summary>';
+
+  if (unavailable.length) {
+    content += '<div class="mt-3"><div class="text-[10px] font-bold text-amber-300 mb-1">Estariam no Top 10, mas foram retirados</div>' +
+      '<div class="text-[9px] text-gray-500 mb-1">Somente ausências confirmadas que ocupariam uma das dez vagas originais.</div>';
+    content += unavailable.map(player => {
+      const status = player.availability?.status_raw || 'OUT';
+      return playerRow(player, status + ' · vaga ocupada pelo próximo elegível');
+    }).join('');
+    content += '</div>';
+  }
+
+  if (outside.length) {
+    content += '<div class="mt-3"><div class="text-[10px] font-bold text-gray-300 mb-1">Elegíveis fora do Top 10</div>' +
+      '<div class="text-[9px] text-gray-500 mb-1">Passaram pelos critérios, mas ficaram abaixo do corte após a reposição das vagas.</div>';
+    content += outside.map(player => playerRow(player, 'fora da lista principal')).join('');
+    content += '</div>';
+  }
+
+  content += '</details>';
+  return content;
+}
+
 async function buscar(mercado){
   const box = document.getElementById('resultado');
   mercadoAtual = mercado;
@@ -992,7 +1188,14 @@ async function buscar(mercado){
   try{
     const r = await requisicao('/candidates?date=' + data.value + '&market=' + mercado + '&limit=20');
     if(!r.candidates || !r.candidates.length){
-      box.innerHTML = '<p class="text-[10px] text-gray-400 mt-2">Nenhum candidato.</p>';
+      candidatosAtuais = [];
+      resultadoAtual = r;
+      let emptyHtml = '<div class="space-y-2 mt-2">';
+      emptyHtml += '<div class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">' + escapeHtml(r.market_label || mercado) + ' — ' + escapeHtml(r.date || data.value) + '</div>';
+      emptyHtml += renderizarResumoSelecao(r.selection_summary);
+      emptyHtml += '<p class="text-[10px] text-gray-400 mt-2">Nenhum jogador permaneceu elegível para a lista principal nesta análise.</p>';
+      emptyHtml += '</div>';
+      box.innerHTML = emptyHtml;
       return;
     }
     candidatosAtuais = r.candidates;
@@ -1000,6 +1203,7 @@ async function buscar(mercado){
 
     let html = '<div class="space-y-2 mt-2">';
     html += '<div class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">' + escapeHtml(r.market_label) + ' — ' + escapeHtml(r.date) + '</div>';
+    html += renderizarResumoSelecao(r.selection_summary);
     html += '<div class="glass-panel p-2.5">' + filtrosHtml() + '</div>';
     html += '<div id="resultadosLista"></div>';
     html += '</div>';
@@ -1366,6 +1570,135 @@ data.addEventListener('change', limparResultadosAoMudarData);
 document.addEventListener('DOMContentLoaded', () => {
   testar();
 });
+
+
+// ============================================================
+// CENTRAL DE CONTEXTO NBA — consultas somente ao Neon
+// ============================================================
+function nomeEquipeContexto(team) {
+  const aliases = {
+    GS: 'GSW',
+    NO: 'NOP',
+    NY: 'NYK',
+    SA: 'SAS',
+    WSH: 'WAS',
+    UTAH: 'UTA'
+  };
+  return aliases[team] || team;
+}
+
+function contextoParams() {
+  const date = document.getElementById('context-date').value || data.value;
+  const venue = document.getElementById('context-venue').value;
+  const position = document.getElementById('context-position').value;
+  const stat = document.getElementById('context-stat').value;
+  const window = document.getElementById('context-window').value;
+  return { date, venue, position, stat, window };
+}
+
+async function carregarRankingContexto() {
+  const p = contextoParams();
+  const status = document.getElementById('context-status');
+  const body = document.getElementById('context-ranking-table');
+  body.innerHTML = '<tr><td colspan="5" class="text-gray-400">Consultando dados salvos...</td></tr>';
+  status.innerText = 'Lendo snapshot contextual do Neon...';
+  try {
+    const query = '/context/defense/rankings?date=' + encodeURIComponent(p.date) +
+      '&position=' + p.position + '&stat=' + p.stat + '&window=' + p.window +
+      '&venue=' + p.venue;
+    const result = await requisicao(query);
+    if(result.status === 'not_ready') {
+      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">Ainda não há dados para esta data. Use “Atualizar base contextual”.</td></tr>';
+      document.getElementById('context-ranking-count').innerText = '0 equipes';
+      status.innerText = result.message;
+      return;
+    }
+    body.innerHTML = (result.ranking || []).map(item => {
+      const label = item.rank <= Math.max(1, Math.round(result.ranking.length * .25))
+        ? '<span class="text-emerald-400">Mais forte</span>'
+        : item.rank > Math.round(result.ranking.length * .75)
+          ? '<span class="text-red-400">Mais vulnerável</span>'
+          : '<span class="text-gray-400">Intermediária</span>';
+      return '<tr class="cursor-pointer" onclick="carregarDetalheContexto(\'' + escapeHtml(item.team) + '\')">' +
+        '<td>' + item.rank + '</td><td class="font-bold text-white">' + escapeHtml(nomeEquipeContexto(item.team)) + '</td>' +
+        '<td class="font-bold text-white">' + numero(item.allowed_per_game, 1) + '</td>' +
+        '<td>' + (item.games_analyzed || 0) + '</td><td>' + label + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="text-gray-400">Sem amostra válida para os filtros selecionados.</td></tr>';
+    document.getElementById('context-ranking-count').innerText = result.teams_available + ' equipes';
+    const venueLabel = p.venue === 'home' ? 'em casa' : p.venue === 'away' ? 'fora de casa' : 'todos os jogos';
+    status.innerText = result.stat_label + ' · posição ' + result.position + ' · ' + result.window +
+      ' · ' + venueLabel + ' · ' + result.date + ' · menor valor = defesa mais forte.';
+  } catch(error) {
+    body.innerHTML = '<tr><td colspan="5" class="text-red-400">Falha ao consultar ranking contextual.</td></tr>';
+    status.innerText = 'Erro: ' + error.message;
+  }
+}
+
+async function atualizarBaseContexto() {
+  const p = contextoParams();
+  const button = document.getElementById('context-refresh-btn');
+  const status = document.getElementById('context-status');
+  button.disabled = true;
+  button.classList.add('opacity-60', 'cursor-not-allowed');
+  status.innerText = 'Atualizando as 30 equipes pela ESPN. A primeira coleta pode demorar...';
+  try {
+    const response = await fetch(endereco() + '/context/defense/refresh?date=' + encodeURIComponent(p.date), { method: 'POST' });
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.detail || 'Falha HTTP ' + response.status);
+    const collected = result.teams_collected ?? result.teams_saved ?? 0;
+    let updateMessage;
+    if(result.status === 'ok') {
+      updateMessage = 'Atualização completa: ' + result.teams_saved + '/' + result.teams_expected +
+        ' equipes salvas na mesma captura.';
+    } else if(result.status === 'partial') {
+      updateMessage = 'Atualização parcial: ' + collected + '/' + result.teams_expected +
+        ' equipes coletadas; nenhum dado novo foi gravado para evitar misturar capturas. ' +
+        result.teams_with_errors + ' falhas. Snapshot anterior preservado.';
+    } else {
+      updateMessage = 'Falha total: nenhuma equipe foi salva. Snapshot anterior preservado, se existente.';
+    }
+    await carregarRankingContexto();
+    status.innerText = updateMessage;
+  } catch(error) {
+    status.innerText = 'Não foi possível atualizar a base: ' + error.message;
+  } finally {
+    button.disabled = false;
+    button.classList.remove('opacity-60', 'cursor-not-allowed');
+  }
+}
+
+async function carregarDetalheContexto(team) {
+  const p = contextoParams();
+  const box = document.getElementById('context-team-detail');
+  const teamLabel = nomeEquipeContexto(team);
+  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><p class="text-[10px] text-gray-400">Carregando histórico...</p>';
+  try {
+    const result = await requisicao('/context/defense/team/' + encodeURIComponent(team) + '?date=' + encodeURIComponent(p.date));
+    const history = result.history || {};
+    const statKeys = [
+      ['points','Pontos'],['assists','Assistências'],['rebounds','Rebotes'],
+      ['three_pa','Tentativas de 3 pts'],['two_pa','Tentativas de 2 pts'],['fgm','Cestas convertidas']
+    ];
+    let html = '<div class="flex items-center justify-between gap-2"><h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><span class="text-[9px] text-gray-500">Atualizado: ' + escapeHtml(result.captured_at || '—') + '</span></div>';
+    html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">';
+    ['G','F','C'].forEach(position => {
+      html += '<div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><div class="text-[10px] font-bold text-teal-300 mb-2">' +
+        (position === 'G' ? 'Armadores (G)' : position === 'F' ? 'Alas (F)' : 'Pivôs (C)') + '</div>';
+      html += '<div class="tablewrap"><table><thead><tr><th>Estatística</th><th>L5</th><th>L10</th></tr></thead><tbody>';
+      statKeys.forEach(([key,label]) => {
+        const l5 = history.L5?.positions?.[position]?.averages?.[key];
+        const l10 = history.L10?.positions?.[position]?.averages?.[key];
+        html += '<tr><td>' + label + '</td><td>' + numero(l5,1) + '</td><td>' + numero(l10,1) + '</td></tr>';
+      });
+      html += '</tbody></table></div></div>';
+    });
+    html += '</div><p class="text-[9px] text-gray-500">Valores representam totais cedidos aos jogadores da posição por partida; a amostra de jogos de cada estatística pode variar.</p>';
+    box.innerHTML = html;
+  } catch(error) {
+    box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
+  }
+}
+
 </script>
 
 </body>

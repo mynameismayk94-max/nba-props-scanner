@@ -19,6 +19,15 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.teammate_context import (
+    build_candidate_teammate_context,
+    extract_team_player_status,
+)
+from app.availability_context import (
+    parse_espn_injuries,
+    select_eligible_players,
+)
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nba_props_scanner")
@@ -26,7 +35,7 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.16.0"
+    version="3.17.0"
 )
 
 app.add_middleware(
@@ -1245,6 +1254,7 @@ def get_completed_team_games(
             continue
 
         opponent = None
+        home_away = None
 
         for competitor in competition.get(
             "competitors",
@@ -1256,19 +1266,19 @@ def get_completed_team_games(
                 .get("abbreviation")
             )
 
-            if competitor_team != team_abbr:
+            if competitor_team == team_abbr:
+                home_away = competitor.get("homeAway")
+            else:
                 opponent = competitor_team
-                break
 
-        if not opponent:
+        if not opponent or home_away not in {"home", "away"}:
             continue
 
         games.append({
-            "game_id": str(
-                event.get("id")
-            ),
+            "game_id": str(event.get("id")),
             "date": event.get("date"),
-            "opponent": opponent
+            "opponent": opponent,
+            "home_away": home_away
         })
 
     games.sort(
@@ -1316,18 +1326,33 @@ def get_game_summary(
 def get_team_defense_history(
     team_abbr,
     limit=10,
-    target_date=None
+    target_date=None,
+    force_refresh=False
 ):
 
     if target_date is None:
         target_date = date.today()
 
-    games = [
-        game
-        for game in get_team_regular_season_schedule(
+    if force_refresh:
+        schedule = request_json(
+            f"https://site.api.espn.com/apis/site/v2/sports/"
+            f"basketball/nba/teams/{team_abbr.lower()}/schedule",
+            {"season": season_year(target_date)}
+        )
+        schedule_games = get_completed_team_games(
+            schedule,
+            team_abbr.upper(),
+            1000
+        )
+    else:
+        schedule_games = get_team_regular_season_schedule(
             team_abbr.upper(),
             season_year(target_date)
         )
+
+    games = [
+        game
+        for game in schedule_games
         if (
             game.get("date") or ""
         )[:10] < target_date.isoformat()
@@ -1343,9 +1368,15 @@ def get_team_defense_history(
 
     def fetch_game_defense(game):
 
-        summary = get_game_summary(
-            str(game["game_id"])
-        )
+        if force_refresh:
+            summary = request_json(
+                SUMMARY_URL,
+                {"event": str(game["game_id"])}
+            )
+        else:
+            summary = get_game_summary(
+                str(game["game_id"])
+            )
 
         stats = extract_team_defense_stats(
             summary,
@@ -1580,6 +1611,20 @@ def get_team_defense_history(
         }
 
     return history
+
+
+def get_team_defense_history_fresh(
+    team_abbr,
+    limit=10,
+    target_date=None
+):
+    """Atualiza a Central sem ler/escrever nos caches compartilhados do Scanner."""
+    return get_team_defense_history.__wrapped__(
+        team_abbr,
+        limit,
+        target_date,
+        True
+    )
 
 
 def fetch_espn_games(
@@ -1959,6 +2004,11 @@ def get_athlete_logs(
                 "opponent": (
                     metadata.get("opponent") or {}
                 ).get("abbreviation"),
+                "home_away": (
+                    str(metadata.get("homeAway") or "").strip().lower()
+                    if str(metadata.get("homeAway") or "").strip().lower() in {"home", "away"}
+                    else None
+                ),
                 "minutes": parse_minutes(
                     stats[0]
                 ),
@@ -1976,6 +2026,43 @@ def get_athlete_logs(
                     stats[13]
                 )
             }
+
+    # O endpoint de game log nem sempre inclui homeAway em events.
+    # Completa o mando pela agenda oficial da equipe, que já expõe
+    # competitor.homeAway e é compartilhada em cache por equipe/temporada.
+    teams_missing_venue = {
+        game.get("team")
+        for game in games.values()
+        if not game.get("home_away") and game.get("team")
+    }
+
+    for team_abbr in teams_missing_venue:
+        try:
+            team_schedule = get_team_regular_season_schedule(
+                team_abbr.upper(),
+                year
+            )
+            venue_by_event = {
+                str(team_game.get("game_id")): team_game.get("home_away")
+                for team_game in team_schedule
+                if team_game.get("home_away") in {"home", "away"}
+            }
+
+            for game in games.values():
+                if (
+                    game.get("team", "").upper() == team_abbr.upper()
+                    and not game.get("home_away")
+                ):
+                    game["home_away"] = venue_by_event.get(
+                        str(game.get("event_id"))
+                    )
+        except Exception as error:
+            logger.warning(
+                "Não foi possível completar mando do game log para %s/%s: %s",
+                team_abbr,
+                year,
+                error
+            )
 
     ordered = sorted(
         games.values(),
@@ -2247,6 +2334,7 @@ def get_league_position_defense_baseline(year, target_date_iso):
     }
 
     summaries = {}
+    player_status_by_game = {}
 
     def fetch_summary(game_id):
         return game_id, get_game_summary(game_id)
@@ -2259,6 +2347,22 @@ def get_league_position_defense_baseline(year, target_date_iso):
                 summaries[game_id] = summary
             except Exception as error:
                 logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
+
+    # Aproveita os mesmos boxscores já carregados pelo benchmark defensivo.
+    # Não dispara nenhuma chamada adicional à ESPN para o contexto de companheiros.
+    for game_id, summary in summaries.items():
+        status_index = {}
+        player_blocks = (summary.get("boxscore") or {}).get("players") or []
+        team_abbreviations = {
+            str((block.get("team") or {}).get("abbreviation") or "").upper()
+            for block in player_blocks
+            if (block.get("team") or {}).get("abbreviation")
+        }
+        for team_abbr in team_abbreviations:
+            status_index.update(
+                extract_team_player_status(summary, team_abbr)
+            )
+        player_status_by_game[str(game_id)] = status_index
 
     stat_keys = ("points", "assists", "rebounds", "fga", "three_pa", "two_pa", "fgm")
     samples = {
@@ -2316,7 +2420,8 @@ def get_league_position_defense_baseline(year, target_date_iso):
         "positions": {},
         "minute_player_samples": minute_player_samples,
         "teams_analyzed": len(team_samples),
-        "unique_games": len(summaries)
+        "unique_games": len(summaries),
+        "player_status_by_game": player_status_by_game
     }
     for position in ("G", "F", "C"):
         result["positions"][position] = {}
@@ -2433,6 +2538,51 @@ def get_opponents_for_date(
         opponents[away] = home
 
     return opponents
+
+
+def build_player_venue_production(games, target_date, stat_key):
+    """
+    Produção individual por mando de quadra.
+    L10 é independente por local; a temporada considera todos os jogos
+    anteriores à data-alvo com homeAway válido.
+    """
+    previous_games = [
+        game for game in games
+        if game.get("date") and game["date"] < target_date.isoformat()
+    ]
+
+    result = {}
+    for venue in ("home", "away"):
+        venue_games = [
+            game for game in previous_games
+            if game.get("home_away") == venue
+            and game.get(stat_key) is not None
+        ]
+        last10 = venue_games[:10]
+
+        def summarize(sample):
+            if not sample:
+                return {
+                    "average": None,
+                    "games": 0,
+                    "minutes_avg": None
+                }
+            return {
+                "average": round(
+                    sum(float(game[stat_key]) for game in sample) / len(sample), 2
+                ),
+                "games": len(sample),
+                "minutes_avg": round(
+                    sum(float(game.get("minutes") or 0) for game in sample) / len(sample), 1
+                )
+            }
+
+        result[venue] = {
+            "season": summarize(venue_games),
+            "last10": summarize(last10)
+        }
+
+    return result
 
 
 def build_player_result(
@@ -2737,6 +2887,9 @@ def build_player_result(
         "last5_avg": round(avg5, 2),
         "last10_avg": round(avg10, 2),
         "minutes_last5_avg": round(minutes_avg, 1),
+        "venue_production": build_player_venue_production(
+            games, target_date, stat_key
+        ),
         "triage_score": round(score, 2),
         "games_last5": len(last5),
         "games_last10": len(last10),
@@ -2913,6 +3066,36 @@ def collect_candidates(
     roster_elapsed = time.perf_counter() - stage_start
 
     players = roster_data["players"]
+
+    # Relatório atual da ESPN usado somente para elegibilidade pré-jogo.
+    # Não altera triage_score nem a fotografia imutável dos candidatos.
+    availability_start = time.perf_counter()
+    availability_report_status = "ok"
+    availability_report_warning = None
+    try:
+        injury_payload = request_json(
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
+        )
+        injury_index = parse_espn_injuries(injury_payload)
+        if not injury_index:
+            availability_report_status = "empty"
+            availability_report_warning = "A ESPN retornou um relatório válido, mas sem atletas listados."
+            logger.warning("Relatório de lesões ESPN vazio; nenhum atleta será presumido ativo.")
+    except Exception as error:
+        injury_index = {}
+        availability_report_status = "unavailable"
+        availability_report_warning = "Não foi possível validar o relatório de lesões; confira a disponibilidade manualmente."
+        logger.warning("Falha ao consultar disponibilidade ESPN: %s", error)
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=disponibilidade status=%s reportados=%s tempo=%.2fs",
+        selected_date,
+        market,
+        availability_report_status,
+        len(injury_index),
+        time.perf_counter() - availability_start
+    )
+
     opponents = get_opponents_for_date(
         roster_data["schedule"]
     )
@@ -3149,19 +3332,106 @@ def collect_candidates(
 
     final_limit = min(limit, 10)
 
+    # Remove somente ausências confirmadas depois de salvar o snapshot.
+    # Assim o histórico original e o triage_score permanecem intactos.
+    (
+        displayed_results,
+        unavailable_top10_results,
+        outside_top10_results,
+        eligible_all_results,
+    ) = select_eligible_players(
+        results,
+        injury_index,
+        limit=final_limit
+    )
+
+    # O contexto é anexado somente à resposta, depois do snapshot imutável.
+    # Assim não altera candidate_snapshots, Auditoria nem triage_score.
+    context_start = time.perf_counter()
+    if league_baseline and league_baseline.get("player_status_by_game"):
+        player_logs_by_id = player_logs
+        roster_by_team = {}
+        for roster_player in players:
+            roster_by_team.setdefault(
+                str(roster_player.get("team") or "").upper(), []
+            ).append(roster_player)
+
+        candidate_lookup = {
+            str(player.get("id")): (player, logs)
+            for player, logs in eligible_players
+        }
+        status_index = league_baseline["player_status_by_game"]
+
+        for result in displayed_results:
+            candidate_id = str(result.get("player_id") or "")
+            candidate_entry = candidate_lookup.get(candidate_id)
+            if not candidate_entry:
+                continue
+            candidate_player, candidate_logs = candidate_entry
+            team = str(candidate_player.get("team") or "").upper()
+            team_games = [
+                game for game in get_team_regular_season_schedule(team, year)
+                if (game.get("date") or "")[:10] < target_date.isoformat()
+            ]
+            team_games.sort(
+                key=lambda game: game.get("date") or "", reverse=True
+            )
+            team_games = team_games[:10]
+
+            # Garante que o próprio histórico do candidato seja a fonte
+            # usada no split, sem uma segunda consulta de atleta.
+            player_logs_by_id[candidate_id] = (candidate_player, candidate_logs)
+            result["teammate_context"] = build_candidate_teammate_context(
+                candidate_id=candidate_id,
+                team=team,
+                roster=roster_by_team.get(team, []),
+                player_logs_by_id=player_logs_by_id,
+                team_games=team_games,
+                teammate_status_by_game=status_index
+            )
+    context_elapsed = time.perf_counter() - context_start
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=contexto_companheiros candidatos=%s jogos_boxscore=%s tempo=%.2fs",
+        selected_date,
+        market,
+        sum(1 for item in displayed_results if item.get("teammate_context")),
+        len(league_baseline.get("player_status_by_game", {})) if league_baseline else 0,
+        context_elapsed
+    )
+
     return {
         "date": selected_date,
         "market": market,
         "market_label": MARKETS[market]["label"],
-        "count": min(len(results), final_limit),
+        "count": len(displayed_results),
+        "selection_summary": {
+            "analyzed_candidates": len(results),
+            "eligible_candidates": len(eligible_all_results),
+            "displayed_candidates": len(displayed_results),
+            "outside_top10_count": len(outside_top10_results),
+            "unavailable_from_initial_top10_count": len(unavailable_top10_results),
+            "unavailable_from_initial_top10": unavailable_top10_results,
+            "outside_top10": outside_top10_results,
+        },
         "source": "ESPN",
         "season": season_for(target_date),
         "teams_found": roster_data["teams_found"],
         "players_found": len(players),
         "players_consulted": successful_logs,
         "players_with_errors": errors,
+        "availability": {
+            "source": "ESPN",
+            "report_status": availability_report_status,
+            "warning": availability_report_warning,
+            "reported_players": len(injury_index),
+            "confirmed_out_removed": len(unavailable_top10_results),
+            "uncertain_kept": sum(
+                1 for item in displayed_results
+                if (item.get("availability") or {}).get("availability") == "uncertain"
+            ),
+        },
         "updated_at": datetime.now().isoformat(),
-        "candidates": results[:final_limit]
+        "candidates": displayed_results
     }
 
 
@@ -3170,7 +3440,7 @@ def health():
     return {
         "status": "ok",
         "service": "NBA Props Scanner",
-        "version": "3.15.0",
+        "version": "3.17.0",
         "source": "ESPN"
     }
 
@@ -4331,3 +4601,19 @@ def home():
     if not INDEX_FILE.is_file():
         raise HTTPException(status_code=404, detail="Arquivo index.html não encontrado.")
     return FileResponse(INDEX_FILE, media_type="text/html")
+
+
+# ============================================================
+# CENTRAL DE CONTEXTO NBA (MÓDULO INDEPENDENTE)
+# ============================================================
+# A Central usa armazenamento próprio e não participa do fluxo de
+# candidatos, do triage_score ou das tabelas da Auditoria.
+from app.context_center import create_context_router
+
+app.include_router(
+    create_context_router(
+        get_database_connection,
+        get_team_defense_history_fresh,
+        NBA_TEAM_ABBREVIATIONS
+    )
+)
