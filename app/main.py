@@ -3325,7 +3325,12 @@ def collect_candidates(
 
     # Remove somente ausências confirmadas depois de salvar o snapshot.
     # Assim o histórico original e o triage_score permanecem intactos.
-    eligible_results, unavailable_results = select_eligible_players(
+    (
+        displayed_results,
+        unavailable_top10_results,
+        outside_top10_results,
+        eligible_all_results,
+    ) = select_eligible_players(
         results,
         injury_index,
         limit=final_limit
@@ -3348,7 +3353,7 @@ def collect_candidates(
         }
         status_index = league_baseline["player_status_by_game"]
 
-        for result in eligible_results[:final_limit]:
+        for result in displayed_results:
             candidate_id = str(result.get("player_id") or "")
             candidate_entry = candidate_lookup.get(candidate_id)
             if not candidate_entry:
@@ -3380,7 +3385,7 @@ def collect_candidates(
         "Candidatos timing: data=%s mercado=%s etapa=contexto_companheiros candidatos=%s jogos_boxscore=%s tempo=%.2fs",
         selected_date,
         market,
-        sum(1 for item in eligible_results[:final_limit] if item.get("teammate_context")),
+        sum(1 for item in displayed_results if item.get("teammate_context")),
         len(league_baseline.get("player_status_by_game", {})) if league_baseline else 0,
         context_elapsed
     )
@@ -3389,7 +3394,16 @@ def collect_candidates(
         "date": selected_date,
         "market": market,
         "market_label": MARKETS[market]["label"],
-        "count": min(len(eligible_results), final_limit),
+        "count": len(displayed_results),
+        "selection_summary": {
+            "analyzed_candidates": len(results),
+            "eligible_candidates": len(eligible_all_results),
+            "displayed_candidates": len(displayed_results),
+            "outside_top10_count": len(outside_top10_results),
+            "unavailable_from_initial_top10_count": len(unavailable_top10_results),
+            "unavailable_from_initial_top10": unavailable_top10_results,
+            "outside_top10": outside_top10_results,
+        },
         "source": "ESPN",
         "season": season_for(target_date),
         "teams_found": roster_data["teams_found"],
@@ -3399,14 +3413,14 @@ def collect_candidates(
         "availability": {
             "source": "ESPN",
             "reported_players": len(injury_index),
-            "confirmed_out_removed": len(unavailable_results),
+            "confirmed_out_removed": len(unavailable_top10_results),
             "uncertain_kept": sum(
-                1 for item in eligible_results
+                1 for item in displayed_results
                 if (item.get("availability") or {}).get("availability") == "uncertain"
             ),
         },
         "updated_at": datetime.now().isoformat(),
-        "candidates": eligible_results[:final_limit]
+        "candidates": displayed_results
     }
 
 
