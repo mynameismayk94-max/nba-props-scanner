@@ -23,6 +23,10 @@ from app.teammate_context import (
     build_candidate_teammate_context,
     extract_team_player_status,
 )
+from app.availability_context import (
+    parse_espn_injuries,
+    select_eligible_players,
+)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -3062,6 +3066,27 @@ def collect_candidates(
     roster_elapsed = time.perf_counter() - stage_start
 
     players = roster_data["players"]
+
+    # Relatório atual da ESPN usado somente para elegibilidade pré-jogo.
+    # Não altera triage_score nem a fotografia imutável dos candidatos.
+    availability_start = time.perf_counter()
+    try:
+        injury_payload = request_json(
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
+        )
+        injury_index = parse_espn_injuries(injury_payload)
+    except Exception as error:
+        injury_index = {}
+        logger.warning("Falha ao consultar disponibilidade ESPN: %s", error)
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=disponibilidade reportados=%s tempo=%.2fs",
+        selected_date,
+        market,
+        len(injury_index),
+        time.perf_counter() - availability_start
+    )
+
     opponents = get_opponents_for_date(
         roster_data["schedule"]
     )
@@ -3298,6 +3323,14 @@ def collect_candidates(
 
     final_limit = min(limit, 10)
 
+    # Remove somente ausências confirmadas depois de salvar o snapshot.
+    # Assim o histórico original e o triage_score permanecem intactos.
+    eligible_results, unavailable_results = select_eligible_players(
+        results,
+        injury_index,
+        limit=final_limit
+    )
+
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
     context_start = time.perf_counter()
@@ -3315,7 +3348,7 @@ def collect_candidates(
         }
         status_index = league_baseline["player_status_by_game"]
 
-        for result in results[:final_limit]:
+        for result in eligible_results[:final_limit]:
             candidate_id = str(result.get("player_id") or "")
             candidate_entry = candidate_lookup.get(candidate_id)
             if not candidate_entry:
@@ -3347,7 +3380,7 @@ def collect_candidates(
         "Candidatos timing: data=%s mercado=%s etapa=contexto_companheiros candidatos=%s jogos_boxscore=%s tempo=%.2fs",
         selected_date,
         market,
-        sum(1 for item in results[:final_limit] if item.get("teammate_context")),
+        sum(1 for item in eligible_results[:final_limit] if item.get("teammate_context")),
         len(league_baseline.get("player_status_by_game", {})) if league_baseline else 0,
         context_elapsed
     )
@@ -3356,15 +3389,24 @@ def collect_candidates(
         "date": selected_date,
         "market": market,
         "market_label": MARKETS[market]["label"],
-        "count": min(len(results), final_limit),
+        "count": min(len(eligible_results), final_limit),
         "source": "ESPN",
         "season": season_for(target_date),
         "teams_found": roster_data["teams_found"],
         "players_found": len(players),
         "players_consulted": successful_logs,
         "players_with_errors": errors,
+        "availability": {
+            "source": "ESPN",
+            "reported_players": len(injury_index),
+            "confirmed_out_removed": len(unavailable_results),
+            "uncertain_kept": sum(
+                1 for item in eligible_results
+                if (item.get("availability") or {}).get("availability") == "uncertain"
+            ),
+        },
         "updated_at": datetime.now().isoformat(),
-        "candidates": results[:final_limit]
+        "candidates": eligible_results[:final_limit]
     }
 
 
