@@ -3070,19 +3070,28 @@ def collect_candidates(
     # Relatório atual da ESPN usado somente para elegibilidade pré-jogo.
     # Não altera triage_score nem a fotografia imutável dos candidatos.
     availability_start = time.perf_counter()
+    availability_report_status = "ok"
+    availability_report_warning = None
     try:
         injury_payload = request_json(
             "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
         )
         injury_index = parse_espn_injuries(injury_payload)
+        if not injury_index:
+            availability_report_status = "empty"
+            availability_report_warning = "A ESPN retornou um relatório válido, mas sem atletas listados."
+            logger.warning("Relatório de lesões ESPN vazio; nenhum atleta será presumido ativo.")
     except Exception as error:
         injury_index = {}
+        availability_report_status = "unavailable"
+        availability_report_warning = "Não foi possível validar o relatório de lesões; confira a disponibilidade manualmente."
         logger.warning("Falha ao consultar disponibilidade ESPN: %s", error)
 
     logger.info(
-        "Candidatos timing: data=%s mercado=%s etapa=disponibilidade reportados=%s tempo=%.2fs",
+        "Candidatos timing: data=%s mercado=%s etapa=disponibilidade status=%s reportados=%s tempo=%.2fs",
         selected_date,
         market,
+        availability_report_status,
         len(injury_index),
         time.perf_counter() - availability_start
     )
@@ -3412,6 +3421,8 @@ def collect_candidates(
         "players_with_errors": errors,
         "availability": {
             "source": "ESPN",
+            "report_status": availability_report_status,
+            "warning": availability_report_warning,
             "reported_players": len(injury_index),
             "confirmed_out_removed": len(unavailable_top10_results),
             "uncertain_kept": sum(
