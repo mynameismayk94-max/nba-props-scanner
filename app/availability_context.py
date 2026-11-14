@@ -1,8 +1,8 @@
 """Motor de disponibilidade pré-jogo baseado no relatório atual da ESPN.
 
-A regra é conservadora: somente status explícitos de ausência definitiva
-retiram um jogador da lista de elegíveis. Questionable/Day-To-Day/Doubtful
-continuam como incerteza e não são tratados como ausência confirmada.
+Somente ausências confirmadas retiram um atleta da lista principal.
+A interface recebe apenas os indisponíveis que ocupariam uma vaga no Top 10
+original; outros atletas OUT não são expostos como uma lista de lesionados.
 """
 from __future__ import annotations
 
@@ -10,18 +10,13 @@ CONFIRMED_OUT_STATUSES = {
     "out", "inactive", "suspended", "injured reserve", "ir",
     "not active", "did not dress",
 }
-
 UNCERTAIN_STATUSES = {
     "questionable", "doubtful", "day-to-day", "day to day",
     "probable", "game time decision", "gtd",
 }
 
-
 def _normalize(value) -> str:
-    return " ".join(
-        str(value or "").strip().lower().replace("_", " ").replace("-", " ").split()
-    )
-
+    return " ".join(str(value or "").strip().lower().replace("_", " ").replace("-", " ").split())
 
 def classify_injury_status(status: str | None) -> str:
     normalized = _normalize(status)
@@ -33,9 +28,7 @@ def classify_injury_status(status: str | None) -> str:
         return "unknown"
     return "reported_active"
 
-
 def parse_espn_injuries(payload: dict) -> dict[str, dict]:
-    """Converte o relatório league-wide da ESPN em atleta -> disponibilidade."""
     result: dict[str, dict] = {}
     for team_block in payload.get("injuries") or []:
         team = team_block.get("team") or {}
@@ -58,56 +51,46 @@ def parse_espn_injuries(payload: dict) -> dict[str, dict]:
             }
     return result
 
+def _availability_for_player(player: dict, injury_index: dict[str, dict]) -> dict:
+    info = injury_index.get(str(player.get("player_id") or ""))
+    if info:
+        return info
+    return {
+        "player_id": str(player.get("player_id") or ""),
+        "player": player.get("player") or "Jogador",
+        "team": str(player.get("team") or "").upper(),
+        "status_raw": None,
+        "availability": "no_injury_report",
+        "type": None,
+        "detail": None,
+        "date": None,
+    }
 
-def enrich_players_with_availability(players: list[dict], injury_index: dict[str, dict]) -> list[dict]:
-    """Anexa disponibilidade sem alterar score, posição ou ordem."""
-    enriched = []
-    for player in players:
-        item = dict(player)
-        info = injury_index.get(str(player.get("id")))
-        item["availability"] = info or {
-            "player_id": str(player.get("id") or ""),
-            "player": player.get("player") or "Jogador",
-            "team": str(player.get("team") or "").upper(),
-            "status_raw": None,
-            "availability": "no_injury_report",
-            "type": None,
-            "detail": None,
-            "date": None,
-        }
-        enriched.append(item)
-    return enriched
+def select_eligible_players(results: list[dict], injury_index: dict[str, dict], limit: int = 10):
+    """Retorna exibidos, OUT do Top 10 original, elegíveis fora do corte e todos elegíveis."""
+    final_limit = max(1, int(limit))
+    initial_top_ids = {str(item.get("player_id") or "") for item in results[:final_limit]}
+    eligible_all = []
+    removed_from_initial_top = []
 
-
-def select_eligible_players(
-    results: list[dict],
-    injury_index: dict[str, dict],
-    limit: int = 10,
-) -> tuple[list[dict], list[dict]]:
-    """Remove apenas ausências confirmadas e preenche a lista até o limite.
-
-    Questionable/Doubtful/Day-To-Day permanecem elegíveis e carregam
-    incerteza para a futura interface.
-    """
-    eligible = []
-    removed = []
     for result in results:
-        info = injury_index.get(str(result.get("player_id") or ""))
+        player_id = str(result.get("player_id") or "")
+        info = injury_index.get(player_id)
         if info and info.get("availability") == "confirmed_out":
-            removed.append({
-                "player_id": str(result.get("player_id") or ""),
-                "player": result.get("player"),
-                "team": result.get("team"),
-                "availability": info,
-                "reason": "confirmed_out",
-            })
+            if player_id in initial_top_ids:
+                removed = dict(result)
+                removed["availability"] = info
+                removed["reason"] = "confirmed_out"
+                removed_from_initial_top.append(removed)
             continue
+
         item = dict(result)
-        item["availability"] = info or {
-            "availability": "no_injury_report",
-            "status_raw": None,
-        }
-        eligible.append(item)
-        if len(eligible) >= max(1, int(limit)):
-            break
-    return eligible, removed
+        item["availability"] = _availability_for_player(result, injury_index)
+        eligible_all.append(item)
+
+    return (
+        eligible_all[:final_limit],
+        removed_from_initial_top,
+        eligible_all[final_limit:],
+        eligible_all,
+    )
