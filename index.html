@@ -1125,6 +1125,57 @@ function atualizarMercadoSelecionado(){
   });
 }
 
+function renderizarResumoSelecao(selection) {
+  const summary = selection || {};
+  const analyzed = Number(summary.analyzed_candidates || 0);
+  const eligible = Number(summary.eligible_candidates || 0);
+  const displayed = Number(summary.displayed_candidates || candidatosAtuais.length);
+  const outside = Array.isArray(summary.outside_top10) ? summary.outside_top10 : [];
+  const unavailable = Array.isArray(summary.unavailable_from_initial_top10)
+    ? summary.unavailable_from_initial_top10 : [];
+
+  const playerRow = (player, extraLabel) => {
+    const score = player.triage_score == null ? '—' : numero(player.triage_score);
+    return '<div class="flex items-center justify-between gap-2 py-1.5 border-b border-gray-800 last:border-0">' +
+      '<div class="min-w-0"><div class="text-[11px] font-semibold text-white">' + escapeHtml(player.player || 'Jogador') + '</div>' +
+      '<div class="text-[9px] text-gray-500">' + escapeHtml(player.team || '—') + ' · ' + escapeHtml(player.position || '—') +
+      (extraLabel ? ' · ' + escapeHtml(extraLabel) : '') + '</div></div>' +
+      '<div class="text-[10px] text-gray-300 shrink-0">Score ' + score + '</div></div>';
+  };
+
+  let content = '<div class="glass-panel p-2.5 space-y-1">' +
+    '<div class="flex items-center justify-between gap-2">' +
+    '<div class="text-[11px] font-bold text-white">' + displayed + ' exibidos</div>' +
+    '<div class="text-[10px] text-gray-400">' + analyzed + ' analisados</div></div>' +
+    '<div class="text-[9px] text-gray-500">' + eligible + ' permaneceram elegíveis após a verificação de disponibilidade.</div></div>';
+
+  if (!outside.length && !unavailable.length) return content;
+
+  content += '<details class="glass-panel p-2.5">' +
+    '<summary class="cursor-pointer text-[10px] font-semibold text-teal-300">Consulta complementar · ' +
+    outside.length + ' fora do Top 10 · ' + unavailable.length + ' retirados por indisponibilidade</summary>';
+
+  if (unavailable.length) {
+    content += '<div class="mt-3"><div class="text-[10px] font-bold text-amber-300 mb-1">Estariam no Top 10, mas foram retirados</div>' +
+      '<div class="text-[9px] text-gray-500 mb-1">Somente ausências confirmadas que ocupariam uma das dez vagas originais.</div>';
+    content += unavailable.map(player => {
+      const status = player.availability?.status_raw || 'OUT';
+      return playerRow(player, status + ' · vaga ocupada pelo próximo elegível');
+    }).join('');
+    content += '</div>';
+  }
+
+  if (outside.length) {
+    content += '<div class="mt-3"><div class="text-[10px] font-bold text-gray-300 mb-1">Elegíveis fora do Top 10</div>' +
+      '<div class="text-[9px] text-gray-500 mb-1">Passaram pelos critérios, mas ficaram abaixo do corte após a reposição das vagas.</div>';
+    content += outside.map(player => playerRow(player, 'fora da lista principal')).join('');
+    content += '</div>';
+  }
+
+  content += '</details>';
+  return content;
+}
+
 async function buscar(mercado){
   const box = document.getElementById('resultado');
   mercadoAtual = mercado;
@@ -1141,6 +1192,7 @@ async function buscar(mercado){
 
     let html = '<div class="space-y-2 mt-2">';
     html += '<div class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">' + escapeHtml(r.market_label) + ' — ' + escapeHtml(r.date) + '</div>';
+    html += renderizarResumoSelecao(r.selection_summary);
     html += '<div class="glass-panel p-2.5">' + filtrosHtml() + '</div>';
     html += '<div id="resultadosLista"></div>';
     html += '</div>';
