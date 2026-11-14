@@ -1143,11 +1143,15 @@ function renderizarResumoSelecao(selection) {
       '<div class="text-[10px] text-gray-300 shrink-0">Score ' + score + '</div></div>';
   };
 
+  const availability = resultadoAtual?.availability || {};
+  const reportWarning = availability.warning;
   let content = '<div class="glass-panel p-2.5 space-y-1">' +
     '<div class="flex items-center justify-between gap-2">' +
     '<div class="text-[11px] font-bold text-white">' + displayed + ' exibidos</div>' +
     '<div class="text-[10px] text-gray-400">' + analyzed + ' analisados</div></div>' +
-    '<div class="text-[9px] text-gray-500">' + eligible + ' permaneceram elegíveis após a verificação de disponibilidade.</div></div>';
+    '<div class="text-[9px] text-gray-500">' + eligible + ' permaneceram elegíveis após a verificação de disponibilidade.</div>' +
+    (reportWarning ? '<div class="text-[9px] text-amber-300 mt-1">' + escapeHtml(reportWarning) + '</div>' : '') +
+    '</div>';
 
   if (!outside.length && !unavailable.length) return content;
 
