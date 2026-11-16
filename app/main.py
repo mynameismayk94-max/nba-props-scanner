@@ -697,7 +697,8 @@ def parse_attempts(value) -> float:
     try:
         parts = str(value).strip().split("-")
         if len(parts) != 2:
-            return 0.0        return float(parts[1])
+            return 0.0
+        return float(parts[1])
     except (ValueError, TypeError):
         return 0.0
 
@@ -1396,7 +1397,8 @@ def calculate_minutes_band_position_defense(
 
     for game in sample:
         position_data = (
-            game.get("positions", {})            .get(position, {})
+            game.get("positions", {})
+            .get(position, {})
         )
         players = position_data.get("players", [])
         game_has_valid_player = False
@@ -2095,6 +2097,7 @@ def fetch_espn_games(
         recent_form_cache_after["misses"] - recent_form_cache_before["misses"],
         recent_form_cache_after["currsize"]
     )
+
     for game in games:
         for side in ("home", "away"):
             team = game.get(side)
@@ -2800,7 +2803,8 @@ def get_league_position_defense_baseline(year, target_date_iso):
         "player_status_by_game": player_status_by_game
     }
     for position in ("G", "F", "C"):
-        result["positions"][position] = {}        for stat_key in stat_keys:
+        result["positions"][position] = {}
+        for stat_key in stat_keys:
             result["positions"][position][stat_key] = {}
             for window in (5, 10):
                 values = samples[window][position][stat_key]
@@ -3499,7 +3503,8 @@ def collect_candidates(
 
     total_start = time.perf_counter()
 
-    target_date = datetime.strptime(        selected_date,
+    target_date = datetime.strptime(
+        selected_date,
         "%Y-%m-%d"
     ).date()
 
@@ -4278,7 +4283,8 @@ def collect_results(
             "date": selected_date,
             "market": market,
             "status": "no_pending_snapshots",
-            "results_saved_this_run": 0,            "operational_results_saved": 0,
+            "results_saved_this_run": 0,
+            "operational_results_saved": 0,
             "audit_results_saved": 0,
             "operational_pending": 0,
             "audit_pending": 0,
@@ -4977,7 +4983,8 @@ def validation_history(
             })
 
             target_features = [target[index] for index in feature_indexes]
-            if any(value is None for value in target_features):                continue
+            if any(value is None for value in target_features):
+                continue
 
             target_player_id = str(target[1])
             ranked_peers = []
