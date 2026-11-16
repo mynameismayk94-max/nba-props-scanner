@@ -117,6 +117,39 @@ def initialize_database():
                     """
                 )
 
+                # População independente para auditoria: não representa uso do Scanner.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_snapshots (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        position TEXT,
+                        triage_score DOUBLE PRECISION,
+                        last5_avg DOUBLE PRECISION,
+                        last10_avg DOUBLE PRECISION,
+                        minutes_last5_avg DOUBLE PRECISION,
+                        audit_rank INTEGER NOT NULL,
+                        availability_status TEXT NOT NULL,
+                        payload JSONB NOT NULL,
+                        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_snapshot
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_snapshots_date_market
+                    ON audit_snapshots (selected_date, market)
+                    """
+                )
+
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS candidate_results (
@@ -263,6 +296,108 @@ def save_candidate_snapshots(
             error
         )
 
+        return 0
+
+
+def save_audit_snapshots(
+    selected_date,
+    market,
+    candidates
+):
+    """
+    Persiste a população completa elegível para auditoria, separada do
+    histórico operacional do Scanner. A primeira fotografia é imutável.
+    """
+    if not candidates:
+        return 0
+
+    if not DATABASE_URL:
+        logger.warning(
+            "População de auditoria não salva: DATABASE_URL não configurada."
+        )
+        return 0
+
+    rows = []
+    for audit_rank, candidate in enumerate(candidates, start=1):
+        player_id = candidate.get("player_id")
+        if not player_id:
+            logger.warning(
+                "Jogador sem player_id ignorado no snapshot de auditoria: %s",
+                candidate.get("player")
+            )
+            continue
+
+        availability = candidate.get("availability") or {}
+        availability_status = str(
+            availability.get("availability") or "unknown"
+        )
+        rows.append((
+            selected_date,
+            market,
+            str(player_id),
+            candidate.get("player", ""),
+            candidate.get("team"),
+            candidate.get("opponent"),
+            candidate.get("position"),
+            candidate.get("triage_score"),
+            candidate.get("last5_avg"),
+            candidate.get("last10_avg"),
+            candidate.get("minutes_last5_avg"),
+            audit_rank,
+            availability_status,
+            Jsonb(candidate)
+        ))
+
+    if not rows:
+        return 0
+
+    try:
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO audit_snapshots (
+                        selected_date,
+                        market,
+                        player_id,
+                        player_name,
+                        team,
+                        opponent,
+                        position,
+                        triage_score,
+                        last5_avg,
+                        last10_avg,
+                        minutes_last5_avg,
+                        audit_rank,
+                        availability_status,
+                        payload
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (
+                        selected_date,
+                        market,
+                        player_id
+                    ) DO NOTHING
+                    """,
+                    rows
+                )
+
+        logger.info(
+            "Snapshot de auditoria processado: %s elegíveis enviados para %s/%s.",
+            len(rows),
+            selected_date,
+            market
+        )
+        return len(rows)
+
+    except Exception as error:
+        logger.exception(
+            "Falha ao salvar snapshot independente de auditoria: %s",
+            error
+        )
         return 0
 
 
@@ -3343,6 +3478,14 @@ def collect_candidates(
         results,
         injury_index,
         limit=final_limit
+    )
+
+    # População completa para auditoria, sem limite de exibição.
+    # Mantém-se separada de candidate_snapshots, que registra o uso operacional.
+    save_audit_snapshots(
+        selected_date,
+        market,
+        eligible_all_results
     )
 
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
