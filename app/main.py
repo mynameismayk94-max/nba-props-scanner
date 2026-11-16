@@ -512,6 +512,11 @@ ROSTER_URL = (
     "basketball/nba/teams/{team}/roster"
 )
 
+TEAM_SCHEDULE_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/"
+    "basketball/nba/teams/{team}/schedule"
+)
+
 
 GAMELOG_URL = (
     "https://site.web.api.espn.com/apis/common/v3/sports/"
@@ -1852,6 +1857,90 @@ def get_team_defense_history_fresh(
     )
 
 
+@lru_cache(maxsize=120)
+def fetch_team_schedule_cached(
+    team_abbr: str,
+    season: int,
+    cache_window: int
+) -> tuple:
+    """Consulta a agenda da equipe e mantém cache curto para reduzir chamadas à ESPN."""
+    data = request_json(
+        TEAM_SCHEDULE_URL.format(team=team_abbr.lower()),
+        {"season": season}
+    )
+    completed_games = []
+    for event in data.get("events", []):
+        event_date = (event.get("date") or "")[:10]
+        competitions = event.get("competitions") or []
+        if not event_date or not competitions:
+            continue
+        competition = competitions[0]
+        status_type = (
+            competition.get("status", {}).get("type", {})
+            or event.get("status", {}).get("type", {})
+        )
+        if not status_type.get("completed", False):
+            continue
+        competitors = competition.get("competitors") or []
+        own = next((
+            item for item in competitors
+            if (item.get("team") or {}).get("abbreviation", "").upper()
+            == team_abbr.upper()
+        ), None)
+        if own is None:
+            continue
+        opponent = next((item for item in competitors if item is not own), None)
+        if opponent is None:
+            continue
+        if own.get("winner") is True:
+            result = "W"
+        elif opponent.get("winner") is True:
+            result = "L"
+        else:
+            try:
+                own_score = float(own.get("score"))
+                opponent_score = float(opponent.get("score"))
+                if own_score == opponent_score:
+                    continue
+                result = "W" if own_score > opponent_score else "L"
+            except (TypeError, ValueError):
+                continue
+        completed_games.append((event_date, result))
+    completed_games.sort(key=lambda item: item[0])
+    return tuple(completed_games)
+
+
+def fetch_team_recent_form(team_abbr: str, selected_date: str) -> dict:
+    """Retorna os cinco resultados concluídos anteriores à data pesquisada."""
+    try:
+        target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
+        cache_window = int(time.time() // 900)
+        schedule = fetch_team_schedule_cached(
+            team_abbr, season_year(target_date), cache_window
+        )
+        previous_games = [
+            result for game_date, result in schedule
+            if game_date < selected_date
+        ][-5:]
+        wins = previous_games.count("W")
+        losses = previous_games.count("L")
+        return {
+            "last5": previous_games,
+            "last5_record": f"{wins}-{losses}",
+            "last5_games": len(previous_games),
+            "last5_status": "ok" if previous_games else "unavailable"
+        }
+    except Exception as error:
+        logger.warning(
+            "Não foi possível consultar retrospecto recente de %s: %s",
+            team_abbr, error
+        )
+        return {
+            "last5": [], "last5_record": None,
+            "last5_games": 0, "last5_status": "unavailable"
+        }
+
+
 def fetch_espn_games(
     selected_date: str
 ) -> dict:
@@ -1962,6 +2051,41 @@ def fetch_espn_games(
                     )
                 )
             })
+
+    # Enriquece os confrontos com o retrospecto recente das equipes.
+    # Consultas paralelas + cache de 15 minutos reduzem o impacto na agenda.
+    team_abbreviations = {
+        team.get("abbr")
+        for game in games
+        for team in (game.get("home"), game.get("away"))
+        if team and team.get("abbr")
+    }
+    team_forms = {}
+    if team_abbreviations:
+        with ThreadPoolExecutor(max_workers=min(10, len(team_abbreviations))) as executor:
+            futures = {
+                executor.submit(fetch_team_recent_form, team_abbr, selected_date): team_abbr
+                for team_abbr in team_abbreviations
+            }
+            for future in as_completed(futures):
+                team_abbr = futures[future]
+                try:
+                    team_forms[team_abbr] = future.result()
+                except Exception as error:
+                    logger.warning("Falha inesperada no retrospecto de %s: %s", team_abbr, error)
+                    team_forms[team_abbr] = {
+                        "last5": [], "last5_record": None,
+                        "last5_games": 0, "last5_status": "unavailable"
+                    }
+
+    for game in games:
+        for side in ("home", "away"):
+            team = game.get(side)
+            if team:
+                team.update(team_forms.get(team.get("abbr"), {
+                    "last5": [], "last5_record": None,
+                    "last5_games": 0, "last5_status": "unavailable"
+                }))
 
     return {
         "date": selected_date,
