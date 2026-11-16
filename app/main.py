@@ -3493,7 +3493,7 @@ def collect_candidates(
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
     context_start = time.perf_counter()
-    if league_baseline and league_baseline.get("player_status_by_game"):
+    if persist_operational and league_baseline and league_baseline.get("player_status_by_game"):
         player_logs_by_id = player_logs
         roster_by_team = {}
         for roster_player in players:
