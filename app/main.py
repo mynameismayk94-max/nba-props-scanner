@@ -177,6 +177,34 @@ def initialize_database():
                     """
                 )
 
+                # Resultados da população independente de auditoria.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_results (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        actual_value DOUBLE PRECISION NOT NULL,
+                        game_id TEXT,
+                        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        payload JSONB,
+                        CONSTRAINT uq_audit_result
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_results_date_market
+                    ON audit_results (selected_date, market)
+                    """
+                )
+
         logger.info(
             "Banco Neon inicializado. Tabela candidate_snapshots disponível."
         )
@@ -3771,18 +3799,30 @@ def collect_results(
             cursor.execute(
                 """
                 SELECT
+                    'operational' AS snapshot_source,
                     player_id,
                     player_name,
                     team,
                     opponent,
                     payload
                 FROM candidate_snapshots
-                WHERE
-                    selected_date = %s
-                    AND market = %s
-                ORDER BY player_name
+                WHERE selected_date = %s AND market = %s
+
+                UNION ALL
+
+                SELECT
+                    'audit' AS snapshot_source,
+                    player_id,
+                    player_name,
+                    team,
+                    opponent,
+                    payload
+                FROM audit_snapshots
+                WHERE selected_date = %s AND market = %s
+
+                ORDER BY player_name, snapshot_source
                 """,
-                (target_date, market)
+                (target_date, market, target_date, market)
             )
             snapshots = cursor.fetchall()
 
@@ -3821,18 +3861,27 @@ def collect_results(
             except Exception:
                 pass
 
-    results_to_save = []
-    pending = 0
+    operational_results_to_save = []
+    audit_results_to_save = []
+    operational_pending = 0
+    audit_pending = 0
 
     for snapshot in snapshots:
 
         (
+            snapshot_source,
             player_id,
             player_name,
             team,
             opponent,
             payload
         ) = snapshot
+
+        target_results = (
+            audit_results_to_save
+            if snapshot_source == "audit"
+            else operational_results_to_save
+        )
 
         game_id = completed_games.get(
             (
@@ -3842,13 +3891,19 @@ def collect_results(
         )
 
         if not game_id:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         summary = summary_cache.get(game_id)
 
         if not summary:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         player_game = (
@@ -3859,22 +3914,31 @@ def collect_results(
         )
 
         if not player_game:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         minutes = player_game.get("minutes")
 
         if minutes is None or minutes <= 0:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         actual = player_game.get(actual_stat_key)
 
         if actual is None:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
-        results_to_save.append((
+        target_results.append((
             target_date,
             market,
             str(player_id),
@@ -3890,47 +3954,55 @@ def collect_results(
             })
         ))
 
-    inserted = 0
+    operational_inserted = 0
+    audit_inserted = 0
 
-    if results_to_save:
-        with get_database_connection() as connection:
-            with connection.cursor() as cursor:
-                for row in results_to_save:
-                    cursor.execute(
-                        """
-                        INSERT INTO candidate_results (
-                            selected_date,
-                            market,
-                            player_id,
-                            player_name,
-                            team,
-                            opponent,
-                            actual_value,
-                            game_id,
-                            payload
-                        )
-                        VALUES (
-                            %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s
-                        )
-                        ON CONFLICT (
-                            selected_date,
-                            market,
-                            player_id
-                        ) DO NOTHING
-                        RETURNING id
-                        """,
-                        row
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in operational_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO candidate_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, actual_value, game_id, payload
                     )
-                    if cursor.fetchone():
-                        inserted += 1
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+                if cursor.fetchone():
+                    operational_inserted += 1
+
+            for row in audit_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, actual_value, game_id, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+                if cursor.fetchone():
+                    audit_inserted += 1
 
     return {
         "date": selected_date,
         "market": market,
         "status": "processed",
-        "results_saved_this_run": inserted,
-        "pending": pending
+        "results_saved_this_run": operational_inserted + audit_inserted,
+        "operational_results_saved": operational_inserted,
+        "audit_results_saved": audit_inserted,
+        "operational_pending": operational_pending,
+        "audit_pending": audit_pending,
+        "pending": operational_pending + audit_pending
     }
 
 
@@ -3958,24 +4030,38 @@ def collect_pending_results(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT DISTINCT
-                    s.selected_date,
-                    s.market
-                FROM candidate_snapshots s
-                LEFT JOIN candidate_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
-                WHERE
-                    r.id IS NULL
-                    AND s.selected_date <= %s
-                    AND s.market = ANY(%s)
-                ORDER BY
-                    s.selected_date ASC,
-                    s.market ASC
+                SELECT
+                    pending.selected_date,
+                    pending.market
+                FROM (
+                    SELECT s.selected_date, s.market
+                    FROM candidate_snapshots s
+                    LEFT JOIN candidate_results r
+                        ON r.selected_date = s.selected_date
+                        AND r.market = s.market
+                        AND r.player_id = s.player_id
+                    WHERE r.id IS NULL
+                        AND s.selected_date <= %s
+                        AND s.market = ANY(%s)
+
+                    UNION
+
+                    SELECT s.selected_date, s.market
+                    FROM audit_snapshots s
+                    LEFT JOIN audit_results r
+                        ON r.selected_date = s.selected_date
+                        AND r.market = s.market
+                        AND r.player_id = s.player_id
+                    WHERE r.id IS NULL
+                        AND s.selected_date <= %s
+                        AND s.market = ANY(%s)
+                ) AS pending
+                ORDER BY pending.selected_date ASC, pending.market ASC
                 LIMIT %s
                 """,
                 (
+                    today,
+                    list(ACTIVE_MARKETS),
                     today,
                     list(ACTIVE_MARKETS),
                     max_combinations
@@ -4009,6 +4095,10 @@ def collect_pending_results(
                 "date": selected_date.isoformat(),
                 "market": market,
                 "results_saved": saved,
+                "operational_results_saved": result.get("operational_results_saved", 0),
+                "audit_results_saved": result.get("audit_results_saved", 0),
+                "operational_pending": result.get("operational_pending", 0),
+                "audit_pending": result.get("audit_pending", 0),
                 "pending": pending,
                 "status": result.get("status", "processed")
             })
