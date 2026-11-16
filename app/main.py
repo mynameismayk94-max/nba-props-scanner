@@ -2107,6 +2107,10 @@ def fetch_espn_games(
                     "last5_games": 0, "last5_status": "unavailable"
                 }))
 
+    # Aquece o benchmark compartilhado enquanto o usuário escolhe o mercado.
+    # A rotina é deduplicada por data e executada em background.
+    schedule_defense_context_prewarm(selected_date)
+
     return {
         "date": selected_date,
         "count": len(games),
@@ -2818,6 +2822,59 @@ def get_league_position_defense_baseline(year, target_date_iso):
         time.perf_counter() - started
     )
     return result
+
+
+# Serializa a construção do benchmark por processo. Isso evita que o
+# prewarm e a primeira consulta de candidatos montem o mesmo benchmark em paralelo.
+_LEAGUE_BASELINE_SINGLEFLIGHT_LOCK = threading.Lock()
+
+
+def get_league_position_defense_baseline_singleflight(year, target_date_iso):
+    with _LEAGUE_BASELINE_SINGLEFLIGHT_LOCK:
+        return get_league_position_defense_baseline(year, target_date_iso)
+
+
+_DEFENSE_PREWARM_LOCK = threading.Lock()
+_DEFENSE_PREWARM_DATES = set()
+
+
+def schedule_defense_context_prewarm(selected_date):
+    """Prepara o benchmark defensivo da data sem bloquear /games."""
+    with _DEFENSE_PREWARM_LOCK:
+        if selected_date in _DEFENSE_PREWARM_DATES:
+            return
+        _DEFENSE_PREWARM_DATES.add(selected_date)
+
+    def warm():
+        started = time.perf_counter()
+        try:
+            target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
+            baseline = get_league_position_defense_baseline_singleflight(
+                season_year(target_date),
+                selected_date
+            )
+            logger.info(
+                "Defense prewarm: data=%s status=ok equipes=%s jogos_unicos=%s tempo=%.2fs",
+                selected_date,
+                baseline.get("teams_analyzed", 0),
+                baseline.get("unique_games", 0),
+                time.perf_counter() - started
+            )
+        except Exception as error:
+            with _DEFENSE_PREWARM_LOCK:
+                _DEFENSE_PREWARM_DATES.discard(selected_date)
+            logger.warning(
+                "Defense prewarm: data=%s status=error tempo=%.2fs erro=%s",
+                selected_date,
+                time.perf_counter() - started,
+                error
+            )
+
+    threading.Thread(
+        target=warm,
+        name=f"defense-prewarm-{selected_date}",
+        daemon=True
+    ).start()
 
 
 def get_player_team_game_counts(
@@ -3618,7 +3675,7 @@ def collect_candidates(
         ]
         league_future = (
             executor.submit(
-                get_league_position_defense_baseline,
+                get_league_position_defense_baseline_singleflight,
                 year,
                 target_date.isoformat()
             )
