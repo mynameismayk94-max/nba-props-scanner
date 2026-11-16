@@ -2836,6 +2836,7 @@ def get_league_position_defense_baseline_singleflight(year, target_date_iso):
 
 _DEFENSE_PREWARM_LOCK = threading.Lock()
 _DEFENSE_PREWARM_DATES = set()
+_DEFENSE_PREWARM_STATE = {}
 
 
 def schedule_defense_context_prewarm(selected_date):
@@ -2844,6 +2845,11 @@ def schedule_defense_context_prewarm(selected_date):
         if selected_date in _DEFENSE_PREWARM_DATES:
             return
         _DEFENSE_PREWARM_DATES.add(selected_date)
+        _DEFENSE_PREWARM_STATE[selected_date] = {
+            "status": "running",
+            "started_at": time.perf_counter(),
+            "elapsed": None
+        }
 
     def warm():
         started = time.perf_counter()
@@ -2853,16 +2859,30 @@ def schedule_defense_context_prewarm(selected_date):
                 season_year(target_date),
                 selected_date
             )
+            elapsed = time.perf_counter() - started
+            with _DEFENSE_PREWARM_LOCK:
+                _DEFENSE_PREWARM_STATE[selected_date] = {
+                    "status": "ready",
+                    "started_at": started,
+                    "elapsed": elapsed
+                }
             logger.info(
                 "Defense prewarm: data=%s status=ok equipes=%s jogos_unicos=%s tempo=%.2fs",
                 selected_date,
                 baseline.get("teams_analyzed", 0),
                 baseline.get("unique_games", 0),
-                time.perf_counter() - started
+                elapsed
             )
         except Exception as error:
+            elapsed = time.perf_counter() - started
             with _DEFENSE_PREWARM_LOCK:
                 _DEFENSE_PREWARM_DATES.discard(selected_date)
+                _DEFENSE_PREWARM_STATE[selected_date] = {
+                    "status": "error",
+                    "started_at": started,
+                    "elapsed": elapsed,
+                    "error": str(error)
+                }
             logger.warning(
                 "Defense prewarm: data=%s status=error tempo=%.2fs erro=%s",
                 selected_date,
@@ -3663,6 +3683,15 @@ def collect_candidates(
         )
         return team, defense
 
+    with _DEFENSE_PREWARM_LOCK:
+        prewarm_state = dict(_DEFENSE_PREWARM_STATE.get(selected_date, {}))
+    logger.info(
+        "Defense prewarm status at candidates start: data=%s status=%s elapsed=%.2fs",
+        selected_date,
+        prewarm_state.get("status", "not_started"),
+        prewarm_state.get("elapsed") or 0.0
+    )
+
     league_baseline = None
 
     with ThreadPoolExecutor(
@@ -3694,7 +3723,15 @@ def collect_candidates(
 
         if league_future:
             try:
+                baseline_wait_started = time.perf_counter()
                 league_baseline = league_future.result()
+                logger.info(
+                    "Defense benchmark wait: data=%s mercado=%s prewarm_status_at_start=%s wait=%.2fs",
+                    selected_date,
+                    market,
+                    prewarm_state.get("status", "not_started"),
+                    time.perf_counter() - baseline_wait_started
+                )
             except Exception as error:
                 logger.warning(
                     "Falha ao calcular benchmark defensivo da liga: %s",
