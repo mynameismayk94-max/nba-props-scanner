@@ -283,7 +283,6 @@
           <button type="button" class="market-button" data-market="rebounds" aria-pressed="false" onclick="buscar('rebounds')">Rebotes</button>
           <button type="button" class="market-button" data-market="threes" aria-pressed="false" onclick="buscar('threes')">Tentativas de 3 Pontos</button>
           <button type="button" class="market-button" data-market="two_pa" aria-pressed="false" onclick="buscar('two_pa')">Tentativas de 2 Pontos</button>
-          <button type="button" class="market-button" data-market="fgm" aria-pressed="false" onclick="buscar('fgm')">Cestas Convertidas</button>
         </div>
       </div>
 
@@ -362,7 +361,6 @@
           <option value="rebounds">Rebotes</option>
           <option value="threes">Tentativas de 3 Pontos</option>
           <option value="two_pa">Tentativas de 2 Pontos</option>
-          <option value="fgm">Cestas Convertidas</option>
         </select>
       </div>
       <div class="text-[10px] text-gray-400 text-right">Amostra: <span id="hist-sample-count" class="font-bold text-white">0</span></div>
@@ -575,7 +573,6 @@
             <option value="rebounds">Rebotes</option>
             <option value="three_pa">Tentativas de 3 pts</option>
             <option value="two_pa">Tentativas de 2 pts</option>
-            <option value="fgm">Cestas convertidas</option>
           </select>
         </div>
         <div class="filter-group">
@@ -1233,7 +1230,6 @@ async function coletarResultadosAuditoria() {
     { id: 'rebounds', label: 'Rebotes' },
     { id: 'threes', label: 'Tentativas de 3 pts' },
     { id: 'two_pa', label: 'Tentativas de 2 pts' },
-    { id: 'fgm', label: 'Cestas convertidas' }
   ];
 
   button.disabled = true;
@@ -1285,7 +1281,6 @@ async function fetchMarketComparison() {
     { id: 'rebounds', label: 'Rebotes' },
     { id: 'threes', label: 'Tentativas de 3 pts' },
     { id: 'two_pa', label: 'Tentativas de 2 pts' },
-    { id: 'fgm', label: 'Cestas convertidas' },
   ];
   const tableBody = document.getElementById('market-comparison-table');
   tableBody.innerHTML = '<tr><td colspan="7" class="text-gray-400">Carregando os mercados...</td></tr>';
@@ -1677,7 +1672,7 @@ async function carregarDetalheContexto(team) {
     const history = result.history || {};
     const statKeys = [
       ['points','Pontos'],['assists','Assistências'],['rebounds','Rebotes'],
-      ['three_pa','Tentativas de 3 pts'],['two_pa','Tentativas de 2 pts'],['fgm','Cestas convertidas']
+      ['three_pa','Tentativas de 3 pts'],['two_pa','Tentativas de 2 pts']
     ];
     let html = '<div class="flex items-center justify-between gap-2"><h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><span class="text-[9px] text-gray-500">Atualizado: ' + escapeHtml(result.captured_at || '—') + '</span></div>';
     html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">';
