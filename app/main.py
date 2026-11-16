@@ -4011,11 +4011,11 @@ def collect_pending_results(
     max_combinations: int = Query(default=100, ge=1, le=200)
 ):
     """
-    Coleta automaticamente resultados de todos os snapshots pendentes.
+    Coleta resultados pendentes das populações operacional e de auditoria.
 
-    Procura combinações data/mercado que ainda não possuem resultado,
-    tenta processá-las pelo mesmo fluxo usado pela coleta manual e
-    deixa pendente apenas o que ainda não pôde ser resolvido.
+    Cada população é consultada e gravada em sua própria tabela de resultados.
+    A combinação data/mercado é processada uma única vez, mesmo quando há
+    pendências nas duas populações.
     """
 
     if not DATABASE_URL:
@@ -4072,6 +4072,10 @@ def collect_pending_results(
     processed = []
     total_saved = 0
     total_pending = 0
+    total_operational_saved = 0
+    total_audit_saved = 0
+    total_operational_pending = 0
+    total_audit_pending = 0
     total_errors = 0
 
     for selected_date, market in pending_combinations:
@@ -4090,6 +4094,10 @@ def collect_pending_results(
 
             total_saved += saved
             total_pending += pending
+            total_operational_saved += int(result.get("operational_results_saved", 0))
+            total_audit_saved += int(result.get("audit_results_saved", 0))
+            total_operational_pending += int(result.get("operational_pending", 0))
+            total_audit_pending += int(result.get("audit_pending", 0))
 
             processed.append({
                 "date": selected_date.isoformat(),
@@ -4126,6 +4134,10 @@ def collect_pending_results(
         "combinations_found": len(pending_combinations),
         "combinations_limit": max_combinations,
         "results_saved_this_run": total_saved,
+        "operational_results_saved": total_operational_saved,
+        "audit_results_saved": total_audit_saved,
+        "operational_pending": total_operational_pending,
+        "audit_pending": total_audit_pending,
         "pending_after_processing": total_pending,
         "errors": total_errors,
         "processed": processed
