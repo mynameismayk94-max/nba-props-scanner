@@ -3180,7 +3180,8 @@ def build_player_result(
 def collect_candidates(
     selected_date,
     market,
-    limit
+    limit,
+    persist_operational=True
 ):
 
     total_start = time.perf_counter()
@@ -3440,11 +3441,12 @@ def collect_candidates(
 
     stage_start = time.perf_counter()
 
-    save_candidate_snapshots(
-        selected_date,
-        market,
-        results
-    )
+    if persist_operational:
+        save_candidate_snapshots(
+            selected_date,
+            market,
+            results
+        )
 
     database_elapsed = time.perf_counter() - stage_start
     total_elapsed = time.perf_counter() - total_start
@@ -3650,6 +3652,45 @@ def candidates(
         market,
         limit
     )
+
+
+@app.get("/capture-audit-snapshot")
+def capture_audit_snapshot(
+    selected_date: str = Query(alias="date"),
+    market: str = Query(...)
+):
+    """Gera a população de auditoria sem registrar uso operacional do Scanner."""
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(
+            status_code=400,
+            detail="Mercado inválido ou inativo na auditoria."
+        )
+
+    try:
+        datetime.strptime(selected_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize AAAA-MM-DD."
+        )
+
+    result = collect_candidates(
+        selected_date,
+        market,
+        10,
+        persist_operational=False
+    )
+
+    return {
+        "status": "captured",
+        "date": selected_date,
+        "market": market,
+        "eligible_players": result["selection_summary"]["eligible_candidates"],
+        "players_consulted": result["players_consulted"],
+        "players_with_errors": result["players_with_errors"],
+        "availability_report_status": result["availability"]["report_status"],
+        "updated_at": result["updated_at"]
+    }
 
 
 @app.get("/collect-results")
