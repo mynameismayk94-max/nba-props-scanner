@@ -3578,7 +3578,7 @@ def collect_candidates(
     stage_start = time.perf_counter()
     defense_cache_before = _cache_metrics(get_team_defense_history)
     schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
-    summary_cache_before = _cache_metrics(get_game_summary)
+    summary_cache_before = _cache_metrics(_get_cached_game_summary)
     league_cache_before = _cache_metrics(get_league_position_defense_baseline)
 
     eligible_opponents = {
@@ -3648,7 +3648,7 @@ def collect_candidates(
 
     defense_cache_after = _cache_metrics(get_team_defense_history)
     schedule_cache_after = _cache_metrics(get_team_regular_season_schedule)
-    summary_cache_after = _cache_metrics(get_game_summary)
+    summary_cache_after = _cache_metrics(_get_cached_game_summary)
     league_cache_after = _cache_metrics(get_league_position_defense_baseline)
 
     logger.info(
