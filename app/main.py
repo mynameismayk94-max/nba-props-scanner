@@ -1918,11 +1918,17 @@ def fetch_team_schedule_cached(
 
 def fetch_team_recent_form(team_abbr: str, selected_date: str) -> dict:
     """Retorna os cinco resultados concluídos anteriores à data pesquisada."""
+    started = time.perf_counter()
     try:
         target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
         cache_window = int(time.time() // 900)
         schedule = fetch_team_schedule_cached(
             team_abbr, season_year(target_date), cache_window
+        )
+        schedule_elapsed = time.perf_counter() - started
+        logger.info(
+            "Games team schedule: data=%s equipe=%s tempo=%.2fs jogos=%s",
+            selected_date, team_abbr, schedule_elapsed, len(schedule)
         )
         previous_games = [
             result for game_date, result in schedule
