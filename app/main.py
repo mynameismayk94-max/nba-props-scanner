@@ -599,6 +599,12 @@ def season_year(selected_date: date) -> int:
 _http_local = threading.local()
 
 
+def _cache_metrics(cache):
+    """Retorna métricas simples do cache para observabilidade de performance."""
+    info = cache.cache_info()
+    return {"hits": info.hits, "misses": info.misses, "currsize": info.currsize}
+
+
 def get_http_session():
     session = getattr(_http_local, "session", None)
 
@@ -2061,6 +2067,8 @@ def fetch_espn_games(
         if team and team.get("abbr")
     }
     team_forms = {}
+    games_context_start = time.perf_counter()
+    recent_form_cache_before = _cache_metrics(fetch_team_schedule_cached)
     if team_abbreviations:
         with ThreadPoolExecutor(max_workers=min(10, len(team_abbreviations))) as executor:
             futures = {
@@ -2077,6 +2085,18 @@ def fetch_espn_games(
                         "last5": [], "last5_record": None,
                         "last5_games": 0, "last5_status": "unavailable"
                     }
+
+    games_context_elapsed = time.perf_counter() - games_context_start
+    recent_form_cache_after = _cache_metrics(fetch_team_schedule_cached)
+    logger.info(
+        "Games timing: data=%s equipes=%s tempo_contexto=%.2fs cache_hits_delta=%s cache_misses_delta=%s cache_size=%s",
+        selected_date,
+        len(team_abbreviations),
+        games_context_elapsed,
+        recent_form_cache_after["hits"] - recent_form_cache_before["hits"],
+        recent_form_cache_after["misses"] - recent_form_cache_before["misses"],
+        recent_form_cache_after["currsize"]
+    )
 
     for game in games:
         for side in ("home", "away"):
@@ -3465,6 +3485,7 @@ def collect_candidates(
     player_logs = {}
     successful_logs = 0
     errors = 0
+    player_cache_before = _cache_metrics(get_athlete_logs)
 
     def fetch_player(player):
         logs = get_athlete_logs(
@@ -3534,6 +3555,15 @@ def collect_candidates(
             (player, logs)
         )
 
+    player_cache_after = _cache_metrics(get_athlete_logs)
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_athlete_logs hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        player_cache_after["hits"] - player_cache_before["hits"],
+        player_cache_after["misses"] - player_cache_before["misses"],
+        player_cache_after["currsize"]
+    )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=historico_jogadores jogadores_consultados=%s elegiveis=%s tempo=%.2fs",
         selected_date,
@@ -3546,6 +3576,10 @@ def collect_candidates(
     # Só consultamos defesa para adversários que realmente possuem
     # pelo menos um jogador elegível para este mercado/data.
     stage_start = time.perf_counter()
+    defense_cache_before = _cache_metrics(get_team_defense_history)
+    schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
+    summary_cache_before = _cache_metrics(get_game_summary)
+    league_cache_before = _cache_metrics(get_league_position_defense_baseline)
 
     eligible_opponents = {
         opponents.get(player["team"])
@@ -3612,6 +3646,43 @@ def collect_candidates(
 
     defense_elapsed = time.perf_counter() - stage_start
 
+    defense_cache_after = _cache_metrics(get_team_defense_history)
+    schedule_cache_after = _cache_metrics(get_team_regular_season_schedule)
+    summary_cache_after = _cache_metrics(get_game_summary)
+    league_cache_after = _cache_metrics(get_league_position_defense_baseline)
+
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_team_defense_history hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        defense_cache_after["hits"] - defense_cache_before["hits"],
+        defense_cache_after["misses"] - defense_cache_before["misses"],
+        defense_cache_after["currsize"]
+    )
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_team_regular_season_schedule hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        schedule_cache_after["hits"] - schedule_cache_before["hits"],
+        schedule_cache_after["misses"] - schedule_cache_before["misses"],
+        schedule_cache_after["currsize"]
+    )
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_game_summary hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        summary_cache_after["hits"] - summary_cache_before["hits"],
+        summary_cache_after["misses"] - summary_cache_before["misses"],
+        summary_cache_after["currsize"]
+    )
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=league_position_defense_baseline hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        league_cache_after["hits"] - league_cache_before["hits"],
+        league_cache_after["misses"] - league_cache_before["misses"],
+        league_cache_after["currsize"]
+    )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s tempo=%.2fs",
         selected_date,
