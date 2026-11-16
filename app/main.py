@@ -3805,20 +3805,34 @@ def collect_results(
                     team,
                     opponent,
                     payload
-                FROM candidate_snapshots
-                WHERE selected_date = %s AND market = %s
+                FROM candidate_snapshots s
+                WHERE s.selected_date = %s AND s.market = %s
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM candidate_results r
+                        WHERE r.selected_date = s.selected_date
+                            AND r.market = s.market
+                            AND r.player_id = s.player_id
+                    )
 
                 UNION ALL
 
                 SELECT
                     'audit' AS snapshot_source,
-                    player_id,
-                    player_name,
-                    team,
-                    opponent,
-                    payload
-                FROM audit_snapshots
-                WHERE selected_date = %s AND market = %s
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    s.payload
+                FROM audit_snapshots s
+                WHERE s.selected_date = %s AND s.market = %s
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM audit_results r
+                        WHERE r.selected_date = s.selected_date
+                            AND r.market = s.market
+                            AND r.player_id = s.player_id
+                    )
 
                 ORDER BY player_name, snapshot_source
                 """,
@@ -3830,8 +3844,13 @@ def collect_results(
         return {
             "date": selected_date,
             "market": market,
-            "status": "no_snapshots",
-            "results_saved": 0
+            "status": "no_pending_snapshots",
+            "results_saved_this_run": 0,
+            "operational_results_saved": 0,
+            "audit_results_saved": 0,
+            "operational_pending": 0,
+            "audit_pending": 0,
+            "pending": 0
         }
 
     summary_cache = {}
