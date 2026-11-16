@@ -150,6 +150,37 @@ def initialize_database():
                     """
                 )
 
+                # Manifesto também registra capturas válidas com zero elegíveis.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_snapshot_runs (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        eligible_count INTEGER NOT NULL,
+                        availability_report_status TEXT NOT NULL,
+                        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_snapshot_run
+                            UNIQUE (selected_date, market)
+                    )
+                    """
+                )
+
+                # Compatibilidade para snapshots independentes criados antes do manifesto.
+                cursor.execute(
+                    """
+                    INSERT INTO audit_snapshot_runs (
+                        selected_date, market, eligible_count,
+                        availability_report_status
+                    )
+                    SELECT
+                        selected_date, market, COUNT(*), 'legacy_existing'
+                    FROM audit_snapshots
+                    GROUP BY selected_date, market
+                    ON CONFLICT (selected_date, market) DO NOTHING
+                    """
+                )
+
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS candidate_results (
@@ -330,15 +361,13 @@ def save_candidate_snapshots(
 def save_audit_snapshots(
     selected_date,
     market,
-    candidates
+    candidates,
+    availability_report_status="unknown"
 ):
     """
     Persiste a população completa elegível para auditoria, separada do
     histórico operacional do Scanner. A primeira fotografia é imutável.
     """
-    if not candidates:
-        return 0
-
     if not DATABASE_URL:
         logger.warning(
             "População de auditoria não salva: DATABASE_URL não configurada."
@@ -382,6 +411,42 @@ def save_audit_snapshots(
     try:
         with get_database_connection() as connection:
             with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_snapshot_runs (
+                        selected_date,
+                        market,
+                        eligible_count,
+                        availability_report_status
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market) DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        selected_date,
+                        market,
+                        len(rows),
+                        availability_report_status
+                    )
+                )
+                if not cursor.fetchone():
+                    logger.info(
+                        "Captura de auditoria já registrada; mantendo primeira versão: %s/%s",
+                        selected_date,
+                        market
+                    )
+                    return 0
+
+                if not rows:
+                    logger.info(
+                        "Captura de auditoria registrada sem elegíveis: %s/%s status=%s",
+                        selected_date,
+                        market,
+                        availability_report_status
+                    )
+                    return 0
+
                 cursor.executemany(
                     """
                     INSERT INTO audit_snapshots (
@@ -3515,7 +3580,8 @@ def collect_candidates(
     audit_snapshots_saved = save_audit_snapshots(
         selected_date,
         market,
-        eligible_all_results
+        eligible_all_results,
+        availability_report_status
     )
 
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
@@ -4241,7 +4307,7 @@ def validation_history(
                     WHERE c.market = %s
                         AND NOT EXISTS (
                             SELECT 1
-                            FROM audit_snapshots a
+                            FROM audit_snapshot_runs a
                             WHERE a.selected_date = c.selected_date
                                 AND a.market = c.market
                         )
@@ -4801,7 +4867,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
             FROM candidate_snapshots c
             WHERE c.market = %s
                 AND NOT EXISTS (
-                    SELECT 1 FROM audit_snapshots a
+                    SELECT 1 FROM audit_snapshot_runs a
                     WHERE a.selected_date = c.selected_date
                       AND a.market = c.market
                 )
