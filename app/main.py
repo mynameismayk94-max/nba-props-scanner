@@ -405,9 +405,6 @@ def save_audit_snapshots(
             Jsonb(candidate)
         ))
 
-    if not rows:
-        return 0
-
     try:
         with get_database_connection() as connection:
             with connection.cursor() as cursor:
