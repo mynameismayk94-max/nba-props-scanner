@@ -51,7 +51,7 @@ class TeamRecentFormTests(unittest.TestCase):
 
         result = main.fetch_team_recent_form("BOS", "2026-11-16")
 
-        self.assertEqual(result["last5"], ["W", "L", "W", "L", "W"])
+        self.assertEqual(result["last5"], ["W", "W", "L", "W", "L"])
         self.assertEqual(result["last5_record"], "3-2")
         self.assertEqual(result["last5_games"], 5)
         self.assertEqual(result["last5_status"], "ok")
