@@ -117,6 +117,70 @@ def initialize_database():
                     """
                 )
 
+                # População independente para auditoria: não representa uso do Scanner.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_snapshots (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        position TEXT,
+                        triage_score DOUBLE PRECISION,
+                        last5_avg DOUBLE PRECISION,
+                        last10_avg DOUBLE PRECISION,
+                        minutes_last5_avg DOUBLE PRECISION,
+                        audit_rank INTEGER NOT NULL,
+                        availability_status TEXT NOT NULL,
+                        payload JSONB NOT NULL,
+                        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_snapshot
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_snapshots_date_market
+                    ON audit_snapshots (selected_date, market)
+                    """
+                )
+
+                # Manifesto também registra capturas válidas com zero elegíveis.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_snapshot_runs (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        eligible_count INTEGER NOT NULL,
+                        availability_report_status TEXT NOT NULL,
+                        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_snapshot_run
+                            UNIQUE (selected_date, market)
+                    )
+                    """
+                )
+
+                # Compatibilidade para snapshots independentes criados antes do manifesto.
+                cursor.execute(
+                    """
+                    INSERT INTO audit_snapshot_runs (
+                        selected_date, market, eligible_count,
+                        availability_report_status
+                    )
+                    SELECT
+                        selected_date, market, COUNT(*), 'legacy_existing'
+                    FROM audit_snapshots
+                    GROUP BY selected_date, market
+                    ON CONFLICT (selected_date, market) DO NOTHING
+                    """
+                )
+
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS candidate_results (
@@ -141,6 +205,34 @@ def initialize_database():
                     """
                     CREATE INDEX IF NOT EXISTS idx_candidate_results_date_market
                     ON candidate_results (selected_date, market)
+                    """
+                )
+
+                # Resultados da população independente de auditoria.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_results (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        actual_value DOUBLE PRECISION NOT NULL,
+                        game_id TEXT,
+                        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        payload JSONB,
+                        CONSTRAINT uq_audit_result
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_results_date_market
+                    ON audit_results (selected_date, market)
                     """
                 )
 
@@ -263,6 +355,139 @@ def save_candidate_snapshots(
             error
         )
 
+        return 0
+
+
+def save_audit_snapshots(
+    selected_date,
+    market,
+    candidates,
+    availability_report_status="unknown"
+):
+    """
+    Persiste a população completa elegível para auditoria, separada do
+    histórico operacional do Scanner. A primeira fotografia é imutável.
+    """
+    if not DATABASE_URL:
+        logger.warning(
+            "População de auditoria não salva: DATABASE_URL não configurada."
+        )
+        return 0
+
+    rows = []
+    for audit_rank, candidate in enumerate(candidates, start=1):
+        player_id = candidate.get("player_id")
+        if not player_id:
+            logger.warning(
+                "Jogador sem player_id ignorado no snapshot de auditoria: %s",
+                candidate.get("player")
+            )
+            continue
+
+        availability = candidate.get("availability") or {}
+        availability_status = str(
+            availability.get("availability") or "unknown"
+        )
+        rows.append((
+            selected_date,
+            market,
+            str(player_id),
+            candidate.get("player", ""),
+            candidate.get("team"),
+            candidate.get("opponent"),
+            candidate.get("position"),
+            candidate.get("triage_score"),
+            candidate.get("last5_avg"),
+            candidate.get("last10_avg"),
+            candidate.get("minutes_last5_avg"),
+            audit_rank,
+            availability_status,
+            Jsonb(candidate)
+        ))
+
+    try:
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_snapshot_runs (
+                        selected_date,
+                        market,
+                        eligible_count,
+                        availability_report_status
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market) DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        selected_date,
+                        market,
+                        len(rows),
+                        availability_report_status
+                    )
+                )
+                if not cursor.fetchone():
+                    logger.info(
+                        "Captura de auditoria já registrada; mantendo primeira versão: %s/%s",
+                        selected_date,
+                        market
+                    )
+                    return 0
+
+                if not rows:
+                    logger.info(
+                        "Captura de auditoria registrada sem elegíveis: %s/%s status=%s",
+                        selected_date,
+                        market,
+                        availability_report_status
+                    )
+                    return 0
+
+                cursor.executemany(
+                    """
+                    INSERT INTO audit_snapshots (
+                        selected_date,
+                        market,
+                        player_id,
+                        player_name,
+                        team,
+                        opponent,
+                        position,
+                        triage_score,
+                        last5_avg,
+                        last10_avg,
+                        minutes_last5_avg,
+                        audit_rank,
+                        availability_status,
+                        payload
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (
+                        selected_date,
+                        market,
+                        player_id
+                    ) DO NOTHING
+                    """,
+                    rows
+                )
+
+        logger.info(
+            "Snapshot de auditoria processado: %s elegíveis enviados para %s/%s.",
+            len(rows),
+            selected_date,
+            market
+        )
+        return len(rows)
+
+    except Exception as error:
+        logger.exception(
+            "Falha ao salvar snapshot independente de auditoria: %s",
+            error
+        )
         return 0
 
 
@@ -3045,7 +3270,8 @@ def build_player_result(
 def collect_candidates(
     selected_date,
     market,
-    limit
+    limit,
+    persist_operational=True
 ):
 
     total_start = time.perf_counter()
@@ -3305,11 +3531,12 @@ def collect_candidates(
 
     stage_start = time.perf_counter()
 
-    save_candidate_snapshots(
-        selected_date,
-        market,
-        results
-    )
+    if persist_operational:
+        save_candidate_snapshots(
+            selected_date,
+            market,
+            results
+        )
 
     database_elapsed = time.perf_counter() - stage_start
     total_elapsed = time.perf_counter() - total_start
@@ -3345,10 +3572,19 @@ def collect_candidates(
         limit=final_limit
     )
 
+    # População completa para auditoria, sem limite de exibição.
+    # Mantém-se separada de candidate_snapshots, que registra o uso operacional.
+    audit_snapshots_saved = save_audit_snapshots(
+        selected_date,
+        market,
+        eligible_all_results,
+        availability_report_status
+    )
+
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
     context_start = time.perf_counter()
-    if league_baseline and league_baseline.get("player_status_by_game"):
+    if persist_operational and league_baseline and league_baseline.get("player_status_by_game"):
         player_logs_by_id = player_logs
         roster_by_team = {}
         for roster_player in players:
@@ -3431,6 +3667,7 @@ def collect_candidates(
             ),
         },
         "updated_at": datetime.now().isoformat(),
+        "audit_snapshots_saved": audit_snapshots_saved,
         "candidates": displayed_results
     }
 
@@ -3509,6 +3746,51 @@ def candidates(
     )
 
 
+@app.get("/capture-audit-snapshot")
+def capture_audit_snapshot(
+    selected_date: str = Query(alias="date"),
+    market: str = Query(...)
+):
+    """Gera a população de auditoria sem registrar uso operacional do Scanner."""
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(
+            status_code=400,
+            detail="Mercado inválido ou inativo na auditoria."
+        )
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    try:
+        datetime.strptime(selected_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize AAAA-MM-DD."
+        )
+
+    result = collect_candidates(
+        selected_date,
+        market,
+        10,
+        persist_operational=False
+    )
+
+    return {
+        "status": "captured",
+        "date": selected_date,
+        "market": market,
+        "eligible_players": result["selection_summary"]["eligible_candidates"],
+        "snapshots_saved": result["audit_snapshots_saved"],
+        "players_consulted": result["players_consulted"],
+        "players_with_errors": result["players_with_errors"],
+        "availability_report_status": result["availability"]["report_status"],
+        "updated_at": result["updated_at"]
+    }
+
+
 @app.get("/collect-results")
 def collect_results(
     selected_date: str = Query(
@@ -3580,18 +3862,44 @@ def collect_results(
             cursor.execute(
                 """
                 SELECT
+                    'operational' AS snapshot_source,
                     player_id,
                     player_name,
                     team,
                     opponent,
                     payload
-                FROM candidate_snapshots
-                WHERE
-                    selected_date = %s
-                    AND market = %s
-                ORDER BY player_name
+                FROM candidate_snapshots s
+                WHERE s.selected_date = %s AND s.market = %s
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM candidate_results r
+                        WHERE r.selected_date = s.selected_date
+                            AND r.market = s.market
+                            AND r.player_id = s.player_id
+                    )
+
+                UNION ALL
+
+                SELECT
+                    'audit' AS snapshot_source,
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    s.payload
+                FROM audit_snapshots s
+                WHERE s.selected_date = %s AND s.market = %s
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM audit_results r
+                        WHERE r.selected_date = s.selected_date
+                            AND r.market = s.market
+                            AND r.player_id = s.player_id
+                    )
+
+                ORDER BY player_name, snapshot_source
                 """,
-                (target_date, market)
+                (target_date, market, target_date, market)
             )
             snapshots = cursor.fetchall()
 
@@ -3599,8 +3907,13 @@ def collect_results(
         return {
             "date": selected_date,
             "market": market,
-            "status": "no_snapshots",
-            "results_saved": 0
+            "status": "no_pending_snapshots",
+            "results_saved_this_run": 0,
+            "operational_results_saved": 0,
+            "audit_results_saved": 0,
+            "operational_pending": 0,
+            "audit_pending": 0,
+            "pending": 0
         }
 
     summary_cache = {}
@@ -3630,18 +3943,27 @@ def collect_results(
             except Exception:
                 pass
 
-    results_to_save = []
-    pending = 0
+    operational_results_to_save = []
+    audit_results_to_save = []
+    operational_pending = 0
+    audit_pending = 0
 
     for snapshot in snapshots:
 
         (
+            snapshot_source,
             player_id,
             player_name,
             team,
             opponent,
             payload
         ) = snapshot
+
+        target_results = (
+            audit_results_to_save
+            if snapshot_source == "audit"
+            else operational_results_to_save
+        )
 
         game_id = completed_games.get(
             (
@@ -3651,13 +3973,19 @@ def collect_results(
         )
 
         if not game_id:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         summary = summary_cache.get(game_id)
 
         if not summary:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         player_game = (
@@ -3668,22 +3996,31 @@ def collect_results(
         )
 
         if not player_game:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         minutes = player_game.get("minutes")
 
         if minutes is None or minutes <= 0:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
         actual = player_game.get(actual_stat_key)
 
         if actual is None:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+            else:
+                operational_pending += 1
             continue
 
-        results_to_save.append((
+        target_results.append((
             target_date,
             market,
             str(player_id),
@@ -3699,47 +4036,55 @@ def collect_results(
             })
         ))
 
-    inserted = 0
+    operational_inserted = 0
+    audit_inserted = 0
 
-    if results_to_save:
-        with get_database_connection() as connection:
-            with connection.cursor() as cursor:
-                for row in results_to_save:
-                    cursor.execute(
-                        """
-                        INSERT INTO candidate_results (
-                            selected_date,
-                            market,
-                            player_id,
-                            player_name,
-                            team,
-                            opponent,
-                            actual_value,
-                            game_id,
-                            payload
-                        )
-                        VALUES (
-                            %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s
-                        )
-                        ON CONFLICT (
-                            selected_date,
-                            market,
-                            player_id
-                        ) DO NOTHING
-                        RETURNING id
-                        """,
-                        row
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in operational_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO candidate_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, actual_value, game_id, payload
                     )
-                    if cursor.fetchone():
-                        inserted += 1
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+                if cursor.fetchone():
+                    operational_inserted += 1
+
+            for row in audit_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, actual_value, game_id, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+                if cursor.fetchone():
+                    audit_inserted += 1
 
     return {
         "date": selected_date,
         "market": market,
         "status": "processed",
-        "results_saved_this_run": inserted,
-        "pending": pending
+        "results_saved_this_run": operational_inserted + audit_inserted,
+        "operational_results_saved": operational_inserted,
+        "audit_results_saved": audit_inserted,
+        "operational_pending": operational_pending,
+        "audit_pending": audit_pending,
+        "pending": operational_pending + audit_pending
     }
 
 
@@ -3748,11 +4093,11 @@ def collect_pending_results(
     max_combinations: int = Query(default=100, ge=1, le=200)
 ):
     """
-    Coleta automaticamente resultados de todos os snapshots pendentes.
+    Coleta resultados pendentes das populações operacional e de auditoria.
 
-    Procura combinações data/mercado que ainda não possuem resultado,
-    tenta processá-las pelo mesmo fluxo usado pela coleta manual e
-    deixa pendente apenas o que ainda não pôde ser resolvido.
+    Cada população é consultada e gravada em sua própria tabela de resultados.
+    A combinação data/mercado é processada uma única vez, mesmo quando há
+    pendências nas duas populações.
     """
 
     if not DATABASE_URL:
@@ -3767,24 +4112,38 @@ def collect_pending_results(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT DISTINCT
-                    s.selected_date,
-                    s.market
-                FROM candidate_snapshots s
-                LEFT JOIN candidate_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
-                WHERE
-                    r.id IS NULL
-                    AND s.selected_date <= %s
-                    AND s.market = ANY(%s)
-                ORDER BY
-                    s.selected_date ASC,
-                    s.market ASC
+                SELECT
+                    pending.selected_date,
+                    pending.market
+                FROM (
+                    SELECT s.selected_date, s.market
+                    FROM candidate_snapshots s
+                    LEFT JOIN candidate_results r
+                        ON r.selected_date = s.selected_date
+                        AND r.market = s.market
+                        AND r.player_id = s.player_id
+                    WHERE r.id IS NULL
+                        AND s.selected_date <= %s
+                        AND s.market = ANY(%s)
+
+                    UNION
+
+                    SELECT s.selected_date, s.market
+                    FROM audit_snapshots s
+                    LEFT JOIN audit_results r
+                        ON r.selected_date = s.selected_date
+                        AND r.market = s.market
+                        AND r.player_id = s.player_id
+                    WHERE r.id IS NULL
+                        AND s.selected_date <= %s
+                        AND s.market = ANY(%s)
+                ) AS pending
+                ORDER BY pending.selected_date ASC, pending.market ASC
                 LIMIT %s
                 """,
                 (
+                    today,
+                    list(ACTIVE_MARKETS),
                     today,
                     list(ACTIVE_MARKETS),
                     max_combinations
@@ -3795,6 +4154,10 @@ def collect_pending_results(
     processed = []
     total_saved = 0
     total_pending = 0
+    total_operational_saved = 0
+    total_audit_saved = 0
+    total_operational_pending = 0
+    total_audit_pending = 0
     total_errors = 0
 
     for selected_date, market in pending_combinations:
@@ -3813,11 +4176,19 @@ def collect_pending_results(
 
             total_saved += saved
             total_pending += pending
+            total_operational_saved += int(result.get("operational_results_saved", 0))
+            total_audit_saved += int(result.get("audit_results_saved", 0))
+            total_operational_pending += int(result.get("operational_pending", 0))
+            total_audit_pending += int(result.get("audit_pending", 0))
 
             processed.append({
                 "date": selected_date.isoformat(),
                 "market": market,
                 "results_saved": saved,
+                "operational_results_saved": result.get("operational_results_saved", 0),
+                "audit_results_saved": result.get("audit_results_saved", 0),
+                "operational_pending": result.get("operational_pending", 0),
+                "audit_pending": result.get("audit_pending", 0),
                 "pending": pending,
                 "status": result.get("status", "processed")
             })
@@ -3845,6 +4216,10 @@ def collect_pending_results(
         "combinations_found": len(pending_combinations),
         "combinations_limit": max_combinations,
         "results_saved_this_run": total_saved,
+        "operational_results_saved": total_operational_saved,
+        "audit_results_saved": total_audit_saved,
+        "operational_pending": total_operational_pending,
+        "audit_pending": total_audit_pending,
         "pending_after_processing": total_pending,
         "errors": total_errors,
         "processed": processed
@@ -3907,30 +4282,46 @@ def validation_history(
         with connection.cursor() as cursor:
 
             query = """
-                WITH snapshot_cohort AS (
+                WITH snapshot_source AS (
                     SELECT
-                        s.selected_date,
-                        s.market,
-                        s.player_id,
-                        s.player_name,
-                        s.team,
-                        s.opponent,
-                        s.position,
-                        s.triage_score,
-                        s.last5_avg,
-                        s.last10_avg,
-                        s.minutes_last5_avg,
-                        s.display_rank,
+                        selected_date, market, player_id, player_name,
+                        team, opponent, position, triage_score, last5_avg,
+                        last10_avg, minutes_last5_avg,
+                        audit_rank AS display_rank,
+                        'audit' AS snapshot_source
+                    FROM audit_snapshots
+                    WHERE market = %s
+
+                    UNION ALL
+
+                    SELECT
+                        c.selected_date, c.market, c.player_id, c.player_name,
+                        c.team, c.opponent, c.position, c.triage_score,
+                        c.last5_avg, c.last10_avg, c.minutes_last5_avg,
+                        c.display_rank,
+                        'legacy' AS snapshot_source
+                    FROM candidate_snapshots c
+                    WHERE c.market = %s
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM audit_snapshot_runs a
+                            WHERE a.selected_date = c.selected_date
+                                AND a.market = c.market
+                        )
+                ),
+                snapshot_cohort AS (
+                    SELECT
+                        s.*,
                         COUNT(*) FILTER (
                             WHERE s.display_rank IS NULL
                         ) OVER (
                             PARTITION BY s.selected_date, s.market
                         ) AS missing_rank_count
-                    FROM candidate_snapshots s
-                    WHERE s.market = %s
+                    FROM snapshot_source s
+                    WHERE 1 = 1
             """
 
-            params = [market]
+            params = [market, market]
 
             if parsed_from:
                 query += " AND s.selected_date >= %s"
@@ -3944,24 +4335,14 @@ def validation_history(
                 ),
                 ranked_snapshots AS (
                     SELECT
-                        selected_date,
-                        market,
-                        player_id,
-                        player_name,
-                        team,
-                        opponent,
-                        position,
-                        triage_score,
-                        last5_avg,
-                        last10_avg,
-                        minutes_last5_avg,
+                        selected_date, market, player_id, player_name,
+                        team, opponent, position, triage_score, last5_avg,
+                        last10_avg, minutes_last5_avg, snapshot_source,
                         ROW_NUMBER() OVER (
                             PARTITION BY selected_date, market
                             ORDER BY
-                                CASE
-                                    WHEN missing_rank_count = 0
-                                    THEN display_rank
-                                END ASC NULLS LAST,
+                                CASE WHEN missing_rank_count = 0
+                                     THEN display_rank END ASC NULLS LAST,
                                 triage_score DESC NULLS LAST,
                                 player_id ASC
                         ) AS cohort_rank
@@ -3978,12 +4359,18 @@ def validation_history(
                     s.last5_avg,
                     s.last10_avg,
                     s.minutes_last5_avg,
-                    r.actual_value
+                    COALESCE(ar.actual_value, cr.actual_value)
                 FROM ranked_snapshots s
-                LEFT JOIN candidate_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
+                LEFT JOIN audit_results ar
+                    ON s.snapshot_source = 'audit'
+                    AND ar.selected_date = s.selected_date
+                    AND ar.market = s.market
+                    AND ar.player_id = s.player_id
+                LEFT JOIN candidate_results cr
+                    ON s.snapshot_source = 'legacy'
+                    AND cr.selected_date = s.selected_date
+                    AND cr.market = s.market
+                    AND cr.player_id = s.player_id
                 WHERE (%s = 'all' OR s.cohort_rank <= 10)
                 ORDER BY s.selected_date ASC, s.triage_score DESC
             """
@@ -4430,6 +4817,7 @@ def validation_history(
         "similarity_analyses": similarity_analyses,
         "ranking_quality": high_low,
         "daily": daily_output,
+        "data_source_policy": "Prioriza audit_snapshots/audit_results. Para datas sem snapshot independente, usa o histórico legado candidate_snapshots/candidate_results, sem misturar as duas populações na mesma data/mercado.",
         "method_note": (
             "Precisão: MAE L5/L10. Erro relativo: MAE dividido pela média "
             "das previsões correspondentes, usando a mesma amostra válida. "
@@ -4458,11 +4846,33 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
 
     query = """
-        WITH snapshot_cohort AS (
-            SELECT s.selected_date, s.market, s.player_id, s.player_name, s.team, s.opponent, s.position,
-                   s.triage_score, s.last5_avg, s.last10_avg, s.payload, s.display_rank,
-                   COUNT(*) FILTER (WHERE s.display_rank IS NULL) OVER (PARTITION BY s.selected_date, s.market) AS missing_rank_count
-            FROM candidate_snapshots s WHERE s.market = %s
+        WITH snapshot_source AS (
+            SELECT
+                selected_date, market, player_id, player_name, team, opponent,
+                position, triage_score, last5_avg, last10_avg, payload,
+                audit_rank AS display_rank, 'audit' AS snapshot_source
+            FROM audit_snapshots
+            WHERE market = %s
+
+            UNION ALL
+
+            SELECT
+                c.selected_date, c.market, c.player_id, c.player_name,
+                c.team, c.opponent, c.position, c.triage_score,
+                c.last5_avg, c.last10_avg, c.payload, c.display_rank,
+                'legacy' AS snapshot_source
+            FROM candidate_snapshots c
+            WHERE c.market = %s
+                AND NOT EXISTS (
+                    SELECT 1 FROM audit_snapshot_runs a
+                    WHERE a.selected_date = c.selected_date
+                      AND a.market = c.market
+                )
+        ), snapshot_cohort AS (
+            SELECT *,
+                COUNT(*) FILTER (WHERE display_rank IS NULL)
+                    OVER (PARTITION BY selected_date, market) AS missing_rank_count
+            FROM snapshot_source
         ), ranked_snapshots AS (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY selected_date, market ORDER BY
                 CASE WHEN missing_rank_count = 0 THEN display_rank END ASC NULLS LAST,
@@ -4480,12 +4890,18 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
                s.payload->>'league_position_allowed_l5_games',
                s.payload->>'league_position_allowed_l10_games',
                s.payload->>'opponent_position_equal_game_reference_version',
-               r.actual_value
-        FROM ranked_snapshots s INNER JOIN candidate_results r
-          ON r.selected_date = s.selected_date AND r.market = s.market AND r.player_id = s.player_id
+               COALESCE(ar.actual_value, cr.actual_value)
+        FROM ranked_snapshots s
+        LEFT JOIN audit_results ar
+          ON s.snapshot_source = 'audit'
+         AND ar.selected_date = s.selected_date AND ar.market = s.market AND ar.player_id = s.player_id
+        LEFT JOIN candidate_results cr
+          ON s.snapshot_source = 'legacy'
+         AND cr.selected_date = s.selected_date AND cr.market = s.market AND cr.player_id = s.player_id
         WHERE (%s = 'all' OR s.cohort_rank <= 10)
+          AND COALESCE(ar.id, cr.id) IS NOT NULL
     """
-    params = [market, cohort]
+    params = [market, market, cohort]
     limits = {"7+": (7.0, None), "6-6.99": (6.0, 7.0), "5-5.99": (5.0, 6.0), "4-4.99": (4.0, 5.0), "<4": (None, 4.0)}
     if score_band != "all":
         low, high = limits[score_band]
@@ -4585,7 +5001,9 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         "status": "ok", "market": market, "market_label": MARKETS[market]["label"],
         "cohort": cohort, "cohort_label": "Top 10 exibidos" if cohort == "top10" else "Todos os elegíveis",
         "score_band": score_band, "completed_records": len(detailed),
-        "legacy_records_without_new_reference": legacy_records, "classification_margin_pct": 10,
+        "legacy_records_without_new_reference": legacy_records,
+        "data_source_policy": "Prioriza audit_snapshots/audit_results. Para datas sem snapshot independente, usa candidate_snapshots/candidate_results, sem misturar populações na mesma data/mercado.",
+        "classification_margin_pct": 10,
         "periods": {"l5": summarize("l5"), "l10": summarize("l10")},
         "records": detailed,
         "method_note": "Contexto defensivo = total da estatística cedida aos jogadores da posição por partida, comparado à média da liga para a mesma posição e período. Acima significa que a defesa permite mais de 10% que a liga; Abaixo, menos de 10%; Próximo, dentro de ±10%. A média real exibida é a produção individual dos candidatos agrupados pela classificação defensiva. Snapshots antigos não possuem o benchmark da liga e ficam sem referência."
