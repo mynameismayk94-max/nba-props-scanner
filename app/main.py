@@ -3484,7 +3484,7 @@ def collect_candidates(
 
     # População completa para auditoria, sem limite de exibição.
     # Mantém-se separada de candidate_snapshots, que registra o uso operacional.
-    save_audit_snapshots(
+    audit_snapshots_saved = save_audit_snapshots(
         selected_date,
         market,
         eligible_all_results
@@ -3576,6 +3576,7 @@ def collect_candidates(
             ),
         },
         "updated_at": datetime.now().isoformat(),
+        "audit_snapshots_saved": audit_snapshots_saved,
         "candidates": displayed_results
     }
 
@@ -3665,6 +3666,11 @@ def capture_audit_snapshot(
             status_code=400,
             detail="Mercado inválido ou inativo na auditoria."
         )
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
 
     try:
         datetime.strptime(selected_date, "%Y-%m-%d")
@@ -3686,6 +3692,7 @@ def capture_audit_snapshot(
         "date": selected_date,
         "market": market,
         "eligible_players": result["selection_summary"]["eligible_candidates"],
+        "snapshots_saved": result["audit_snapshots_saved"],
         "players_consulted": result["players_consulted"],
         "players_with_errors": result["players_with_errors"],
         "availability_report_status": result["availability"]["report_status"],
