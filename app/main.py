@@ -3595,8 +3595,9 @@ def collect_candidates(
         )
         return player, logs, fetch_elapsed, http_elapsed, error
 
+    player_history_workers = 16
     with ThreadPoolExecutor(
-        max_workers=12
+        max_workers=player_history_workers
     ) as executor:
 
         futures = [
@@ -3667,11 +3668,12 @@ def collect_candidates(
     fetch_latency = latency_summary(player_fetch_durations)
     http_latency = latency_summary(player_http_durations)
     logger.info(
-        "Candidatos player latency: data=%s mercado=%s workers=12 "
+        "Candidatos player latency: data=%s mercado=%s workers=%s "
         "fetch_count=%s fetch_avg=%.3fs fetch_median=%.3fs fetch_p95=%.3fs fetch_max=%.3fs "
         "http_count=%s http_avg=%.3fs http_median=%.3fs http_p95=%.3fs http_max=%.3fs erros=%s",
         selected_date,
         market,
+        player_history_workers,
         fetch_latency["count"],
         fetch_latency["avg"],
         fetch_latency["median"],
