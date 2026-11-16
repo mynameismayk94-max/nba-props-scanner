@@ -4200,30 +4200,46 @@ def validation_history(
         with connection.cursor() as cursor:
 
             query = """
-                WITH snapshot_cohort AS (
+                WITH snapshot_source AS (
                     SELECT
-                        s.selected_date,
-                        s.market,
-                        s.player_id,
-                        s.player_name,
-                        s.team,
-                        s.opponent,
-                        s.position,
-                        s.triage_score,
-                        s.last5_avg,
-                        s.last10_avg,
-                        s.minutes_last5_avg,
-                        s.display_rank,
+                        selected_date, market, player_id, player_name,
+                        team, opponent, position, triage_score, last5_avg,
+                        last10_avg, minutes_last5_avg,
+                        audit_rank AS display_rank,
+                        'audit' AS snapshot_source
+                    FROM audit_snapshots
+                    WHERE market = %s
+
+                    UNION ALL
+
+                    SELECT
+                        c.selected_date, c.market, c.player_id, c.player_name,
+                        c.team, c.opponent, c.position, c.triage_score,
+                        c.last5_avg, c.last10_avg, c.minutes_last5_avg,
+                        c.display_rank,
+                        'legacy' AS snapshot_source
+                    FROM candidate_snapshots c
+                    WHERE c.market = %s
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM audit_snapshots a
+                            WHERE a.selected_date = c.selected_date
+                                AND a.market = c.market
+                        )
+                ),
+                snapshot_cohort AS (
+                    SELECT
+                        s.*,
                         COUNT(*) FILTER (
                             WHERE s.display_rank IS NULL
                         ) OVER (
                             PARTITION BY s.selected_date, s.market
                         ) AS missing_rank_count
-                    FROM candidate_snapshots s
-                    WHERE s.market = %s
+                    FROM snapshot_source s
+                    WHERE 1 = 1
             """
 
-            params = [market]
+            params = [market, market]
 
             if parsed_from:
                 query += " AND s.selected_date >= %s"
@@ -4237,24 +4253,14 @@ def validation_history(
                 ),
                 ranked_snapshots AS (
                     SELECT
-                        selected_date,
-                        market,
-                        player_id,
-                        player_name,
-                        team,
-                        opponent,
-                        position,
-                        triage_score,
-                        last5_avg,
-                        last10_avg,
-                        minutes_last5_avg,
+                        selected_date, market, player_id, player_name,
+                        team, opponent, position, triage_score, last5_avg,
+                        last10_avg, minutes_last5_avg, snapshot_source,
                         ROW_NUMBER() OVER (
                             PARTITION BY selected_date, market
                             ORDER BY
-                                CASE
-                                    WHEN missing_rank_count = 0
-                                    THEN display_rank
-                                END ASC NULLS LAST,
+                                CASE WHEN missing_rank_count = 0
+                                     THEN display_rank END ASC NULLS LAST,
                                 triage_score DESC NULLS LAST,
                                 player_id ASC
                         ) AS cohort_rank
@@ -4271,12 +4277,18 @@ def validation_history(
                     s.last5_avg,
                     s.last10_avg,
                     s.minutes_last5_avg,
-                    r.actual_value
+                    COALESCE(ar.actual_value, cr.actual_value)
                 FROM ranked_snapshots s
-                LEFT JOIN candidate_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
+                LEFT JOIN audit_results ar
+                    ON s.snapshot_source = 'audit'
+                    AND ar.selected_date = s.selected_date
+                    AND ar.market = s.market
+                    AND ar.player_id = s.player_id
+                LEFT JOIN candidate_results cr
+                    ON s.snapshot_source = 'legacy'
+                    AND cr.selected_date = s.selected_date
+                    AND cr.market = s.market
+                    AND cr.player_id = s.player_id
                 WHERE (%s = 'all' OR s.cohort_rank <= 10)
                 ORDER BY s.selected_date ASC, s.triage_score DESC
             """
@@ -4723,6 +4735,7 @@ def validation_history(
         "similarity_analyses": similarity_analyses,
         "ranking_quality": high_low,
         "daily": daily_output,
+        "data_source_policy": "Prioriza audit_snapshots/audit_results. Para datas sem snapshot independente, usa o histórico legado candidate_snapshots/candidate_results, sem misturar as duas populações na mesma data/mercado.",
         "method_note": (
             "Precisão: MAE L5/L10. Erro relativo: MAE dividido pela média "
             "das previsões correspondentes, usando a mesma amostra válida. "
@@ -4751,11 +4764,33 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
 
     query = """
-        WITH snapshot_cohort AS (
-            SELECT s.selected_date, s.market, s.player_id, s.player_name, s.team, s.opponent, s.position,
-                   s.triage_score, s.last5_avg, s.last10_avg, s.payload, s.display_rank,
-                   COUNT(*) FILTER (WHERE s.display_rank IS NULL) OVER (PARTITION BY s.selected_date, s.market) AS missing_rank_count
-            FROM candidate_snapshots s WHERE s.market = %s
+        WITH snapshot_source AS (
+            SELECT
+                selected_date, market, player_id, player_name, team, opponent,
+                position, triage_score, last5_avg, last10_avg, payload,
+                audit_rank AS display_rank, 'audit' AS snapshot_source
+            FROM audit_snapshots
+            WHERE market = %s
+
+            UNION ALL
+
+            SELECT
+                c.selected_date, c.market, c.player_id, c.player_name,
+                c.team, c.opponent, c.position, c.triage_score,
+                c.last5_avg, c.last10_avg, c.payload, c.display_rank,
+                'legacy' AS snapshot_source
+            FROM candidate_snapshots c
+            WHERE c.market = %s
+                AND NOT EXISTS (
+                    SELECT 1 FROM audit_snapshots a
+                    WHERE a.selected_date = c.selected_date
+                      AND a.market = c.market
+                )
+        ), snapshot_cohort AS (
+            SELECT *,
+                COUNT(*) FILTER (WHERE display_rank IS NULL)
+                    OVER (PARTITION BY selected_date, market) AS missing_rank_count
+            FROM snapshot_source
         ), ranked_snapshots AS (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY selected_date, market ORDER BY
                 CASE WHEN missing_rank_count = 0 THEN display_rank END ASC NULLS LAST,
@@ -4773,12 +4808,18 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
                s.payload->>'league_position_allowed_l5_games',
                s.payload->>'league_position_allowed_l10_games',
                s.payload->>'opponent_position_equal_game_reference_version',
-               r.actual_value
-        FROM ranked_snapshots s INNER JOIN candidate_results r
-          ON r.selected_date = s.selected_date AND r.market = s.market AND r.player_id = s.player_id
+               COALESCE(ar.actual_value, cr.actual_value)
+        FROM ranked_snapshots s
+        LEFT JOIN audit_results ar
+          ON s.snapshot_source = 'audit'
+         AND ar.selected_date = s.selected_date AND ar.market = s.market AND ar.player_id = s.player_id
+        LEFT JOIN candidate_results cr
+          ON s.snapshot_source = 'legacy'
+         AND cr.selected_date = s.selected_date AND cr.market = s.market AND cr.player_id = s.player_id
         WHERE (%s = 'all' OR s.cohort_rank <= 10)
+          AND COALESCE(ar.id, cr.id) IS NOT NULL
     """
-    params = [market, cohort]
+    params = [market, market, cohort]
     limits = {"7+": (7.0, None), "6-6.99": (6.0, 7.0), "5-5.99": (5.0, 6.0), "4-4.99": (4.0, 5.0), "<4": (None, 4.0)}
     if score_band != "all":
         low, high = limits[score_band]
@@ -4878,7 +4919,9 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         "status": "ok", "market": market, "market_label": MARKETS[market]["label"],
         "cohort": cohort, "cohort_label": "Top 10 exibidos" if cohort == "top10" else "Todos os elegíveis",
         "score_band": score_band, "completed_records": len(detailed),
-        "legacy_records_without_new_reference": legacy_records, "classification_margin_pct": 10,
+        "legacy_records_without_new_reference": legacy_records,
+        "data_source_policy": "Prioriza audit_snapshots/audit_results. Para datas sem snapshot independente, usa candidate_snapshots/candidate_results, sem misturar populações na mesma data/mercado.",
+        "classification_margin_pct": 10,
         "periods": {"l5": summarize("l5"), "l10": summarize("l10")},
         "records": detailed,
         "method_note": "Contexto defensivo = total da estatística cedida aos jogadores da posição por partida, comparado à média da liga para a mesma posição e período. Acima significa que a defesa permite mais de 10% que a liga; Abaixo, menos de 10%; Próximo, dentro de ±10%. A média real exibida é a produção individual dos candidatos agrupados pela classificação defensiva. Snapshots antigos não possuem o benchmark da liga e ficam sem referência."
