@@ -697,8 +697,7 @@ def parse_attempts(value) -> float:
     try:
         parts = str(value).strip().split("-")
         if len(parts) != 2:
-            return 0.0
-        return float(parts[1])
+            return 0.0        return float(parts[1])
     except (ValueError, TypeError):
         return 0.0
 
@@ -1397,8 +1396,7 @@ def calculate_minutes_band_position_defense(
 
     for game in sample:
         position_data = (
-            game.get("positions", {})
-            .get(position, {})
+            game.get("positions", {})            .get(position, {})
         )
         players = position_data.get("players", [])
         game_has_valid_player = False
@@ -2097,7 +2095,6 @@ def fetch_espn_games(
         recent_form_cache_after["misses"] - recent_form_cache_before["misses"],
         recent_form_cache_after["currsize"]
     )
-
     for game in games:
         for side in ("home", "away"):
             team = game.get(side)
@@ -2293,12 +2290,18 @@ def get_athlete_logs(
     year: int
 ) -> tuple:
 
-    data = request_json(
-        GAMELOG_URL.format(
-            athlete=athlete_id
-        ),
-        {"season": year}
-    )
+    gamelog_request_started = time.perf_counter()
+    try:
+        data = request_json(
+            GAMELOG_URL.format(
+                athlete=athlete_id
+            ),
+            {"season": year}
+        )
+    finally:
+        _http_local.last_gamelog_http_elapsed = (
+            time.perf_counter() - gamelog_request_started
+        )
 
     season_label = (
         f"{year - 1}-{str(year)[-2:]} Regular Season"
@@ -2797,8 +2800,7 @@ def get_league_position_defense_baseline(year, target_date_iso):
         "player_status_by_game": player_status_by_game
     }
     for position in ("G", "F", "C"):
-        result["positions"][position] = {}
-        for stat_key in stat_keys:
+        result["positions"][position] = {}        for stat_key in stat_keys:
             result["positions"][position][stat_key] = {}
             for window in (5, 10):
                 values = samples[window][position][stat_key]
@@ -3497,8 +3499,7 @@ def collect_candidates(
 
     total_start = time.perf_counter()
 
-    target_date = datetime.strptime(
-        selected_date,
+    target_date = datetime.strptime(        selected_date,
         "%Y-%m-%d"
     ).date()
 
@@ -3564,12 +3565,30 @@ def collect_candidates(
     errors = 0
     player_cache_before = _cache_metrics(get_athlete_logs)
 
+    player_fetch_durations = []
+    player_http_durations = []
+    player_fetch_errors = 0
+
     def fetch_player(player):
-        logs = get_athlete_logs(
-            player["id"],
-            year
+        fetch_started = time.perf_counter()
+        _http_local.last_gamelog_http_elapsed = None
+        try:
+            logs = get_athlete_logs(
+                player["id"],
+                year
+            )
+            error = None
+        except Exception as caught_error:
+            logs = None
+            error = caught_error
+
+        fetch_elapsed = time.perf_counter() - fetch_started
+        http_elapsed = getattr(
+            _http_local,
+            "last_gamelog_http_elapsed",
+            None
         )
-        return player, logs
+        return player, logs, fetch_elapsed, http_elapsed, error
 
     with ThreadPoolExecutor(
         max_workers=12
@@ -3586,18 +3605,80 @@ def collect_candidates(
         for future in as_completed(futures):
 
             try:
-                player, logs = future.result()
+                player, logs, fetch_elapsed, http_elapsed, fetch_error = future.result()
+                player_fetch_durations.append(fetch_elapsed)
+                if http_elapsed is not None:
+                    player_http_durations.append(http_elapsed)
+
+                if fetch_error is not None:
+                    errors += 1
+                    player_fetch_errors += 1
+                    logger.warning(
+                        "Falha ao consultar jogador: %s",
+                        fetch_error
+                    )
+                    continue
+
                 successful_logs += 1
                 player_logs[player["id"]] = (player, logs)
 
             except Exception as error:
                 errors += 1
+                player_fetch_errors += 1
                 logger.warning(
-                    "Falha ao consultar jogador: %s",
+                    "Falha ao processar retorno de jogador: %s",
                     error
                 )
 
     player_logs_elapsed = time.perf_counter() - stage_start
+
+    def latency_summary(values):
+        if not values:
+            return {
+                "count": 0,
+                "avg": 0.0,
+                "median": 0.0,
+                "p95": 0.0,
+                "max": 0.0
+            }
+
+        ordered = sorted(values)
+        count = len(ordered)
+        middle = count // 2
+        median = (
+            ordered[middle]
+            if count % 2
+            else (ordered[middle - 1] + ordered[middle]) / 2
+        )
+        p95_index = min(count - 1, int((count - 1) * 0.95))
+        return {
+            "count": count,
+            "avg": sum(ordered) / count,
+            "median": median,
+            "p95": ordered[p95_index],
+            "max": ordered[-1]
+        }
+
+    fetch_latency = latency_summary(player_fetch_durations)
+    http_latency = latency_summary(player_http_durations)
+    logger.info(
+        "Candidatos player latency: data=%s mercado=%s workers=12 "
+        "fetch_count=%s fetch_avg=%.3fs fetch_median=%.3fs fetch_p95=%.3fs fetch_max=%.3fs "
+        "http_count=%s http_avg=%.3fs http_median=%.3fs http_p95=%.3fs http_max=%.3fs erros=%s",
+        selected_date,
+        market,
+        fetch_latency["count"],
+        fetch_latency["avg"],
+        fetch_latency["median"],
+        fetch_latency["p95"],
+        fetch_latency["max"],
+        http_latency["count"],
+        http_latency["avg"],
+        http_latency["median"],
+        http_latency["p95"],
+        http_latency["max"],
+        player_fetch_errors
+    )
 
     # Mantém exatamente os mesmos critérios de elegibilidade usados
     # em build_player_result(): mínimo de 3 jogos anteriores e média
@@ -4197,8 +4278,7 @@ def collect_results(
             "date": selected_date,
             "market": market,
             "status": "no_pending_snapshots",
-            "results_saved_this_run": 0,
-            "operational_results_saved": 0,
+            "results_saved_this_run": 0,            "operational_results_saved": 0,
             "audit_results_saved": 0,
             "operational_pending": 0,
             "audit_pending": 0,
@@ -4897,8 +4977,7 @@ def validation_history(
             })
 
             target_features = [target[index] for index in feature_indexes]
-            if any(value is None for value in target_features):
-                continue
+            if any(value is None for value in target_features):                continue
 
             target_player_id = str(target[1])
             ranked_peers = []
