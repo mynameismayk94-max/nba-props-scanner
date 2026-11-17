@@ -391,7 +391,7 @@
 
     <div class="flex items-center justify-between gap-2 px-1">
       <h3 class="text-xs font-semibold text-white">Indicadores de desempenho</h3>
-      <div class="text-[10px] text-gray-400">Amostra válida: <span id="hist-sample-count" class="font-bold text-white">—</span></div>
+      <div class="text-[10px] text-gray-400">Resultados reais: <span id="hist-sample-count" class="font-bold text-white">—</span></div>
     </div>
 
     <!-- KPIs de precisão e cobertura -->
@@ -421,6 +421,7 @@
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro médio absoluto em unidades da estatística; menor é melhor. Pearson mede a associação linear entre Score e resultado real, não uma taxa de acerto.</p>
 
     <!-- Tabela de Calibração e qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
@@ -743,8 +744,6 @@ function switchTab(tab) {
 
   if (tab === 'history') {
     setAuditCohort(auditCohort);
-    const auditDate = document.getElementById('audit-collection-date');
-    if(auditDate && !auditDate.value) auditDate.value = data.value;
     fetchHistoryValidation();
   } else if (tab === 'context') {
     const contextDate = document.getElementById('context-date');
@@ -1592,6 +1591,11 @@ async function fetchHistoryValidation() {
       (summary.completed_results ?? 0) + ' resultados reais + ' +
       (summary.no_result_results ?? 0) + ' sem resultado + ' +
       (summary.pending_results ?? 0) + ' aguardando apuração. DNPs e pendências não entram nas métricas de precisão.';
+    document.getElementById('audit-metric-sample-note').innerText =
+      'Amostras usadas: MAE L5 = ' + (summary.l5_sample ?? summary.completed_results ?? 0) +
+      ' registros; MAE L10 = ' + (summary.l10_sample ?? summary.completed_results ?? 0) +
+      ' registros; Pearson = ' + (summary.pearson_sample ?? summary.completed_results ?? 0) +
+      ' pares Score/resultado. MAE menor indica menor erro; Pearson mede associação, não taxa de acerto.';
     document.getElementById('kpi-l5-mae').innerText = summary.l5_mae ?? '--';
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
@@ -1735,14 +1739,10 @@ function limparResultadosAoMudarData(){
 }
 
 data.addEventListener('change', limparResultadosAoMudarData);
-const auditDateFrom = document.getElementById('audit-date-from');
 const auditDateTo = document.getElementById('audit-date-to');
 if (auditDateTo && !auditDateTo.value) {
   auditDateTo.value = new Date().toLocaleDateString('en-CA');
 }
-[auditDateFrom, auditDateTo].forEach(input => {
-  if (input) input.addEventListener('change', fetchHistoryValidation);
-});
 
 document.addEventListener('DOMContentLoaded', () => {
   testar();
