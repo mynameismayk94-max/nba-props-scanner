@@ -1241,6 +1241,51 @@ async function buscar(mercado){
   }
 }
 
+async function carregarStatusColetaAuditoria(selectedDate) {
+  const statusBox = document.getElementById('collection-status');
+  if(!statusBox) return;
+  if(!selectedDate) {
+    statusBox.innerHTML = '';
+    return;
+  }
+
+  statusBox.innerHTML = '<span class="text-gray-400">Consultando status já persistido...</span>';
+
+  try {
+    const res = await requisicao('/audit-collection-status?date=' + encodeURIComponent(selectedDate));
+    if(res.status !== 'ok') throw new Error('Resposta inválida');
+
+    const labels = {
+      points: 'Pontos',
+      assists: 'Assistências',
+      rebounds: 'Rebotes',
+      threes: 'Tentativas de 3 pts',
+      two_pa: 'Tentativas de 2 pts',
+      fgm: 'Cestas convertidas'
+    };
+
+    const markets = Object.entries(labels).map(([id, label]) => {
+      const data = res.markets?.[id] || {};
+      const audit = data.audit || { snapshots_total: 0, completed_results: 0, pending_results: 0 };
+      const operational = data.operational || { snapshots_total: 0, completed_results: 0, pending_results: 0 };
+
+      return '<div class="space-y-0.5">' +
+        '<div class="font-medium text-gray-300">' + label + '</div>' +
+        '<div class="pl-2 text-[9px] text-gray-500">' +
+        'Auditoria: ' + audit.completed_results + ' resultados · ' + audit.pending_results + ' pendentes' +
+        ' &nbsp;|&nbsp; Operacional: ' + operational.completed_results + ' resultados · ' + operational.pending_results + ' pendentes' +
+        '</div>' +
+        '</div>';
+    }).join('');
+
+    statusBox.innerHTML =
+      '<div class="font-semibold text-gray-200 mb-1">Status persistido da coleta · ' + selectedDate + '</div>' +
+      markets;
+  } catch(error) {
+    statusBox.innerHTML = '<span class="text-red-400">Não foi possível consultar o status persistido da coleta.</span>';
+  }
+}
+
 async function coletarResultadosAuditoria() {
   const dateInput = document.getElementById('audit-collection-date');
   const button = document.getElementById('collect-results-btn');
@@ -1601,6 +1646,10 @@ function limparResultadosAoMudarData(){
 }
 
 data.addEventListener('change', limparResultadosAoMudarData);
+const auditCollectionDate = document.getElementById('audit-collection-date');
+if (auditCollectionDate) {
+  auditCollectionDate.addEventListener('change', () => carregarStatusColetaAuditoria(auditCollectionDate.value));
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   testar();
