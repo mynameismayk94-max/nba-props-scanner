@@ -4832,12 +4832,20 @@ def audit_collection_diagnostics(
                     s.player_id,
                     s.player_name,
                     s.team,
-                    s.opponent
+                    s.opponent,
+                    s.availability_status,
+                    s.captured_at,
+                    s.payload,
+                    run.availability_report_status,
+                    run.captured_at
                 FROM audit_snapshots s
                 LEFT JOIN audit_results r
                     ON r.selected_date = s.selected_date
                     AND r.market = s.market
                     AND r.player_id = s.player_id
+                LEFT JOIN audit_snapshot_runs run
+                    ON run.selected_date = s.selected_date
+                    AND run.market = s.market
                 WHERE s.selected_date = %s
                     AND r.id IS NULL
                 ORDER BY s.market, s.player_name
@@ -4889,7 +4897,11 @@ def audit_collection_diagnostics(
 
     diagnostics = []
 
-    for market, player_id, player_name, team, opponent in pending_snapshots:
+    for (
+        market, player_id, player_name, team, opponent,
+        snapshot_availability_status, snapshot_captured_at, snapshot_payload,
+        run_availability_report_status, run_captured_at
+    ) in pending_snapshots:
         game_id = completed_games.get(
             ((team or "").upper(), (opponent or "").upper())
         )
@@ -4982,6 +4994,21 @@ def audit_collection_diagnostics(
                 diagnostic_player.get("match_method")
                 if game_id and summary and diagnostic_player
                 else None
+            ),
+            "snapshot_availability_status": snapshot_availability_status,
+            "snapshot_availability_detail": (
+                snapshot_payload.get("availability")
+                if isinstance(snapshot_payload, dict)
+                else None
+            ),
+            "snapshot_captured_at": (
+                snapshot_captured_at.isoformat()
+                if snapshot_captured_at else None
+            ),
+            "audit_run_availability_report_status": run_availability_report_status,
+            "audit_run_captured_at": (
+                run_captured_at.isoformat()
+                if run_captured_at else None
             )
         })
 
