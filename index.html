@@ -213,6 +213,11 @@
   .availability-out { color: #fca5a5; background: rgba(239, 68, 68, .10); border: 1px solid rgba(239, 68, 68, .25); }
   .availability-unknown { color: #9ca3af; background: rgba(107, 114, 128, .10); border: 1px solid rgba(107, 114, 128, .22); }
 
+  /* Diagnóstico de auditoria: nunca deixar JSON/IDs longos estourarem o viewport. */
+  #collection-status { min-width: 0; max-width: 100%; overflow: hidden; }
+  #collection-status .audit-diagnostic-row { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.35; }
+  #collection-status .audit-diagnostic-json { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: break-all; }
+
   @media (max-width: 380px) {
     .modal-body { padding: 8px; }
     .analysis-card { padding: 8px; }
@@ -1393,14 +1398,14 @@ async function carregarDiagnosticoPendenciasAuditoria(selectedDate) {
           (item.detail ? '<div>Diagnóstico: ' + escapeHtml(item.detail) + '</div>' : '') +
           (item.reason_code === 'zero_minutes' ? (
             '<div class="mt-1 text-amber-200">Estrutura bruta do boxscore:</div>' +
-            '<div>Tipo de stats: ' + escapeHtml(item.boxscore_stats_type || 'não informado') +
+            '<div class="audit-diagnostic-row">Tipo de stats: ' + escapeHtml(item.boxscore_stats_type || 'não informado') +
             ' · tamanho: ' + escapeHtml(item.boxscore_stats_length ?? 'não informado') + '</div>' +
-            '<div>Chaves estatísticas: ' + escapeHtml(JSON.stringify(item.boxscore_statistics_keys || [])) + '</div>' +
-            '<div>Índice MIN: ' + escapeHtml(item.boxscore_min_index ?? 'não encontrado') +
-            ' · valor bruto MIN: ' + escapeHtml(JSON.stringify(item.boxscore_raw_min_value ?? null)) + '</div>' +
-            '<div>Chaves do registro: ' + escapeHtml(JSON.stringify(item.boxscore_athlete_entry_keys || [])) + '</div>' +
-            '<div>Chaves do atleta: ' + escapeHtml(JSON.stringify(item.boxscore_athlete_keys || [])) + '</div>' +
-            '<div>Indicador DNP: ' + escapeHtml(JSON.stringify(item.boxscore_did_not_play ?? null)) + '</div>'
+            '<div class="audit-diagnostic-row">Chaves estatísticas: <span class="audit-diagnostic-json">' + escapeHtml(JSON.stringify(item.boxscore_statistics_keys || [])) + '</span></div>' +
+            '<div class="audit-diagnostic-row">Índice MIN: ' + escapeHtml(item.boxscore_min_index ?? 'não encontrado') +
+            ' · valor bruto MIN: <span class="audit-diagnostic-json">' + escapeHtml(JSON.stringify(item.boxscore_raw_min_value ?? null)) + '</span></div>' +
+            '<div class="audit-diagnostic-row">Chaves do registro: <span class="audit-diagnostic-json">' + escapeHtml(JSON.stringify(item.boxscore_athlete_entry_keys || [])) + '</span></div>' +
+            '<div class="audit-diagnostic-row">Chaves do atleta: <span class="audit-diagnostic-json">' + escapeHtml(JSON.stringify(item.boxscore_athlete_keys || [])) + '</span></div>' +
+            '<div class="audit-diagnostic-row">Indicador DNP: <span class="audit-diagnostic-json">' + escapeHtml(JSON.stringify(item.boxscore_did_not_play ?? null)) + '</span></div>'
           ) : '') +
           '<div class="text-cyan-300">Disponibilidade gravada: ' + escapeHtml(availability) + '</div>' +
           '<div>Detalhe da disponibilidade: ' + escapeHtml(availabilityDetail) + '</div>' +
@@ -1513,15 +1518,20 @@ async function fetchMarketComparison() {
   const tableBody = document.getElementById('market-comparison-table');
   tableBody.innerHTML = '<tr><td colspan="7" class="text-gray-400">Carregando os mercados...</td></tr>';
 
-  const results = await Promise.all(markets.map(async market => {
+  // Evita disparar seis conexões ao Neon simultaneamente. A tabela continua
+  // mostrando os seis mercados, mas as consultas são feitas em sequência.
+  // Isso reduz picos de conexões e mantém a API responsiva em homologação.
+  const results = [];
+  for (const market of markets) {
     try {
       const res = await requisicao('/validation-history?market=' + market.id + '&cohort=' + encodeURIComponent(auditCohort));
       if(res.status !== 'ok') throw new Error('Resposta inválida');
-      return { market, summary: res.summary };
+      results.push({ market, summary: res.summary });
     } catch (error) {
-      return { market, error: true };
+      console.error('Erro ao carregar comparação de ' + market.id + ':', error);
+      results.push({ market, error: true });
     }
-  }));
+  }
 
   tableBody.innerHTML = results.map(item => {
     if(item.error) {
