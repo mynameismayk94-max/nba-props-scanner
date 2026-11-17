@@ -560,8 +560,24 @@
       <p class="text-[9px] text-gray-500">A comparação mostra separação estatística observada, não taxa de acerto de apostas.</p>
     </div>
 
+    <!-- Comparação diária do intervalo -->
+    <div id="daily-breakdown-panel" class="glass-panel p-3 space-y-2 hidden">
+      <div>
+        <h3 class="text-xs font-semibold text-white">Resultado por data</h3>
+        <p class="text-[9px] text-gray-400">Cada linha representa somente os registros daquele dia. DNPs e pendências ficam fora das métricas de precisão.</p>
+      </div>
+      <div class="tablewrap mt-1">
+        <table>
+          <thead><tr>
+            <th>Data</th><th>Snapshots</th><th>Reais</th><th>DNP</th><th>Pend.</th><th>MAE L5</th><th>MAE L10</th><th>Pearson</th>
+          </tr></thead>
+          <tbody id="daily-breakdown-table"><tr><td colspan="8" class="text-gray-400">Aguardando dados...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Gráfico de Evolução -->
-    <div class="glass-panel p-3 space-y-2">
+    <div id="daily-evolution-panel" class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">Evolução dos erros ao longo do período</h3>
       <div class="h-44 w-full">
         <canvas id="dailyErrorChart"></canvas>
@@ -1722,7 +1738,12 @@ async function fetchHistoryValidation() {
         ? 'Diferença entre as faixas: amostra insuficiente.'
         : 'Diferença: ' + ranking.actual_average_difference + ' unidades (' + ranking.high_vs_low_pct + '% acima da faixa abaixo de 4).';
 
-    renderDailyChart(res.daily);
+    renderDailyBreakdown(res.daily || []);
+    const breakdownPanel = document.getElementById('daily-breakdown-panel');
+    const evolutionPanel = document.getElementById('daily-evolution-panel');
+    if (breakdownPanel) breakdownPanel.classList.toggle('hidden', auditMode !== 'range');
+    if (evolutionPanel) evolutionPanel.classList.toggle('hidden', auditMode === 'daily' || (res.daily || []).length < 2);
+    renderDailyChart(res.daily || []);
   } catch (e) {
     if (requestId !== historyValidationRequestId) return;
     console.error('Erro na auditoria:', e);
@@ -1737,6 +1758,29 @@ async function fetchHistoryValidation() {
     document.getElementById('similar-profiles-table').innerHTML =
       '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
   }
+}
+
+function renderDailyBreakdown(dailyData) {
+  const table = document.getElementById('daily-breakdown-table');
+  if (!table) return;
+  if (!dailyData.length) {
+    table.innerHTML = '<tr><td colspan="8" class="text-gray-400">Não há registros nas datas selecionadas.</td></tr>';
+    return;
+  }
+  const show = value => value == null ? '—' : numero(value, 2);
+  table.innerHTML = dailyData.map(day => {
+    const dateLabel = (day.date || '').split('-').reverse().join('/');
+    return '<tr>' +
+      '<td class="font-semibold text-white">' + escapeHtml(dateLabel) + '</td>' +
+      '<td>' + (day.snapshots_total ?? 0) + '</td>' +
+      '<td class="text-emerald-300">' + (day.completed_results ?? 0) + '</td>' +
+      '<td>' + (day.no_result_results ?? 0) + '</td>' +
+      '<td>' + (day.pending_results ?? 0) + '</td>' +
+      '<td>' + show(day.l5_mae) + '</td>' +
+      '<td>' + show(day.l10_mae) + '</td>' +
+      '<td>' + show(day.score_actual_pearson) + '</td>' +
+    '</tr>';
+  }).join('');
 }
 
 function renderDailyChart(dailyData) {
