@@ -4680,6 +4680,169 @@ def audit_collection_status(
     }
 
 
+
+@app.get("/audit-collection-diagnostics")
+def audit_collection_diagnostics(
+    date: str = Query(...)
+):
+    """
+    Diagnóstico somente leitura das pendências da população independente
+    de auditoria. Não altera snapshots nem resultados.
+    """
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida. Use YYYY-MM-DD.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    actual_stat_keys = {
+        "points": "points",
+        "assists": "assists",
+        "rebounds": "rebounds",
+        "threes": "three_pa",
+        "two_pa": "two_pa",
+        "fgm": "fgm",
+        "attempts": "fga"
+    }
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    s.market,
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                WHERE s.selected_date = %s
+                    AND r.id IS NULL
+                ORDER BY s.market, s.player_name
+                """,
+                (selected_date,)
+            )
+            pending_snapshots = cursor.fetchall()
+
+    if not pending_snapshots:
+        return {
+            "status": "ok",
+            "date": date,
+            "pending_total": 0,
+            "diagnostics": []
+        }
+
+    schedule = fetch_espn_games(date)
+    completed_games = {}
+    completed_game_ids = set()
+
+    for game in schedule.get("games", []):
+        if not game.get("completed"):
+            continue
+        home = game.get("home", {}).get("abbr")
+        away = game.get("away", {}).get("abbr")
+        game_id = str(game.get("game_id") or "")
+        if home and away and game_id:
+            completed_games[(home.upper(), away.upper())] = game_id
+            completed_games[(away.upper(), home.upper())] = game_id
+            completed_game_ids.add(game_id)
+
+    summary_cache = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(get_game_summary, game_id): game_id
+            for game_id in completed_game_ids
+        }
+        for future in as_completed(futures):
+            game_id = futures[future]
+            try:
+                summary_cache[game_id] = future.result()
+            except Exception as error:
+                logger.warning(
+                    "Diagnóstico auditoria: falha no resumo game_id=%s: %s",
+                    game_id,
+                    error
+                )
+                summary_cache[game_id] = None
+
+    diagnostics = []
+
+    for market, player_id, player_name, team, opponent in pending_snapshots:
+        game_id = completed_games.get(
+            ((team or "").upper(), (opponent or "").upper())
+        )
+
+        reason_code = "ok"
+        reason = "Sem pendência identificada"
+        detail = None
+
+        if not game_id:
+            reason_code = "game_not_found"
+            reason = "Confronto não localizado entre os jogos concluídos"
+            detail = f"{team or '?'} x {opponent or '?'}"
+        else:
+            summary = summary_cache.get(game_id)
+
+            if not summary:
+                reason_code = "summary_unavailable"
+                reason = "Resumo da partida não disponível"
+                detail = f"game_id={game_id}"
+            else:
+                player_game = extract_player_game_from_summary(
+                    summary,
+                    player_id
+                )
+
+                if not player_game:
+                    reason_code = "player_not_found"
+                    reason = "Jogador não encontrado no boxscore da partida"
+                    detail = f"game_id={game_id}"
+                else:
+                    minutes = player_game.get("minutes")
+
+                    if minutes is None or minutes <= 0:
+                        reason_code = "zero_minutes"
+                        reason = "Jogador não registrou minutos"
+                        detail = f"minutos={minutes}"
+                    else:
+                        actual_key = actual_stat_keys.get(market)
+                        actual = player_game.get(actual_key)
+
+                        if actual is None:
+                            reason_code = "stat_unavailable"
+                            reason = "Estatística do mercado não disponível no boxscore"
+                            detail = f"stat={actual_key}"
+                        else:
+                            reason_code = "unexpected"
+                            reason = "Resultado encontrado, mas não foi persistido"
+                            detail = f"actual={actual}"
+
+        diagnostics.append({
+            "market": market,
+            "player_id": str(player_id),
+            "player_name": player_name,
+            "team": team,
+            "opponent": opponent,
+            "game_id": game_id,
+            "reason_code": reason_code,
+            "reason": reason,
+            "detail": detail
+        })
+
+    return {
+        "status": "ok",
+        "date": date,
+        "pending_total": len(diagnostics),
+        "diagnostics": diagnostics
+    }
+
+
 @app.get("/validation-history")
 def validation_history(
     market: str = Query(
