@@ -4940,11 +4940,16 @@ def audit_collection_diagnostics(
                     ON r.selected_date = s.selected_date
                     AND r.market = s.market
                     AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
                 LEFT JOIN audit_snapshot_runs run
                     ON run.selected_date = s.selected_date
                     AND run.market = s.market
                 WHERE s.selected_date = %s
                     AND r.id IS NULL
+                    AND nr.id IS NULL
                 ORDER BY s.market, s.player_name
                 """,
                 (selected_date,)
