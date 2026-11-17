@@ -5153,6 +5153,181 @@ def audit_collection_diagnostics(
     }
 
 
+@app.get("/validation-history-summary")
+def validation_history_summary(
+    market: str = Query(default="assists"),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    cohort: str = Query(default="all")
+):
+    """Resumo leve da auditoria para a tabela comparativa por mercado.
+
+    Mantém a mesma população e as mesmas definições da /validation-history,
+    mas calcula apenas os KPIs necessários para a comparação dos seis mercados.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+    if cohort not in {"top10", "all"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
+
+    try:
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else None
+        parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período de datas inválido.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH snapshot_source AS (
+            SELECT
+                selected_date, market, player_id, triage_score,
+                last5_avg, last10_avg, audit_rank AS display_rank,
+                'audit' AS snapshot_source
+            FROM audit_snapshots
+            WHERE market = %s
+
+            UNION ALL
+
+            SELECT
+                c.selected_date, c.market, c.player_id, c.triage_score,
+                c.last5_avg, c.last10_avg, c.display_rank,
+                'legacy' AS snapshot_source
+            FROM candidate_snapshots c
+            WHERE c.market = %s
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM audit_snapshot_runs a
+                  WHERE a.selected_date = c.selected_date
+                    AND a.market = c.market
+              )
+        ),
+        filtered AS (
+            SELECT *,
+                COUNT(*) FILTER (WHERE display_rank IS NULL)
+                    OVER (PARTITION BY selected_date, market) AS missing_rank_count
+            FROM snapshot_source
+        ),
+        ranked AS (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY selected_date, market
+                    ORDER BY
+                        CASE WHEN missing_rank_count = 0 THEN display_rank END ASC NULLS LAST,
+                        triage_score DESC NULLS LAST,
+                        player_id ASC
+                ) AS cohort_rank
+            FROM filtered
+        ),
+        resolved AS (
+            SELECT
+                r.selected_date,
+                r.player_id,
+                r.triage_score,
+                r.last5_avg,
+                r.last10_avg,
+                COALESCE(ar.actual_value, cr.actual_value) AS actual_value,
+                CASE
+                    WHEN ar.id IS NOT NULL THEN 'completed'
+                    WHEN nr.id IS NOT NULL THEN 'no_result'
+                    ELSE 'pending'
+                END AS result_status
+            FROM ranked r
+            LEFT JOIN audit_results ar
+              ON r.snapshot_source = 'audit'
+             AND ar.selected_date = r.selected_date
+             AND ar.market = r.market
+             AND ar.player_id = r.player_id
+            LEFT JOIN candidate_results cr
+              ON r.snapshot_source = 'legacy'
+             AND cr.selected_date = r.selected_date
+             AND cr.market = r.market
+             AND cr.player_id = r.player_id
+            LEFT JOIN audit_no_results nr
+              ON r.snapshot_source = 'audit'
+             AND nr.selected_date = r.selected_date
+             AND nr.market = r.market
+             AND nr.player_id = r.player_id
+            WHERE (%s = 'all' OR r.cohort_rank <= 10)
+    """
+
+    params = [market, market, cohort]
+
+    if parsed_from:
+        query += " AND r.selected_date >= %s"
+        params.append(parsed_from)
+    if parsed_to:
+        query += " AND r.selected_date <= %s"
+        params.append(parsed_to)
+
+    query += """
+        )
+        SELECT
+            COUNT(*) AS snapshots_total,
+            COUNT(*) FILTER (WHERE result_status = 'completed') AS completed_results,
+            COUNT(*) FILTER (WHERE result_status = 'no_result') AS no_result_results,
+            COUNT(*) FILTER (WHERE result_status = 'pending') AS pending_results,
+            AVG(actual_value) FILTER (WHERE result_status = 'completed') AS actual_average,
+            AVG(triage_score) FILTER (WHERE result_status = 'completed' AND triage_score IS NOT NULL) AS score_average,
+            AVG(ABS(actual_value - last5_avg)) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
+            ) AS l5_mae,
+            AVG(ABS(actual_value - last10_avg)) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
+            ) AS l10_mae,
+            AVG(last5_avg) FILTER (
+                WHERE result_status = 'completed' AND last5_avg IS NOT NULL
+            ) AS l5_prediction_average,
+            AVG(last10_avg) FILTER (
+                WHERE result_status = 'completed' AND last10_avg IS NOT NULL
+            ) AS l10_prediction_average,
+            CORR(triage_score, actual_value) FILTER (
+                WHERE result_status = 'completed' AND triage_score IS NOT NULL AND actual_value IS NOT NULL
+            ) AS score_actual_pearson
+        FROM resolved
+    """
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            row = cursor.fetchone()
+
+    snapshots_total = int(row[0] or 0)
+    completed_results = int(row[1] or 0)
+    no_result_results = int(row[2] or 0)
+    pending_results = int(row[3] or 0)
+    l5_mae = float(row[6]) if row[6] is not None else None
+    l10_mae = float(row[7]) if row[7] is not None else None
+    l5_prediction_average = float(row[8]) if row[8] is not None else None
+    l10_prediction_average = float(row[9]) if row[9] is not None else None
+
+    return {
+        "status": "ok",
+        "market": market,
+        "market_label": MARKETS[market]["label"],
+        "cohort": cohort,
+        "summary": {
+            "snapshots_total": snapshots_total,
+            "completed_results": completed_results,
+            "no_result_results": no_result_results,
+            "pending_results": pending_results,
+            "completion_rate_pct": round(
+                (completed_results + no_result_results) / snapshots_total * 100, 2
+            ) if snapshots_total else 0,
+            "actual_average": round(float(row[4]), 2) if row[4] is not None else None,
+            "score_average": round(float(row[5]), 2) if row[5] is not None else None,
+            "l5_mae": round(l5_mae, 2) if l5_mae is not None else None,
+            "l10_mae": round(l10_mae, 2) if l10_mae is not None else None,
+            "l5_relative_error_pct": round(l5_mae / l5_prediction_average * 100, 2)
+                if l5_mae is not None and l5_prediction_average not in (None, 0) else None,
+            "l10_relative_error_pct": round(l10_mae / l10_prediction_average * 100, 2)
+                if l10_mae is not None and l10_prediction_average not in (None, 0) else None,
+            "score_actual_pearson": round(float(row[10]), 4) if row[10] is not None else None
+        }
+    }
+
+
 @app.get("/validation-history")
 def validation_history(
     market: str = Query(
