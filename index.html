@@ -207,6 +207,12 @@
   .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; }
   .analysis-table td b { color: #f9fafb; font-variant-numeric: tabular-nums; }
   .analysis-note { margin-top: 6px; padding: 6px 7px; background: #0b1220; border-left: 2px solid #10b981; border-radius: 4px; font-size: 9px; line-height: 1.35; color: #9ca3af; }
+  .availability-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 2px 5px; border-radius: 4px; font-size: 8px; font-weight: 700; line-height: 1.1; vertical-align: middle; }
+  .availability-active { color: #6ee7b7; background: rgba(16, 185, 129, .10); border: 1px solid rgba(16, 185, 129, .25); }
+  .availability-uncertain { color: #fcd34d; background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .25); }
+  .availability-out { color: #fca5a5; background: rgba(239, 68, 68, .10); border: 1px solid rgba(239, 68, 68, .25); }
+  .availability-unknown { color: #9ca3af; background: rgba(107, 114, 128, .10); border: 1px solid rgba(107, 114, 128, .22); }
+
   @media (max-width: 380px) {
     .modal-body { padding: 8px; }
     .analysis-card { padding: 8px; }
@@ -1014,6 +1020,41 @@ function filtrarCandidatos(){
   return filtrados;
 }
 
+function disponibilidadeResumo(player){
+  const availability = player?.availability || {};
+  const status = String(availability.availability || '').toLowerCase();
+  const raw = availability.status_raw || '';
+  let label = 'Sem relatório';
+  let cls = 'availability-unknown';
+  if(status === 'confirmed_out'){
+    label = raw ? 'OUT · ' + raw : 'OUT';
+    cls = 'availability-out';
+  } else if(status === 'uncertain'){
+    label = raw ? 'GTD · ' + raw : 'GTD';
+    cls = 'availability-uncertain';
+  } else if(status === 'reported_active'){
+    label = 'Disponível';
+    cls = 'availability-active';
+  } else if(status === 'no_injury_report'){
+    label = 'Sem alerta';
+    cls = 'availability-active';
+  }
+  return '<span class="availability-badge ' + cls + '">' + escapeHtml(label) + '</span>';
+}
+
+function disponibilidadeDetalhe(player){
+  const availability = player?.availability || {};
+  const status = String(availability.availability || '').toLowerCase();
+  const raw = availability.status_raw || '';
+  const detail = availability.detail || '';
+  let label = 'Sem relatório de indisponibilidade';
+  if(status === 'confirmed_out') label = raw ? 'OUT · ' + raw : 'OUT';
+  else if(status === 'uncertain') label = raw ? 'Questionável · ' + raw : 'Questionável';
+  else if(status === 'reported_active') label = 'Sem indicação de indisponibilidade';
+  else if(status === 'no_injury_report') label = 'Nenhum registro de indisponibilidade encontrado';
+  return { label, detail };
+}
+
 function renderizarResultados(){
   const box = document.getElementById('resultadosLista');
   if(!box) return;
@@ -1037,7 +1078,7 @@ function renderizarResultados(){
     const proj10 = p.opponent_position_allowed_l10_avg;
 
     html += '<tr>';
-    html += '<td><b>' + escapeHtml(p.player) + '</b></td>';
+    html += '<td><b>' + escapeHtml(p.player) + '</b>' + disponibilidadeResumo(p) + '</td>';
     html += '<td>' + escapeHtml(p.team || '—') + '</td>';
     html += '<td>' + escapeHtml(p.position || '—') + '</td>';
     html += '<td>' + escapeHtml(p.opponent || '—') + '</td>';
@@ -1115,7 +1156,16 @@ function abrirAnalise(indice){
     return value == null ? '—' : numero(value, 1);
   };
 
+  const availabilityInfo = disponibilidadeDetalhe(p);
+  const availabilityVerifiedAt = resultadoAtual?.updated_at ? new Date(resultadoAtual.updated_at).toLocaleString('pt-BR') : '—';
+
   let html = '<div class="analysis-grid">';
+  html += '<div class="analysis-card"><h3>🩺 Disponibilidade</h3>' +
+    '<table class="analysis-table"><tr><td>Status</td><td colspan="2"><b>' + escapeHtml(availabilityInfo.label) + '</b></td></tr>' +
+    '<tr><td>Detalhe</td><td colspan="2">' + escapeHtml(availabilityInfo.detail || '—') + '</td></tr>' +
+    '<tr><td>Verificado</td><td colspan="2">' + escapeHtml(availabilityVerifiedAt) + '</td></tr></table>' +
+    '<div class="analysis-note">A disponibilidade representa a fotografia consultada no momento da análise. O status pode mudar posteriormente.</div></div>';
+
   html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
 
   html += '<div class="analysis-card"><h3>🏠 Produção por local</h3><table class="analysis-table"><tr><th></th><th>Casa</th><th>Fora</th></tr><tr><td>Temporada</td><td><b>' + venueAverage('home', 'season') + '</b></td><td><b>' + venueAverage('away', 'season') + '</b></td></tr><tr><td>Jogos · temporada</td><td>' + participacoes(venueGames('home', 'season')) + '</td><td>' + participacoes(venueGames('away', 'season')) + '</td></tr><tr><td>Últimos 10 por local</td><td><b>' + venueAverage('home', 'last10') + '</b></td><td><b>' + venueAverage('away', 'last10') + '</b></td></tr><tr><td>Jogos · recorte</td><td>' + participacoes(venueGames('home', 'last10')) + '</td><td>' + participacoes(venueGames('away', 'last10')) + '</td></tr><tr><td>Minutos · últimos 10</td><td>' + venueMinutes('home', 'last10') + '</td><td>' + venueMinutes('away', 'last10') + '</td></tr></table><div class="analysis-note">L10 calculado separadamente para jogos em casa e fora. Partidas sem mando identificado pela ESPN não entram nesta comparação. Não altera o Score.</div></div>';
@@ -1175,6 +1225,7 @@ function renderizarResumoSelecao(selection) {
     '<div class="text-[11px] font-bold text-white">' + displayed + ' exibidos</div>' +
     '<div class="text-[10px] text-gray-400">' + analyzed + ' analisados</div></div>' +
     '<div class="text-[9px] text-gray-500">' + eligible + ' permaneceram elegíveis após a verificação de disponibilidade.</div>' +
+    (availability.report_status === 'ok' ? '<div class="text-[9px] text-gray-600 mt-1">Disponibilidade consultada na mesma fotografia da análise.</div>' : '') +
     (reportWarning ? '<div class="text-[9px] text-amber-300 mt-1">' + escapeHtml(reportWarning) + '</div>' : '') +
     '</div>';
 
