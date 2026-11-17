@@ -2458,6 +2458,122 @@ def get_athlete_logs(
     return tuple(ordered)
 
 
+def normalize_diagnostic_player_name(name):
+    """
+    Normalização leve usada somente no diagnóstico de auditoria.
+    Não participa da elegibilidade nem da persistência de resultados.
+    """
+    if name is None:
+        return ""
+    value = str(name).strip().lower()
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return " ".join(value.split())
+
+
+def find_player_in_summary_for_diagnostic(
+    summary,
+    snapshot_player_id,
+    snapshot_player_name
+):
+    """
+    Procura o atleta no boxscore primeiro pelo ID e, somente para diagnóstico,
+    por nome normalizado. Não altera a regra oficial de coleta.
+    """
+    players_blocks = (
+        summary.get("boxscore", {})
+        .get("players", [])
+    )
+    if not isinstance(players_blocks, list):
+        return None
+
+    snapshot_id = str(snapshot_player_id or "").strip()
+    snapshot_name = normalize_diagnostic_player_name(snapshot_player_name)
+    name_matches = []
+
+    for team_block in players_blocks:
+        if not isinstance(team_block, dict):
+            continue
+        team_abbr = (
+            team_block.get("team", {}).get("abbreviation")
+            or ""
+        ).upper()
+        statistics_blocks = team_block.get("statistics", [])
+        if isinstance(statistics_blocks, dict):
+            statistics_blocks = [statistics_blocks]
+        if not isinstance(statistics_blocks, list):
+            continue
+
+        for statistics_block in statistics_blocks:
+            if not isinstance(statistics_block, dict):
+                continue
+            keys = (
+                statistics_block.get("keys")
+                or statistics_block.get("names")
+                or statistics_block.get("labels")
+                or []
+            )
+            key_indexes = {}
+            for index, key in enumerate(keys):
+                normalized_key = normalize_stat_key(key)
+                if normalized_key:
+                    key_indexes[normalized_key] = index
+
+            athletes = statistics_block.get("athletes", [])
+            if not isinstance(athletes, list):
+                continue
+
+            for athlete_entry in athletes:
+                if not isinstance(athlete_entry, dict):
+                    continue
+                athlete = athlete_entry.get("athlete", {})
+                if not isinstance(athlete, dict):
+                    continue
+
+                boxscore_id = str(athlete.get("id", "")).strip()
+                boxscore_name = (
+                    athlete.get("displayName")
+                    or athlete.get("fullName")
+                    or athlete.get("shortName")
+                    or ""
+                )
+                raw_stats = (
+                    athlete_entry.get("stats")
+                    or athlete_entry.get("statistics")
+                )
+
+                minutes = None
+                if raw_stats is not None:
+                    minutes = get_player_stat_value(
+                        raw_stats,
+                        key_indexes,
+                        "minutes"
+                    )
+
+                candidate = {
+                    "boxscore_player_id": boxscore_id,
+                    "boxscore_player_name": boxscore_name,
+                    "boxscore_team": team_abbr,
+                    "boxscore_minutes": minutes
+                }
+
+                if boxscore_id and boxscore_id == snapshot_id:
+                    candidate["match_method"] = "id"
+                    return candidate
+
+                if (
+                    snapshot_name
+                    and normalize_diagnostic_player_name(boxscore_name)
+                    == snapshot_name
+                ):
+                    name_matches.append(candidate)
+
+    if name_matches:
+        name_matches[0]["match_method"] = "name"
+        return name_matches[0]
+
+    return None
+
+
 def extract_player_game_from_summary(
     summary,
     player_id
@@ -4794,34 +4910,43 @@ def audit_collection_diagnostics(
                 reason = "Resumo da partida não disponível"
                 detail = f"game_id={game_id}"
             else:
-                player_game = extract_player_game_from_summary(
+                diagnostic_player = find_player_in_summary_for_diagnostic(
                     summary,
-                    player_id
+                    player_id,
+                    player_name
                 )
 
-                if not player_game:
+                if not diagnostic_player:
                     reason_code = "player_not_found"
                     reason = "Jogador não encontrado no boxscore da partida"
                     detail = f"game_id={game_id}"
+                elif diagnostic_player.get("match_method") == "name":
+                    reason_code = "id_mismatch"
+                    reason = "Jogador encontrado por nome, mas o ID do snapshot não coincide"
+                    detail = (
+                        f"game_id={game_id}; "
+                        f"snapshot_player_id={player_id}; "
+                        f"boxscore_player_id={diagnostic_player.get('boxscore_player_id')}"
+                    )
                 else:
-                    minutes = player_game.get("minutes")
+                    minutes = diagnostic_player.get("boxscore_minutes")
 
                     if minutes is None or minutes <= 0:
                         reason_code = "zero_minutes"
                         reason = "Jogador não registrou minutos"
-                        detail = f"minutos={minutes}"
+                        detail = (
+                            f"game_id={game_id}; "
+                            f"boxscore_player_id={diagnostic_player.get('boxscore_player_id')}; "
+                            f"minutos={minutes}"
+                        )
                     else:
-                        actual_key = actual_stat_keys.get(market)
-                        actual = player_game.get(actual_key)
-
-                        if actual is None:
-                            reason_code = "stat_unavailable"
-                            reason = "Estatística do mercado não disponível no boxscore"
-                            detail = f"stat={actual_key}"
-                        else:
-                            reason_code = "unexpected"
-                            reason = "Resultado encontrado, mas não foi persistido"
-                            detail = f"actual={actual}"
+                        reason_code = "unexpected"
+                        reason = "Resultado encontrado, mas não foi persistido"
+                        detail = (
+                            f"game_id={game_id}; "
+                            f"boxscore_player_id={diagnostic_player.get('boxscore_player_id')}; "
+                            f"minutos={minutes}"
+                        )
 
         diagnostics.append({
             "market": market,
@@ -4832,7 +4957,32 @@ def audit_collection_diagnostics(
             "game_id": game_id,
             "reason_code": reason_code,
             "reason": reason,
-            "detail": detail
+            "detail": detail,
+            "boxscore_player_id": (
+                diagnostic_player.get("boxscore_player_id")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "boxscore_player_name": (
+                diagnostic_player.get("boxscore_player_name")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "boxscore_team": (
+                diagnostic_player.get("boxscore_team")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "boxscore_minutes": (
+                diagnostic_player.get("boxscore_minutes")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "match_method": (
+                diagnostic_player.get("match_method")
+                if game_id and summary and diagnostic_player
+                else None
+            )
         })
 
     return {
