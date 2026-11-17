@@ -1266,13 +1266,13 @@ async function carregarStatusColetaAuditoria(selectedDate) {
 
     const markets = Object.entries(labels).map(([id, label]) => {
       const data = res.markets?.[id] || {};
-      const audit = data.audit || { snapshots_total: 0, completed_results: 0, pending_results: 0 };
-      const operational = data.operational || { snapshots_total: 0, completed_results: 0, pending_results: 0 };
+      const audit = data.audit || { snapshots_total: 0, completed_results: 0, no_results: 0, pending_results: 0 };
+      const operational = data.operational || { snapshots_total: 0, completed_results: 0, no_results: 0, pending_results: 0 };
 
       return '<div class="space-y-0.5">' +
         '<div class="font-medium text-gray-300">' + label + '</div>' +
         '<div class="pl-2 text-[9px] text-gray-500">' +
-        'Auditoria: ' + audit.completed_results + ' resultados · ' + audit.pending_results + ' pendentes' +
+        'Auditoria: ' + audit.completed_results + ' resultados · ' + audit.no_results + ' sem resultado · ' + audit.pending_results + ' pendentes' +
         ' &nbsp;|&nbsp; Operacional: ' + operational.completed_results + ' resultados · ' + operational.pending_results + ' pendentes' +
         '</div>' +
         '</div>';
@@ -1414,6 +1414,7 @@ async function coletarResultadosAuditoria() {
             saved: Number(res.results_saved_this_run || 0),
             pending: Number(res.pending || 0),
             auditSaved: Number(res.audit_results_saved || 0),
+            auditNoResults: Number(res.audit_no_results || 0),
             auditPending: Number(res.audit_pending || 0),
             operationalSaved: Number(res.operational_results_saved || 0),
             operationalPending: Number(res.operational_pending || 0)
@@ -1432,7 +1433,7 @@ async function coletarResultadosAuditoria() {
         (item.message === 'sem snapshots' ? ' · sem snapshots nesta data' : '') +
         '</div>' +
         '<div class="pl-2 text-[9px] text-gray-500">' +
-        'Auditoria: ' + item.auditSaved + ' novos · ' + item.auditPending + ' pendentes' +
+        'Auditoria: ' + item.auditSaved + ' novos · ' + (item.auditNoResults || 0) + ' sem resultado · ' + item.auditPending + ' pendentes' +
         ' &nbsp;|&nbsp; Operacional: ' + item.operationalSaved + ' novos · ' + item.operationalPending + ' pendentes' +
         '</div>' +
         '</div>';
