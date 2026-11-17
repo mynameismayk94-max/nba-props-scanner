@@ -5268,7 +5268,12 @@ def validation_history(
                     s.last5_avg,
                     s.last10_avg,
                     s.minutes_last5_avg,
-                    COALESCE(ar.actual_value, cr.actual_value)
+                    COALESCE(ar.actual_value, cr.actual_value),
+                    CASE
+                        WHEN ar.id IS NOT NULL THEN 'completed'
+                        WHEN nr.id IS NOT NULL THEN 'no_result'
+                        ELSE 'pending'
+                    END AS result_status
                 FROM ranked_snapshots s
                 LEFT JOIN audit_results ar
                     ON s.snapshot_source = 'audit'
@@ -5280,6 +5285,11 @@ def validation_history(
                     AND cr.selected_date = s.selected_date
                     AND cr.market = s.market
                     AND cr.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON s.snapshot_source = 'audit'
+                    AND nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
                 WHERE (%s = 'all' OR s.cohort_rank <= 10)
                 ORDER BY s.selected_date ASC, s.triage_score DESC
             """
@@ -5292,6 +5302,10 @@ def validation_history(
     completed_rows = [
         row for row in audit_rows
         if row[10] is not None
+    ]
+    no_result_rows = [
+        row for row in audit_rows
+        if row[10] is None and row[11] == 'no_result'
     ]
 
     def safe_average(values):
@@ -5702,9 +5716,11 @@ def validation_history(
         })
 
     completed_count = len(completed_rows)
-    pending_count = max(snapshots_total - completed_count, 0)
+    no_result_count = len(no_result_rows)
+    pending_count = max(snapshots_total - completed_count - no_result_count, 0)
+    resolved_count = completed_count + no_result_count
     completion_rate = (
-        round(completed_count / snapshots_total * 100, 2)
+        round(resolved_count / snapshots_total * 100, 2)
         if snapshots_total else 0
     )
 
@@ -5717,6 +5733,7 @@ def validation_history(
         "summary": {
             "snapshots_total": snapshots_total,
             "completed_results": completed_count,
+            "no_result_results": no_result_count,
             "pending_results": pending_count,
             "completion_rate_pct": completion_rate,
             **overall_metrics
@@ -5731,7 +5748,8 @@ def validation_history(
             "Precisão: MAE L5/L10. Erro relativo: MAE dividido pela média "
             "das previsões correspondentes, usando a mesma amostra válida. "
             "Ranking: médias reais e quantidade por faixa de score. "
-            "Registros pendentes são excluídos; score original não é alterado."
+            "Registros sem resultado (ex.: DNP) e pendentes não entram nas métricas; "
+            "a cobertura considera concluídos + sem resultado; score original não é alterado."
         )
     }
 
