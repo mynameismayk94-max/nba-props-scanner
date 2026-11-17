@@ -1416,7 +1416,6 @@ async function coletarResultadosAuditoria() {
   } finally {
     button.disabled = false;
     button.classList.remove('opacity-60', 'cursor-not-allowed');
-    await fetchMarketComparison();
     await fetchHistoryValidation();
   }
 }
@@ -1431,6 +1430,7 @@ async function fetchMarketComparison() {
     { id: 'fgm', label: 'Cestas convertidas' },
   ];
   const tableBody = document.getElementById('market-comparison-table');
+  if (!tableBody) return;
   tableBody.innerHTML = '<tr><td colspan="7" class="text-gray-400">Carregando os mercados...</td></tr>';
 
   // Evita disparar seis conexões ao Neon simultaneamente. A tabela continua
