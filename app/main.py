@@ -5188,20 +5188,6 @@ def validation_history_summary(
             FROM audit_snapshots
             WHERE market = %s
 
-            UNION ALL
-
-            SELECT
-                c.selected_date, c.market, c.player_id, c.triage_score,
-                c.last5_avg, c.last10_avg, c.display_rank,
-                'legacy' AS snapshot_source
-            FROM candidate_snapshots c
-            WHERE c.market = %s
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM audit_snapshot_runs a
-                  WHERE a.selected_date = c.selected_date
-                    AND a.market = c.market
-              )
         ),
         filtered AS (
             SELECT *,
@@ -5227,14 +5213,10 @@ def validation_history_summary(
                 r.triage_score,
                 r.last5_avg,
                 r.last10_avg,
-                COALESCE(
-                    ar.actual_value,
-                    CASE WHEN nr.id IS NULL THEN cr.actual_value END
-                ) AS actual_value,
+                ar.actual_value AS actual_value,
                 CASE
                     WHEN ar.id IS NOT NULL THEN 'completed'
                     WHEN nr.id IS NOT NULL THEN 'no_result'
-                    WHEN cr.id IS NOT NULL THEN 'completed'
                     ELSE 'pending'
                 END AS result_status
             FROM ranked r
@@ -5243,10 +5225,6 @@ def validation_history_summary(
              AND ar.selected_date = r.selected_date
              AND ar.market = r.market
              AND ar.player_id = r.player_id
-            LEFT JOIN candidate_results cr
-              ON cr.selected_date = r.selected_date
-             AND cr.market = r.market
-             AND cr.player_id = r.player_id
             LEFT JOIN audit_no_results nr
               ON r.snapshot_source = 'audit'
              AND nr.selected_date = r.selected_date
@@ -5255,7 +5233,7 @@ def validation_history_summary(
             WHERE (%s = 'all' OR r.cohort_rank <= 10)
     """
 
-    params = [market, market, cohort]
+    params = [market, cohort]
 
     if parsed_from:
         query += " AND r.selected_date >= %s"
@@ -5397,23 +5375,7 @@ def validation_history(
                     FROM audit_snapshots
                     WHERE market = %s
 
-                    UNION ALL
-
-                    SELECT
-                        c.selected_date, c.market, c.player_id, c.player_name,
-                        c.team, c.opponent, c.position, c.triage_score,
-                        c.last5_avg, c.last10_avg, c.minutes_last5_avg,
-                        c.display_rank,
-                        'legacy' AS snapshot_source
-                    FROM candidate_snapshots c
-                    WHERE c.market = %s
-                        AND NOT EXISTS (
-                            SELECT 1
-                            FROM audit_snapshot_runs a
-                            WHERE a.selected_date = c.selected_date
-                                AND a.market = c.market
-                        )
-                ),
+                        ),
                 snapshot_cohort AS (
                     SELECT
                         s.*,
@@ -5426,9 +5388,7 @@ def validation_history(
                     WHERE 1 = 1
             """
 
-            params = [market, market]
-
-            if parsed_from:
+            params = [market]
                 query += " AND s.selected_date >= %s"
                 params.append(parsed_from)
 
@@ -5464,14 +5424,10 @@ def validation_history(
                     s.last5_avg,
                     s.last10_avg,
                     s.minutes_last5_avg,
-                    COALESCE(
-                        ar.actual_value,
-                        CASE WHEN nr.id IS NULL THEN cr.actual_value END
-                    ),
+                    ar.actual_value,
                     CASE
                         WHEN ar.id IS NOT NULL THEN 'completed'
                         WHEN nr.id IS NOT NULL THEN 'no_result'
-                        WHEN cr.id IS NOT NULL THEN 'completed'
                         ELSE 'pending'
                     END AS result_status
                 FROM ranked_snapshots s
@@ -5480,10 +5436,6 @@ def validation_history(
                     AND ar.selected_date = s.selected_date
                     AND ar.market = s.market
                     AND ar.player_id = s.player_id
-                LEFT JOIN candidate_results cr
-                    ON cr.selected_date = s.selected_date
-                    AND cr.market = s.market
-                    AND cr.player_id = s.player_id
                 LEFT JOIN audit_no_results nr
                     ON s.snapshot_source = 'audit'
                     AND nr.selected_date = s.selected_date
@@ -5943,7 +5895,7 @@ def validation_history(
         "similarity_analyses": similarity_analyses,
         "ranking_quality": high_low,
         "daily": daily_output,
-        "data_source_policy": "Prioriza audit_snapshots/audit_results. Para datas sem snapshot independente, usa o histórico legado candidate_snapshots/candidate_results, sem misturar as duas populações na mesma data/mercado.",
+        "data_source_policy": "Base oficial independente: somente audit_snapshots, audit_results e audit_no_results. O histórico legado operacional permanece preservado, mas não compõe estes indicadores.",
         "method_note": (
             "Precisão: MAE L5/L10. Erro relativo: MAE dividido pela média "
             "das previsões correspondentes, usando a mesma amostra válida. "
@@ -5981,20 +5933,6 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
             FROM audit_snapshots
             WHERE market = %s
 
-            UNION ALL
-
-            SELECT
-                c.selected_date, c.market, c.player_id, c.player_name,
-                c.team, c.opponent, c.position, c.triage_score,
-                c.last5_avg, c.last10_avg, c.payload, c.display_rank,
-                'legacy' AS snapshot_source
-            FROM candidate_snapshots c
-            WHERE c.market = %s
-                AND NOT EXISTS (
-                    SELECT 1 FROM audit_snapshot_runs a
-                    WHERE a.selected_date = c.selected_date
-                      AND a.market = c.market
-                )
         ), snapshot_cohort AS (
             SELECT *,
                 COUNT(*) FILTER (WHERE display_rank IS NULL)
@@ -6017,16 +5955,12 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
                s.payload->>'league_position_allowed_l5_games',
                s.payload->>'league_position_allowed_l10_games',
                s.payload->>'opponent_position_equal_game_reference_version',
-               COALESCE(ar.actual_value, cr.actual_value)
+               ar.actual_value
         FROM ranked_snapshots s
         LEFT JOIN audit_results ar
           ON s.snapshot_source = 'audit'
          AND ar.selected_date = s.selected_date AND ar.market = s.market AND ar.player_id = s.player_id
-        LEFT JOIN candidate_results cr
-          ON s.snapshot_source = 'legacy'
-         AND cr.selected_date = s.selected_date AND cr.market = s.market AND cr.player_id = s.player_id
         WHERE (%s = 'all' OR s.cohort_rank <= 10)
-          AND COALESCE(ar.id, cr.id) IS NOT NULL
     """
     params = [market, market, cohort]
     limits = {"7+": (7.0, None), "6-6.99": (6.0, 7.0), "5-5.99": (5.0, 6.0), "4-4.99": (4.0, 5.0), "<4": (None, 4.0)}
@@ -6129,7 +6063,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         "cohort": cohort, "cohort_label": "Top 10 exibidos" if cohort == "top10" else "Todos os elegíveis",
         "score_band": score_band, "completed_records": len(detailed),
         "legacy_records_without_new_reference": legacy_records,
-        "data_source_policy": "Prioriza audit_snapshots/audit_results. Para datas sem snapshot independente, usa candidate_snapshots/candidate_results, sem misturar populações na mesma data/mercado.",
+        "data_source_policy": "Base oficial independente: somente audit_snapshots, audit_results e audit_no_results. O histórico legado operacional permanece preservado, mas não compõe estes indicadores.",
         "classification_margin_pct": 10,
         "periods": {"l5": summarize("l5"), "l10": summarize("l10")},
         "records": detailed,
