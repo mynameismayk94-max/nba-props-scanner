@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Capture all six markets
+      - name: Capture all six markets in staging
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_API_BASE: ${{ inputs.api_base }}
@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
 
           if [ "$EVENT_NAME" = "schedule" ]; then
-            API_BASE="https://nba-props-scanner.onrender.com"
+            API_BASE="https://nba-props-scanner-staging.onrender.com"
           else
             API_BASE="${INPUT_API_BASE:-https://nba-props-scanner-staging.onrender.com}"
           fi
