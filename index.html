@@ -340,11 +340,10 @@
 
       <div>
         <label class="block text-[10px] font-semibold text-gray-300 mb-1">2. Tipo de visão</label>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button id="audit-mode-daily" type="button" onclick="setAuditMode('daily')" class="market-button active">Visão diária</button>
           <button id="audit-mode-range" type="button" onclick="setAuditMode('range')" class="market-button">Comparar períodos</button>
-          <button id="audit-mode-all" type="button" onclick="setAuditMode('all')" class="market-button">Período completo</button>
-          <button id="audit-mode-legacy" type="button" onclick="setAuditMode('legacy')" class="market-button">Histórico legado</button>
+          <button id="audit-mode-all" type="button" onclick="setAuditMode('all')" class="market-button">Histórico acumulado</button>
         </div>
         <p id="audit-mode-description" class="text-[9px] text-gray-400 mt-1">Analisa somente a data escolhida, sem somar outros dias.</p>
       </div>
@@ -569,28 +568,7 @@
       </div>
     </div>
     </div>
-    <div id="audit-legacy-content" class="glass-panel p-3 space-y-3 hidden">
-      <div>
-        <h3 class="text-xs font-semibold text-white">Histórico operacional legado</h3>
-        <p class="text-[10px] text-gray-400 mt-1">Base anterior à auditoria independente. Estes números são apresentados separadamente e não entram nos indicadores oficiais da nova metodologia.</p>
-      </div>
-      <div class="rounded-lg bg-gray-900 border border-gray-800 p-3">
-        <span class="text-[9px] text-gray-400 block">Intervalo encontrado na base antiga</span>
-        <strong id="legacy-period" class="text-base text-white">—</strong>
-        <span id="legacy-source-note" class="block text-[9px] text-gray-500 mt-1">Aguardando consulta.</span>
-      </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><span class="text-[9px] text-gray-400">Snapshots</span><strong id="legacy-snapshots" class="block text-lg text-white">—</strong></div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><span class="text-[9px] text-gray-400">Resultados reais</span><strong id="legacy-completed" class="block text-lg text-emerald-400">—</strong></div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><span class="text-[9px] text-gray-400">Pendentes / sem coleta</span><strong id="legacy-pending" class="block text-lg text-gray-200">—</strong></div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><span class="text-[9px] text-gray-400">Média real</span><strong id="legacy-average" class="block text-lg text-white">—</strong></div>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><span class="text-[9px] text-gray-400">MAE L5</span><strong id="legacy-l5" class="block text-lg text-emerald-400">—</strong><span id="legacy-l5-sample" class="text-[9px] text-gray-500">—</span></div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><span class="text-[9px] text-gray-400">MAE L10</span><strong id="legacy-l10" class="block text-lg text-teal-400">—</strong><span id="legacy-l10-sample" class="text-[9px] text-gray-500">—</span></div>
-      </div>
-      <p id="legacy-explanation" class="text-[10px] text-gray-400">Aguardando consulta do histórico legado.</p>
-    </div>
+
 
   </section>
 
@@ -726,56 +704,21 @@ let auditCohort = 'all';
 let auditMode = 'daily';
 
 function setAuditMode(mode) {
-  if (!['daily', 'range', 'all', 'legacy'].includes(mode)) return;
+  if (!['daily', 'range', 'all'].includes(mode)) return;
   auditMode = mode;
   const descriptions = {
-    daily: 'Analisa somente a data escolhida, sem somar outros dias.',
-    range: 'Consolida o intervalo selecionado e permite acompanhar a evolução diária.',
-    all: 'Considera todo o histórico independente disponível e informa a primeira e a última data registradas.',
-    legacy: 'Consulta exclusivamente a base operacional antiga, preservada e separada da auditoria oficial.'
+    daily: 'Mostra somente os registros do mercado e da data escolhidos. Nenhum outro dia é somado.',
+    range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária dentro desse intervalo.',
+    all: 'Mostra o acumulado de toda a auditoria independente desde o primeiro registro. Inclui snapshots, resultados reais, DNPs e pendências; informa o intervalo efetivamente encontrado. Não inclui o histórico antigo.'
   };
-  ['daily','range','all','legacy'].forEach(key => {
+  ['daily','range','all'].forEach(key => {
     const button = document.getElementById('audit-mode-' + key);
     if (button) button.className = key === mode ? 'market-button active' : 'market-button';
   });
   document.getElementById('audit-mode-description').innerText = descriptions[mode];
   document.getElementById('audit-daily-date').classList.toggle('hidden', mode !== 'daily');
   document.getElementById('audit-range-dates').classList.toggle('hidden', mode !== 'range');
-  document.getElementById('audit-cohort-controls').classList.toggle('hidden', mode === 'legacy');
-  document.getElementById('audit-independent-content').classList.toggle('hidden', mode === 'legacy');
-  document.getElementById('audit-legacy-content').classList.toggle('hidden', mode !== 'legacy');
   fetchHistoryValidation();
-}
-
-async function fetchLegacyHistory() {
-  const market = document.getElementById('hist-market').value;
-  const requestId = ++historyValidationRequestId;
-  const url = '/legacy-validation-summary?market=' + encodeURIComponent(market) +
-    '&cohort=' + encodeURIComponent(auditCohort);
-  try {
-    const result = await requisicao(url);
-    if (requestId !== historyValidationRequestId) return;
-    if (result.status !== 'ok') throw new Error('Resposta inválida');
-    const period = result.first_date && result.last_date
-      ? result.first_date + ' a ' + result.last_date : 'Nenhum registro encontrado';
-    document.getElementById('legacy-period').innerText = period;
-    document.getElementById('legacy-source-note').innerText =
-      'Fonte: histórico operacional antigo · ' + (auditCohort === 'top10' ? 'Top 10 por data' : 'todos os snapshots');
-    document.getElementById('legacy-snapshots').innerText = result.snapshots_total ?? 0;
-    document.getElementById('legacy-completed').innerText = result.completed_results ?? 0;
-    document.getElementById('legacy-pending').innerText = result.pending_results ?? 0;
-    document.getElementById('legacy-average').innerText = result.actual_average ?? '—';
-    document.getElementById('legacy-l5').innerText = result.l5_mae ?? '—';
-    document.getElementById('legacy-l10').innerText = result.l10_mae ?? '—';
-    document.getElementById('legacy-l5-sample').innerText = (result.l5_sample ?? 0) + ' registros';
-    document.getElementById('legacy-l10-sample').innerText = (result.l10_sample ?? 0) + ' registros';
-    document.getElementById('legacy-explanation').innerText = result.note +
-      ' A contagem de pendentes representa snapshots sem resultado associado; o legado não possui classificação histórica confiável de DNP.';
-  } catch (error) {
-    if (requestId !== historyValidationRequestId) return;
-    document.getElementById('legacy-period').innerText = 'Falha na consulta';
-    document.getElementById('legacy-explanation').innerText = 'Não foi possível consultar a base legada: ' + error.message;
-  }
 }
 
 function setAuditCohort(cohort) {
@@ -1650,10 +1593,6 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
 }
 async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
-  if (auditMode === 'legacy') {
-    fetchLegacyHistory();
-    return;
-  }
   let dateFrom = null, dateTo = null;
   if (auditMode === 'daily') {
     const selected = document.getElementById('audit-selected-date')?.value || '2026-11-16';
