@@ -421,7 +421,7 @@
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro médio absoluto em unidades da estatística; menor é melhor. Pearson mede a associação linear entre Score e resultado real, não uma taxa de acerto.</p>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro médio absoluto em unidades da estatística; menor é melhor. Erro relativo = MAE dividido pela média prevista. Pearson mede a associação linear entre Score e resultado real (de -1 a +1), não uma taxa de acerto.</p>
 
     <!-- Tabela de Calibração e qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
@@ -1473,6 +1473,8 @@ function limparIndicadoresAuditoria() {
   [
     'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson',
     'kpi-completion', 'kpi-l5-relative', 'kpi-l10-relative',
+    'audit-total-count', 'audit-completed-count', 'audit-noresult-count', 'audit-pending-count',
+    'audit-sample-explanation', 'audit-metric-sample-note',
     'ranking-high-average', 'ranking-high-count',
     'ranking-low-average', 'ranking-low-count',
     'similar-target-average', 'similar-target-count',
