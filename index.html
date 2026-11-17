@@ -356,8 +356,8 @@
       <div>
         <label class="block text-[10px] font-semibold text-gray-300 mb-1">3. População analisada</label>
         <div class="audit-cohort-buttons grid grid-cols-2 gap-2">
-          <button id="audit-cohort-top10" type="button" aria-pressed="true" onclick="setAuditCohort('top10')" class="market-button active">Top 10 por dia</button>
-          <button id="audit-cohort-all" type="button" aria-pressed="false" onclick="setAuditCohort('all')" class="market-button">Todos os elegíveis</button>
+          <button id="audit-cohort-top10" type="button" aria-pressed="false" onclick="setAuditCohort('top10')" class="market-button">Top 10 por dia</button>
+          <button id="audit-cohort-all" type="button" aria-pressed="true" onclick="setAuditCohort('all')" class="market-button active">Todos os elegíveis</button>
         </div>
         <p id="audit-cohort-description" class="text-[9px] text-gray-400 mt-1">Dez candidatos mais bem classificados em cada data do período, neste mercado.</p>
       </div>
@@ -691,7 +691,7 @@ let chartInstance = null;
 let historyValidationRequestId = 0;
 let gapValidationRequestId = 0;
 let gapAuditData = null;
-let auditCohort = 'top10';
+let auditCohort = 'all';
 
 function setAuditCohort(cohort) {
   if (!['top10', 'all'].includes(cohort)) return;
