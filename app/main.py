@@ -5866,20 +5866,32 @@ def validation_history(
         )
     }
 
-    by_date = {}
+    daily_output = []
+    audit_rows_by_date = {}
+    completed_by_date = {}
 
-    for row in completed_rows:
+    for row in audit_rows:
         d_str = row[0].isoformat() if row[0] else None
         if d_str:
-            by_date.setdefault(d_str, []).append(row)
+            audit_rows_by_date.setdefault(d_str, []).append(row)
+            if row[10] is not None:
+                completed_by_date.setdefault(d_str, []).append(row)
 
-    daily_output = []
-
-    for d_str in sorted(by_date.keys()):
-        daily_metrics = build_metrics(by_date[d_str])
+    for d_str in sorted(audit_rows_by_date.keys()):
+        date_rows = audit_rows_by_date[d_str]
+        date_completed = [row for row in date_rows if row[10] is not None]
+        date_no_result = [row for row in date_rows if row[10] is None and row[11] == "no_result"]
+        date_pending = max(len(date_rows) - len(date_completed) - len(date_no_result), 0)
+        date_resolved = len(date_completed) + len(date_no_result)
+        date_metrics = build_metrics(completed_by_date.get(d_str, []))
         daily_output.append({
             "date": d_str,
-            **daily_metrics
+            "snapshots_total": len(date_rows),
+            "completed_results": len(date_completed),
+            "no_result_results": len(date_no_result),
+            "pending_results": date_pending,
+            "completion_rate_pct": round(date_resolved / len(date_rows) * 100, 2) if date_rows else 0,
+            **date_metrics
         })
 
     completed_count = len(completed_rows)
