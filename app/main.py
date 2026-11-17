@@ -5549,7 +5549,8 @@ def validation_history(
                 last5_avg,
                 last10_avg,
                 minutes_last5_avg,
-                actual_value
+                actual_value,
+                result_status
             ) = row
 
             actual = float(actual_value)
