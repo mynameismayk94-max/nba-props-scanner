@@ -236,6 +236,35 @@ def initialize_database():
                     """
                 )
 
+                # Casos encerrados sem resultado estatístico, por exemplo DNP.
+                # Ficam separados de audit_results para não contaminar métricas.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_no_results (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        reason TEXT NOT NULL,
+                        game_id TEXT,
+                        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        payload JSONB,
+                        CONSTRAINT uq_audit_no_result
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_no_results_date_market
+                    ON audit_no_results (selected_date, market)
+                    """
+                )
+
         logger.info(
             "Banco Neon inicializado. Tabela candidate_snapshots disponível."
         )
@@ -4410,6 +4439,13 @@ def collect_results(
                             AND r.market = s.market
                             AND r.player_id = s.player_id
                     )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM audit_no_results nr
+                        WHERE nr.selected_date = s.selected_date
+                            AND nr.market = s.market
+                            AND nr.player_id = s.player_id
+                    )
 
                 ORDER BY player_name, snapshot_source
                 """,
@@ -4459,8 +4495,10 @@ def collect_results(
 
     operational_results_to_save = []
     audit_results_to_save = []
+    audit_no_results_to_save = []
     operational_pending = 0
     audit_pending = 0
+    audit_no_result_count = 0
 
     for snapshot in snapshots:
 
@@ -4520,7 +4558,22 @@ def collect_results(
 
         if minutes is None or minutes <= 0:
             if snapshot_source == "audit":
-                audit_pending += 1
+                audit_no_results_to_save.append((
+                    target_date,
+                    market,
+                    str(player_id),
+                    player_name,
+                    team,
+                    opponent,
+                    "did_not_play",
+                    game_id,
+                    Jsonb({
+                        "minutes": minutes,
+                        "reason": "did_not_play",
+                        "game_date": selected_date
+                    })
+                ))
+                audit_no_result_count += 1
             else:
                 operational_pending += 1
             continue
@@ -4589,6 +4642,21 @@ def collect_results(
                 if cursor.fetchone():
                     audit_inserted += 1
 
+            for row in audit_no_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_no_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, reason, game_id, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+
     return {
         "date": selected_date,
         "market": market,
@@ -4598,6 +4666,7 @@ def collect_results(
         "audit_results_saved": audit_inserted,
         "operational_pending": operational_pending,
         "audit_pending": audit_pending,
+        "audit_no_results": audit_no_result_count,
         "pending": operational_pending + audit_pending
     }
 
