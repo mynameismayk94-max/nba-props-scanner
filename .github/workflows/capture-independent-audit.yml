@@ -1,0 +1,51 @@
+name: Capture independent audit snapshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base:
+        description: "API base URL (staging by default for manual tests)"
+        required: false
+        default: "https://nba-props-scanner-staging.onrender.com"
+        type: string
+      target_date:
+        description: "Game date in YYYY-MM-DD (leave empty for today in Sao Paulo)"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 9 * * *"
+      timezone: "America/Sao_Paulo"
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Capture all six markets
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_API_BASE: ${{ inputs.api_base }}
+          INPUT_TARGET_DATE: ${{ inputs.target_date }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            API_BASE="https://nba-props-scanner.onrender.com"
+          else
+            API_BASE="${INPUT_API_BASE:-https://nba-props-scanner-staging.onrender.com}"
+          fi
+          API_BASE="${API_BASE%/}"
+          TARGET_DATE="${INPUT_TARGET_DATE:-$(TZ=America/Sao_Paulo date +%F)}"
+
+          echo "Capturing independent audit snapshots"
+          echo "API: $API_BASE"
+          echo "Date: $TARGET_DATE"
+
+          for MARKET in points assists rebounds threes two_pa fgm; do
+            echo "::group::${TARGET_DATE} / ${MARKET}"
+            curl --fail --show-error --silent \
+              --max-time 900 \
+              "${API_BASE}/capture-audit-snapshot?date=${TARGET_DATE}&market=${MARKET}"
+            echo
+            echo "::endgroup::"
+          done
