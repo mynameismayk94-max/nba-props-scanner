@@ -1278,7 +1278,11 @@ async function coletarResultadosAuditoria() {
             label: market.label,
             message: 'concluído',
             saved: Number(res.results_saved_this_run || 0),
-            pending: Number(res.pending || 0)
+            pending: Number(res.pending || 0),
+            auditSaved: Number(res.audit_results_saved || 0),
+            auditPending: Number(res.audit_pending || 0),
+            operationalSaved: Number(res.operational_results_saved || 0),
+            operationalPending: Number(res.operational_pending || 0)
           });
         }
       } catch(error) {
@@ -1288,9 +1292,15 @@ async function coletarResultadosAuditoria() {
 
     const lines = outcomes.map(item => {
       if(item.error) return '<div class="text-red-400">' + item.label + ': erro na coleta</div>';
-      return '<div>' + item.label + ': ' + item.saved + ' novos resultados' +
+      return '<div class="space-y-0.5">' +
+        '<div>' + item.label + ': ' + item.saved + ' novos resultados' +
         (item.pending ? ' · ' + item.pending + ' pendentes' : '') +
         (item.message === 'sem snapshots' ? ' · sem snapshots nesta data' : '') +
+        '</div>' +
+        '<div class="pl-2 text-[9px] text-gray-500">' +
+        'Auditoria: ' + item.auditSaved + ' novos · ' + item.auditPending + ' pendentes' +
+        ' &nbsp;|&nbsp; Operacional: ' + item.operationalSaved + ' novos · ' + item.operationalPending + ' pendentes' +
+        '</div>' +
         '</div>';
     }).join('');
 
