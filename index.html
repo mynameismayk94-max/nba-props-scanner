@@ -1319,11 +1319,30 @@ async function carregarDiagnosticoPendenciasAuditoria(selectedDate) {
 
     const groupHtml = Object.values(grouped).map(group => {
       const rows = group.items.map(item => {
-        return '<div class="pl-2 py-0.5 text-[9px] text-gray-500">' +
+        const availability = item.snapshot_availability_status || 'não informado';
+        const availabilityDetail = item.snapshot_availability_detail
+          ? JSON.stringify(item.snapshot_availability_detail)
+          : 'sem detalhe';
+        const capturedAt = item.snapshot_captured_at
+          ? new Date(item.snapshot_captured_at).toLocaleString('pt-BR')
+          : 'não informado';
+        const reportStatus = item.audit_run_availability_report_status || 'não informado';
+        const runCapturedAt = item.audit_run_captured_at
+          ? new Date(item.audit_run_captured_at).toLocaleString('pt-BR')
+          : 'não informado';
+
+        return '<div class="pl-2 py-1 text-[9px] text-gray-400 border-l border-gray-700 ml-1">' +
+          '<div class="font-medium text-gray-300">' +
           escapeHtml(item.player_name || 'Jogador') +
           ' · ' + escapeHtml(labels[item.market] || item.market) +
           ' · ' + escapeHtml((item.team || '?') + ' x ' + (item.opponent || '?')) +
-          (item.detail ? ' · ' + escapeHtml(item.detail) : '') +
+          '</div>' +
+          (item.detail ? '<div>Diagnóstico: ' + escapeHtml(item.detail) + '</div>' : '') +
+          '<div class="text-cyan-300">Disponibilidade gravada: ' + escapeHtml(availability) + '</div>' +
+          '<div>Detalhe da disponibilidade: ' + escapeHtml(availabilityDetail) + '</div>' +
+          '<div>Snapshot do jogador: ' + escapeHtml(capturedAt) + '</div>' +
+          '<div>Relatório de lesões: ' + escapeHtml(reportStatus) +
+          ' · captura geral: ' + escapeHtml(runCapturedAt) + '</div>' +
           '</div>';
       }).join('');
 
