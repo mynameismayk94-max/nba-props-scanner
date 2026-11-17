@@ -5389,6 +5389,8 @@ def validation_history(
             """
 
             params = [market]
+
+            if parsed_from:
                 query += " AND s.selected_date >= %s"
                 params.append(parsed_from)
 
@@ -5962,7 +5964,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
          AND ar.selected_date = s.selected_date AND ar.market = s.market AND ar.player_id = s.player_id
         WHERE (%s = 'all' OR s.cohort_rank <= 10)
     """
-    params = [market, market, cohort]
+    params = [market, cohort]
     limits = {"7+": (7.0, None), "6-6.99": (6.0, 7.0), "5-5.99": (5.0, 6.0), "4-4.99": (4.0, 5.0), "<4": (None, 4.0)}
     if score_band != "all":
         low, high = limits[score_band]
