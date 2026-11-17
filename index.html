@@ -1707,7 +1707,10 @@ function limparResultadosAoMudarData(){
 data.addEventListener('change', limparResultadosAoMudarData);
 const auditCollectionDate = document.getElementById('audit-collection-date');
 if (auditCollectionDate) {
-  auditCollectionDate.addEventListener('change', async () => {\n    await carregarStatusColetaAuditoria(auditCollectionDate.value);\n    await carregarDiagnosticoPendenciasAuditoria(auditCollectionDate.value);\n  });
+  auditCollectionDate.addEventListener('change', async () => {
+    await carregarStatusColetaAuditoria(auditCollectionDate.value);
+    await carregarDiagnosticoPendenciasAuditoria(auditCollectionDate.value);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
