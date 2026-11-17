@@ -1682,7 +1682,18 @@ async function fetchHistoryValidation() {
     document.getElementById('audit-completed-count').innerText = summary.completed_results ?? 0;
     document.getElementById('audit-noresult-count').innerText = summary.no_result_results ?? 0;
     document.getElementById('audit-pending-count').innerText = summary.pending_results ?? 0;
+    const firstDate = res.period?.first_date || null;
+    const lastDate = res.period?.last_date || null;
+    const dateCoverage = firstDate && lastDate
+      ? ' Período efetivamente encontrado: ' + firstDate + ' a ' + lastDate + '.'
+      : ' Não há datas com snapshots nesta consulta.';
+    const modeLabel = auditMode === 'daily'
+      ? 'Visão diária de ' + (document.getElementById('audit-selected-date')?.value || 'data selecionada') + '.'
+      : auditMode === 'range'
+        ? 'Comparação do intervalo selecionado.'
+        : 'Consolidação de todo o histórico independente disponível.';
     document.getElementById('audit-sample-explanation').innerText =
+      modeLabel + dateCoverage + ' ' +
       (summary.snapshots_total ?? 0) + ' snapshots = ' +
       (summary.completed_results ?? 0) + ' resultados reais + ' +
       (summary.no_result_results ?? 0) + ' sem resultado + ' +
