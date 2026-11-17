@@ -2549,11 +2549,26 @@ def find_player_in_summary_for_diagnostic(
                         "minutes"
                     )
 
+                min_index = key_indexes.get("minutes")
+                raw_min_value = None
+                if isinstance(raw_stats, list) and min_index is not None and min_index < len(raw_stats):
+                    raw_min_value = raw_stats[min_index]
+                elif isinstance(raw_stats, dict):
+                    raw_min_value = raw_stats.get("minutes", raw_stats.get("MIN"))
+
                 candidate = {
                     "boxscore_player_id": boxscore_id,
                     "boxscore_player_name": boxscore_name,
                     "boxscore_team": team_abbr,
-                    "boxscore_minutes": minutes
+                    "boxscore_minutes": minutes,
+                    "boxscore_statistics_keys": keys,
+                    "boxscore_stats_type": type(raw_stats).__name__ if raw_stats is not None else "ausente",
+                    "boxscore_stats_length": len(raw_stats) if isinstance(raw_stats, (list, dict)) else None,
+                    "boxscore_min_index": min_index,
+                    "boxscore_raw_min_value": raw_min_value,
+                    "boxscore_athlete_entry_keys": list(athlete_entry.keys()),
+                    "boxscore_athlete_keys": list(athlete.keys()),
+                    "boxscore_did_not_play": athlete_entry.get("didNotPlay") or athlete_entry.get("did_not_play") or athlete_entry.get("reason")
                 }
 
                 if boxscore_id and boxscore_id == snapshot_id:
@@ -4987,8 +5002,39 @@ def audit_collection_diagnostics(
             ),
             "boxscore_minutes": (
                 diagnostic_player.get("boxscore_minutes")
-                if game_id and summary and diagnostic_player
-                else None
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_statistics_keys": (
+                diagnostic_player.get("boxscore_statistics_keys")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_stats_type": (
+                diagnostic_player.get("boxscore_stats_type")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_stats_length": (
+                diagnostic_player.get("boxscore_stats_length")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_min_index": (
+                diagnostic_player.get("boxscore_min_index")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_raw_min_value": (
+                diagnostic_player.get("boxscore_raw_min_value")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_athlete_entry_keys": (
+                diagnostic_player.get("boxscore_athlete_entry_keys")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_athlete_keys": (
+                diagnostic_player.get("boxscore_athlete_keys")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_did_not_play": (
+                diagnostic_player.get("boxscore_did_not_play")
+                if game_id and summary and diagnostic_player else None
             ),
             "match_method": (
                 diagnostic_player.get("match_method")
