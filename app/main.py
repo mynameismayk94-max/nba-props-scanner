@@ -4609,6 +4609,77 @@ def collect_pending_results(
     }
 
 
+@app.get("/audit-collection-status")
+def audit_collection_status(
+    date: str = Query(...)
+):
+    """
+    Consulta somente leitura do estado já persistido da coleta.
+    Não executa coleta nem altera snapshots/resultados.
+    """
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida. Use YYYY-MM-DD.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    'audit' AS source,
+                    s.market,
+                    COUNT(*) AS snapshots_total,
+                    COUNT(r.player_id) AS completed_results
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                WHERE s.selected_date = %s
+                GROUP BY s.market
+
+                UNION ALL
+
+                SELECT
+                    'operational' AS source,
+                    s.market,
+                    COUNT(*) AS snapshots_total,
+                    COUNT(r.player_id) AS completed_results
+                FROM candidate_snapshots s
+                LEFT JOIN candidate_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                WHERE s.selected_date = %s
+                GROUP BY s.market
+
+                ORDER BY market, source
+                """,
+                [selected_date, selected_date]
+            )
+            rows = cursor.fetchall()
+
+    markets = {}
+    for source, market, snapshots_total, completed_results in rows:
+        total = int(snapshots_total or 0)
+        completed = int(completed_results or 0)
+        markets.setdefault(market, {})[source] = {
+            "snapshots_total": total,
+            "completed_results": completed,
+            "pending_results": max(total - completed, 0),
+        }
+
+    return {
+        "status": "ok",
+        "date": date,
+        "markets": markets,
+    }
+
+
 @app.get("/validation-history")
 def validation_history(
     market: str = Query(
