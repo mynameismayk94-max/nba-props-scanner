@@ -5364,6 +5364,10 @@ def validation_history_summary(
         "market": market,
         "market_label": MARKETS[market]["label"],
         "cohort": cohort,
+        "period": {
+            "first_date": first_audit_date,
+            "last_date": last_audit_date
+        },
         "summary": {
             "snapshots_total": snapshots_total,
             "completed_results": completed_results,
@@ -5528,6 +5532,9 @@ def validation_history(
             audit_rows = cursor.fetchall()
 
     snapshots_total = len(audit_rows)
+    audit_dates = sorted({row[0] for row in audit_rows if row[0] is not None})
+    first_audit_date = audit_dates[0].isoformat() if audit_dates else None
+    last_audit_date = audit_dates[-1].isoformat() if audit_dates else None
     completed_rows = [
         row for row in audit_rows
         if row[10] is not None
