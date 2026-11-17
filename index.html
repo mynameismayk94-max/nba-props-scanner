@@ -347,15 +347,15 @@
     </div>
       <div>
         <h3 class="text-xs font-semibold text-white">📈 Comparativo por mercado</h3>
-        <p class="text-[10px] text-gray-400">Visão dos seis mercados ativos. A amostra considera apenas resultados reais já coletados.</p>
+        <p class="text-[10px] text-gray-400">Histórico acumulado de snapshots da auditoria. Resultados = resultados reais já coletados.</p>
       </div>
       <div class="tablewrap">
         <table>
           <thead>
             <tr>
               <th>Mercado</th>
-              <th>Registros</th>
-              <th>Resultados</th>
+              <th>Histórico</th>
+              <th>Resultados coletados</th>
               <th>Cobertura da coleta</th>
               <th>MAE L5</th>
               <th>MAE L10</th>
@@ -1343,86 +1343,6 @@ async function carregarStatusColetaAuditoria(selectedDate) {
 }
 
 
-async function carregarDiagnosticoPendenciasAuditoria(selectedDate) {
-  const statusBox = document.getElementById('collection-status');
-  if(!statusBox || !selectedDate) return;
-
-  try {
-    const res = await requisicao('/audit-collection-diagnostics?date=' + encodeURIComponent(selectedDate));
-    if(res.status !== 'ok') throw new Error('Resposta inválida');
-
-    const diagnostics = res.diagnostics || [];
-    if(!diagnostics.length) {
-      statusBox.innerHTML += '<div class="mt-2 text-emerald-400">✓ Auditoria sem pendências.</div>';
-      return;
-    }
-
-    const labels = {
-      points: 'Pontos',
-      assists: 'Assistências',
-      rebounds: 'Rebotes',
-      threes: 'Tentativas de 3 pts',
-      two_pa: 'Tentativas de 2 pts',
-      fgm: 'Cestas convertidas'
-    };
-
-    const grouped = {};
-    diagnostics.forEach(item => {
-      const key = item.reason_code || 'unknown';
-      if(!grouped[key]) grouped[key] = { reason: item.reason, items: [] };
-      grouped[key].items.push(item);
-    });
-
-    const groupHtml = Object.values(grouped).map(group => {
-      const rows = group.items.map(item => {
-        const availability = item.snapshot_availability_status || 'não informado';
-        const availabilityDetail = item.snapshot_availability_detail
-          ? JSON.stringify(item.snapshot_availability_detail)
-          : 'sem detalhe';
-        const capturedAt = item.snapshot_captured_at
-          ? new Date(item.snapshot_captured_at).toLocaleString('pt-BR')
-          : 'não informado';
-        const reportStatus = item.audit_run_availability_report_status || 'não informado';
-        const runCapturedAt = item.audit_run_captured_at
-          ? new Date(item.audit_run_captured_at).toLocaleString('pt-BR')
-          : 'não informado';
-
-        return '<div class="pl-2 py-1 text-[9px] text-gray-400 border-l border-gray-700 ml-1">' +
-          '<div class="font-medium text-gray-300">' +
-          escapeHtml(item.player_name || 'Jogador') +
-          ' · ' + escapeHtml(labels[item.market] || item.market) +
-          ' · ' + escapeHtml((item.team || '?') + ' x ' + (item.opponent || '?')) +
-          '</div>' +
-          (item.detail ? '<div>Diagnóstico: ' + escapeHtml(item.detail) + '</div>' : '') +
-          (item.reason_code === 'zero_minutes' ? (
-            '<div class="mt-1 text-amber-200">Boxscore: jogador marcado como DNP, sem minutos registrados.</div>'
-          ) : '') +
-          '<div class="text-cyan-300">Disponibilidade gravada: ' + escapeHtml(availability) + '</div>' +
-          '<div>Detalhe da disponibilidade: ' + escapeHtml(availabilityDetail) + '</div>' +
-          '<div>Snapshot do jogador: ' + escapeHtml(capturedAt) + '</div>' +
-          '<div>Relatório de lesões: ' + escapeHtml(reportStatus) +
-          ' · captura geral: ' + escapeHtml(runCapturedAt) + '</div>' +
-          '</div>';
-      }).join('');
-
-      return '<div class="mt-2">' +
-        '<div class="text-[9px] font-semibold text-amber-300">' +
-        escapeHtml(group.reason) + ' (' + group.items.length + ')' +
-        '</div>' + rows + '</div>';
-    }).join('');
-
-    statusBox.innerHTML +=
-      '<div class="mt-3 pt-2 border-t border-gray-800">' +
-      '<div class="font-semibold text-gray-200">Diagnóstico das pendências da auditoria · ' +
-      diagnostics.length + '</div>' +
-      groupHtml +
-      '<div class="mt-2 text-[9px] text-gray-600">Diagnóstico somente leitura; não altera snapshots nem resultados.</div>' +
-      '</div>';
-  } catch(error) {
-    statusBox.innerHTML += '<div class="mt-2 text-red-400">Não foi possível diagnosticar as pendências da auditoria.</div>';
-  }
-}
-
 async function coletarResultadosAuditoria() {
   const dateInput = document.getElementById('audit-collection-date');
   const button = document.getElementById('collect-results-btn');
@@ -1793,8 +1713,7 @@ const auditCollectionDate = document.getElementById('audit-collection-date');
 if (auditCollectionDate) {
   auditCollectionDate.addEventListener('change', async () => {
     await carregarStatusColetaAuditoria(auditCollectionDate.value);
-    await carregarDiagnosticoPendenciasAuditoria(auditCollectionDate.value);
-  });
+});
 }
 
 document.addEventListener('DOMContentLoaded', () => {
