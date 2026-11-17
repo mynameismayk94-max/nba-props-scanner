@@ -1514,7 +1514,7 @@ async function fetchMarketComparison() {
   const results = [];
   for (const market of markets) {
     try {
-      const res = await requisicao('/validation-history?market=' + market.id + '&cohort=' + encodeURIComponent(auditCohort));
+      const res = await requisicao('/validation-history-summary?market=' + market.id + '&cohort=' + encodeURIComponent(auditCohort));
       if(res.status !== 'ok') throw new Error('Resposta inválida');
       results.push({ market, summary: res.summary });
     } catch (error) {
