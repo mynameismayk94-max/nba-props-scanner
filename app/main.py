@@ -5227,10 +5227,14 @@ def validation_history_summary(
                 r.triage_score,
                 r.last5_avg,
                 r.last10_avg,
-                COALESCE(ar.actual_value, cr.actual_value) AS actual_value,
+                COALESCE(
+                    ar.actual_value,
+                    CASE WHEN nr.id IS NULL THEN cr.actual_value END
+                ) AS actual_value,
                 CASE
                     WHEN ar.id IS NOT NULL THEN 'completed'
                     WHEN nr.id IS NOT NULL THEN 'no_result'
+                    WHEN cr.id IS NOT NULL THEN 'completed'
                     ELSE 'pending'
                 END AS result_status
             FROM ranked r
@@ -5240,8 +5244,7 @@ def validation_history_summary(
              AND ar.market = r.market
              AND ar.player_id = r.player_id
             LEFT JOIN candidate_results cr
-              ON r.snapshot_source = 'legacy'
-             AND cr.selected_date = r.selected_date
+              ON cr.selected_date = r.selected_date
              AND cr.market = r.market
              AND cr.player_id = r.player_id
             LEFT JOIN audit_no_results nr
@@ -5461,10 +5464,14 @@ def validation_history(
                     s.last5_avg,
                     s.last10_avg,
                     s.minutes_last5_avg,
-                    COALESCE(ar.actual_value, cr.actual_value),
+                    COALESCE(
+                        ar.actual_value,
+                        CASE WHEN nr.id IS NULL THEN cr.actual_value END
+                    ),
                     CASE
                         WHEN ar.id IS NOT NULL THEN 'completed'
                         WHEN nr.id IS NOT NULL THEN 'no_result'
+                        WHEN cr.id IS NOT NULL THEN 'completed'
                         ELSE 'pending'
                     END AS result_status
                 FROM ranked_snapshots s
@@ -5474,8 +5481,7 @@ def validation_history(
                     AND ar.market = s.market
                     AND ar.player_id = s.player_id
                 LEFT JOIN candidate_results cr
-                    ON s.snapshot_source = 'legacy'
-                    AND cr.selected_date = s.selected_date
+                    ON cr.selected_date = s.selected_date
                     AND cr.market = s.market
                     AND cr.player_id = s.player_id
                 LEFT JOIN audit_no_results nr
