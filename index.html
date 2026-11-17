@@ -1338,6 +1338,17 @@ async function carregarDiagnosticoPendenciasAuditoria(selectedDate) {
           ' · ' + escapeHtml((item.team || '?') + ' x ' + (item.opponent || '?')) +
           '</div>' +
           (item.detail ? '<div>Diagnóstico: ' + escapeHtml(item.detail) + '</div>' : '') +
+          (item.reason_code === 'zero_minutes' ? (
+            '<div class="mt-1 text-amber-200">Estrutura bruta do boxscore:</div>' +
+            '<div>Tipo de stats: ' + escapeHtml(item.boxscore_stats_type || 'não informado') +
+            ' · tamanho: ' + escapeHtml(item.boxscore_stats_length ?? 'não informado') + '</div>' +
+            '<div>Chaves estatísticas: ' + escapeHtml(JSON.stringify(item.boxscore_statistics_keys || [])) + '</div>' +
+            '<div>Índice MIN: ' + escapeHtml(item.boxscore_min_index ?? 'não encontrado') +
+            ' · valor bruto MIN: ' + escapeHtml(JSON.stringify(item.boxscore_raw_min_value ?? null)) + '</div>' +
+            '<div>Chaves do registro: ' + escapeHtml(JSON.stringify(item.boxscore_athlete_entry_keys || [])) + '</div>' +
+            '<div>Chaves do atleta: ' + escapeHtml(JSON.stringify(item.boxscore_athlete_keys || [])) + '</div>' +
+            '<div>Indicador DNP: ' + escapeHtml(JSON.stringify(item.boxscore_did_not_play ?? null)) + '</div>'
+          ) : '') +
           '<div class="text-cyan-300">Disponibilidade gravada: ' + escapeHtml(availability) + '</div>' +
           '<div>Detalhe da disponibilidade: ' + escapeHtml(availabilityDetail) + '</div>' +
           '<div>Snapshot do jogador: ' + escapeHtml(capturedAt) + '</div>' +
