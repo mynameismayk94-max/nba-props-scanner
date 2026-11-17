@@ -5471,6 +5471,9 @@ def validation_history(
         if not rows:
             return {
                 "games": 0,
+                "l5_sample": 0,
+                "l10_sample": 0,
+                "pearson_sample": 0,
                 "actual_average": None,
                 "score_average": None,
                 "l5_prediction_average": None,
@@ -5561,6 +5564,9 @@ def validation_history(
 
         return {
             "games": len(rows),
+            "l5_sample": len(l5_errors),
+            "l10_sample": len(l10_errors),
+            "pearson_sample": len(pairs),
             "actual_average": safe_average(actual_values),
             "score_average": safe_average(score_values),
             "l5_prediction_average": l5_prediction_average,
@@ -5963,6 +5969,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
           ON s.snapshot_source = 'audit'
          AND ar.selected_date = s.selected_date AND ar.market = s.market AND ar.player_id = s.player_id
         WHERE (%s = 'all' OR s.cohort_rank <= 10)
+          AND ar.id IS NOT NULL
     """
     params = [market, cohort]
     limits = {"7+": (7.0, None), "6-6.99": (6.0, 7.0), "5-5.99": (5.0, 6.0), "4-4.99": (4.0, 5.0), "<4": (None, 4.0)}
