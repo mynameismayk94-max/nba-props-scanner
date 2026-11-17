@@ -5153,6 +5153,82 @@ def audit_collection_diagnostics(
     }
 
 
+@app.get("/legacy-validation-summary")
+def legacy_validation_summary(
+    market: str = Query(default="assists"),
+    cohort: str = Query(default="all")
+):
+    """Resumo isolado do histórico operacional legado; nunca compõe a auditoria oficial."""
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo.")
+    if cohort not in {"top10", "all"}:
+        raise HTTPException(status_code=400, detail="População inválida.")
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH ranked AS (
+            SELECT s.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY selected_date, market
+                    ORDER BY display_rank ASC NULLS LAST,
+                             triage_score DESC NULLS LAST, player_id ASC
+                ) AS cohort_rank
+            FROM candidate_snapshots s
+            WHERE market = %s
+        ),
+        population AS (
+            SELECT * FROM ranked
+            WHERE (%s = 'all' OR cohort_rank <= 10)
+        )
+        SELECT
+            COUNT(*) AS snapshots_total,
+            COUNT(r.id) AS completed_results,
+            MIN(p.selected_date) AS first_date,
+            MAX(p.selected_date) AS last_date,
+            AVG(r.actual_value),
+            AVG(ABS(r.actual_value - p.last5_avg))
+                FILTER (WHERE p.last5_avg IS NOT NULL) AS l5_mae,
+            COUNT(*) FILTER (WHERE r.id IS NOT NULL AND p.last5_avg IS NOT NULL) AS l5_sample,
+            AVG(ABS(r.actual_value - p.last10_avg))
+                FILTER (WHERE p.last10_avg IS NOT NULL) AS l10_mae,
+            COUNT(*) FILTER (WHERE r.id IS NOT NULL AND p.last10_avg IS NOT NULL) AS l10_sample,
+            COUNT(*) FILTER (WHERE r.id IS NULL) AS pending_results
+        FROM population p
+        LEFT JOIN candidate_results r
+          ON r.selected_date = p.selected_date
+         AND r.market = p.market
+         AND r.player_id = p.player_id
+    """
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, (market, cohort))
+            row = cursor.fetchone()
+
+    snapshots = int(row[0] or 0)
+    completed = int(row[1] or 0)
+    first_date = row[2].isoformat() if row[2] else None
+    last_date = row[3].isoformat() if row[3] else None
+    return {
+        "status": "ok",
+        "source": "candidate_snapshots + candidate_results",
+        "market": market,
+        "cohort": cohort,
+        "snapshots_total": snapshots,
+        "completed_results": completed,
+        "pending_results": int(row[9] or 0),
+        "no_result_results": 0,
+        "first_date": first_date,
+        "last_date": last_date,
+        "actual_average": round(float(row[4]), 2) if row[4] is not None else None,
+        "l5_mae": round(float(row[5]), 2) if row[5] is not None else None,
+        "l5_sample": int(row[6] or 0),
+        "l10_mae": round(float(row[7]), 2) if row[7] is not None else None,
+        "l10_sample": int(row[8] or 0),
+        "note": "Histórico operacional anterior à auditoria independente. Não inclui DNPs identificados separadamente e não compõe os indicadores oficiais."
+    }
+
+
 @app.get("/validation-history-summary")
 def validation_history_summary(
     market: str = Query(default="assists"),
