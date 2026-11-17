@@ -4717,7 +4717,12 @@ def collect_pending_results(
                         ON r.selected_date = s.selected_date
                         AND r.market = s.market
                         AND r.player_id = s.player_id
+                    LEFT JOIN audit_no_results nr
+                        ON nr.selected_date = s.selected_date
+                        AND nr.market = s.market
+                        AND nr.player_id = s.player_id
                     WHERE r.id IS NULL
+                        AND nr.id IS NULL
                         AND s.selected_date <= %s
                         AND s.market = ANY(%s)
                 ) AS pending
@@ -4833,12 +4838,17 @@ def audit_collection_status(
                     'audit' AS source,
                     s.market,
                     COUNT(*) AS snapshots_total,
-                    COUNT(r.player_id) AS completed_results
+                    COUNT(r.player_id) AS completed_results,
+                    COUNT(nr.player_id) AS no_results
                 FROM audit_snapshots s
                 LEFT JOIN audit_results r
                     ON r.selected_date = s.selected_date
                     AND r.market = s.market
                     AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
                 WHERE s.selected_date = %s
                 GROUP BY s.market
 
@@ -4848,7 +4858,8 @@ def audit_collection_status(
                     'operational' AS source,
                     s.market,
                     COUNT(*) AS snapshots_total,
-                    COUNT(r.player_id) AS completed_results
+                    COUNT(r.player_id) AS completed_results,
+                    0 AS no_results
                 FROM candidate_snapshots s
                 LEFT JOIN candidate_results r
                     ON r.selected_date = s.selected_date
@@ -4864,13 +4875,15 @@ def audit_collection_status(
             rows = cursor.fetchall()
 
     markets = {}
-    for source, market, snapshots_total, completed_results in rows:
+    for source, market, snapshots_total, completed_results, no_results in rows:
         total = int(snapshots_total or 0)
         completed = int(completed_results or 0)
+        no_result_count = int(no_results or 0)
         markets.setdefault(market, {})[source] = {
             "snapshots_total": total,
             "completed_results": completed,
-            "pending_results": max(total - completed, 0),
+            "no_results": no_result_count,
+            "pending_results": max(total - completed - no_result_count, 0),
         }
 
     return {
