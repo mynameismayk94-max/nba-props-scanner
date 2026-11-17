@@ -1286,6 +1286,65 @@ async function carregarStatusColetaAuditoria(selectedDate) {
   }
 }
 
+
+async function carregarDiagnosticoPendenciasAuditoria(selectedDate) {
+  const statusBox = document.getElementById('collection-status');
+  if(!statusBox || !selectedDate) return;
+
+  try {
+    const res = await requisicao('/audit-collection-diagnostics?date=' + encodeURIComponent(selectedDate));
+    if(res.status !== 'ok') throw new Error('Resposta inválida');
+
+    const diagnostics = res.diagnostics || [];
+    if(!diagnostics.length) {
+      statusBox.innerHTML += '<div class="mt-2 text-emerald-400">✓ Auditoria sem pendências.</div>';
+      return;
+    }
+
+    const labels = {
+      points: 'Pontos',
+      assists: 'Assistências',
+      rebounds: 'Rebotes',
+      threes: 'Tentativas de 3 pts',
+      two_pa: 'Tentativas de 2 pts',
+      fgm: 'Cestas convertidas'
+    };
+
+    const grouped = {};
+    diagnostics.forEach(item => {
+      const key = item.reason_code || 'unknown';
+      if(!grouped[key]) grouped[key] = { reason: item.reason, items: [] };
+      grouped[key].items.push(item);
+    });
+
+    const groupHtml = Object.values(grouped).map(group => {
+      const rows = group.items.map(item => {
+        return '<div class="pl-2 py-0.5 text-[9px] text-gray-500">' +
+          escapeHtml(item.player_name || 'Jogador') +
+          ' · ' + escapeHtml(labels[item.market] || item.market) +
+          ' · ' + escapeHtml((item.team || '?') + ' x ' + (item.opponent || '?')) +
+          (item.detail ? ' · ' + escapeHtml(item.detail) : '') +
+          '</div>';
+      }).join('');
+
+      return '<div class="mt-2">' +
+        '<div class="text-[9px] font-semibold text-amber-300">' +
+        escapeHtml(group.reason) + ' (' + group.items.length + ')' +
+        '</div>' + rows + '</div>';
+    }).join('');
+
+    statusBox.innerHTML +=
+      '<div class="mt-3 pt-2 border-t border-gray-800">' +
+      '<div class="font-semibold text-gray-200">Diagnóstico das pendências da auditoria · ' +
+      diagnostics.length + '</div>' +
+      groupHtml +
+      '<div class="mt-2 text-[9px] text-gray-600">Diagnóstico somente leitura; não altera snapshots nem resultados.</div>' +
+      '</div>';
+  } catch(error) {
+    statusBox.innerHTML += '<div class="mt-2 text-red-400">Não foi possível diagnosticar as pendências da auditoria.</div>';
+  }
+}
+
 async function coletarResultadosAuditoria() {
   const dateInput = document.getElementById('audit-collection-date');
   const button = document.getElementById('collect-results-btn');
@@ -1648,7 +1707,7 @@ function limparResultadosAoMudarData(){
 data.addEventListener('change', limparResultadosAoMudarData);
 const auditCollectionDate = document.getElementById('audit-collection-date');
 if (auditCollectionDate) {
-  auditCollectionDate.addEventListener('change', () => carregarStatusColetaAuditoria(auditCollectionDate.value));
+  auditCollectionDate.addEventListener('change', async () => {\n    await carregarStatusColetaAuditoria(auditCollectionDate.value);\n    await carregarDiagnosticoPendenciasAuditoria(auditCollectionDate.value);\n  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
