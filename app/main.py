@@ -5278,7 +5278,9 @@ def validation_history_summary(
             ) AS l10_prediction_average,
             CORR(triage_score, actual_value) FILTER (
                 WHERE result_status = 'completed' AND triage_score IS NOT NULL AND actual_value IS NOT NULL
-            ) AS score_actual_pearson
+            ) AS score_actual_pearson,
+            MIN(selected_date) AS first_date,
+            MAX(selected_date) AS last_date
         FROM resolved
     """
 
@@ -5302,8 +5304,8 @@ def validation_history_summary(
         "market_label": MARKETS[market]["label"],
         "cohort": cohort,
         "period": {
-            "first_date": first_audit_date,
-            "last_date": last_audit_date
+            "first_date": row[11].isoformat() if row[11] is not None else None,
+            "last_date": row[12].isoformat() if row[12] is not None else None
         },
         "summary": {
             "snapshots_total": snapshots_total,
@@ -5371,6 +5373,10 @@ def validation_history(
             date_to,
             "%Y-%m-%d"
         ).date()
+    # Histórico acumulado: somente até o último dia completo (ontem).
+    if not date_from and not date_to:
+        parsed_to = audit_history_cutoff_date()
+
 
     if not DATABASE_URL:
         raise HTTPException(
