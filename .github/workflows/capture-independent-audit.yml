@@ -49,3 +49,10 @@ jobs:
             echo
             echo "::endgroup::"
           done
+
+          echo "::group::Collect pending audit results"
+          curl --fail --show-error --silent \
+            --max-time 900 \
+            "${API_BASE}/collect-pending-results?max_combinations=100"
+          echo
+          echo "::endgroup::"
