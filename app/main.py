@@ -5373,9 +5373,12 @@ def validation_history(
             date_to,
             "%Y-%m-%d"
         ).date()
-    # Histórico acumulado: inclui hoje e todos os dias anteriores da auditoria independente.
+    # Histórico geral: mantém somente a janela operacional de ontem e hoje.
+    # Assim, registros antigos não reaparecem na visão geral.
     if not date_from and not date_to:
-        parsed_to = audit_history_cutoff_date()
+        today = audit_history_cutoff_date()
+        parsed_from = today - timedelta(days=1)
+        parsed_to = today
 
 
     if not DATABASE_URL:
