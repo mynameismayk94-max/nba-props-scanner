@@ -87,11 +87,28 @@
   /* iOS/WebKit pode impor uma largura mínima própria ao campo nativo de data.
      Zera essa largura intrínseca para o campo respeitar exatamente a célula do grid. */
   input[type="date"] {
+    appearance: none;
+    -webkit-appearance: none;
+    display: block;
     -webkit-min-logical-width: 0 !important;
+    min-inline-size: 0 !important;
     min-width: 0 !important;
+    inline-size: 100% !important;
     width: 100% !important;
+    max-inline-size: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
+    align-self: stretch;
+    margin: 0;
+    padding: 7px 8px;
+  }
+  input[type="date"]::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    margin: 0;
+    padding: 0;
   }
   
   button { padding: 6px 12px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: #2563eb; color: white; height: 36px; }
@@ -188,10 +205,6 @@
   #audit-collection-date { appearance: none; -webkit-appearance: none; display: block; inline-size: 100%; width: 100%; min-inline-size: 0; min-width: 0; max-inline-size: 100%; max-width: 100%; box-sizing: border-box; margin: 0; padding: 7px 8px; overflow: hidden; }
   #audit-collection-date::-webkit-date-and-time-value { min-width: 0; text-align: left; }
   #audit-collection-date::-webkit-calendar-picker-indicator { margin: 0; padding: 0; }
-
-  #data { appearance: none; -webkit-appearance: none; display: block; inline-size: 100%; width: 100%; min-inline-size: 0; min-width: 0; max-inline-size: 100%; max-width: 100%; box-sizing: border-box; margin: 0; padding: 7px 8px; overflow: hidden; }
-  #data::-webkit-date-and-time-value { min-width: 0; text-align: left; }
-  #data::-webkit-calendar-picker-indicator { margin: 0; padding: 0; }
 
   /* Campo do servidor: contraste alto para leitura */
   #api { color: #111827; background: #f9fafb; border-color: #9ca3af; font-weight: 500; }
@@ -624,9 +637,9 @@
 
     <div class="glass-panel p-3 space-y-3">
       <div class="context-secondary-grid">
-        <div class="filter-group">
+        <div class="filter-group date-field">
           <label for="context-date">Data de referência</label>
-          <input type="date" id="context-date" class="context-date-input">
+          <input type="date" id="context-date">
         </div>
         <div class="filter-group">
           <label for="context-venue">Local</label>
@@ -732,7 +745,17 @@ api.addEventListener('change', ()=>{
   localStorage.setItem('nbaPropsApiBase', endereco());
 });
 
-data.value = new Date().toLocaleDateString('en-CA');
+const todayLocal = new Date().toLocaleDateString('en-CA');
+data.value = todayLocal;
+
+const auditSelectedDate = document.getElementById('audit-selected-date');
+const auditDateFrom = document.getElementById('audit-date-from');
+const auditDateTo = document.getElementById('audit-date-to');
+const contextDate = document.getElementById('context-date');
+if (auditSelectedDate) auditSelectedDate.value = todayLocal;
+if (auditDateFrom) auditDateFrom.value = '2026-11-16';
+if (auditDateTo) auditDateTo.value = todayLocal;
+if (contextDate) contextDate.value = todayLocal;
 
 let candidatosAtuais = [];
 let mercadoAtual = '';
@@ -750,7 +773,7 @@ function setAuditMode(mode) {
   const descriptions = {
     daily: 'Mostra somente os registros do mercado e da data escolhidos. Nenhum outro dia é somado.',
     range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária dentro desse intervalo.',
-    all: 'Mostra o acumulado da auditoria independente até hoje. Inclui os snapshots capturados hoje e nos dias anteriores; resultados reais entram assim que a apuração é concluída. Não inclui o histórico antigo.'
+    all: 'Mostra o acumulado da auditoria independente desde 16/11 até hoje. Soma os snapshots já capturados em cada data, mesmo quando ainda estão pendentes; resultados reais entram assim que a apuração é concluída. Não inclui o histórico antigo.'
   };
   const modeSelect = document.getElementById('audit-mode-select');
   if (modeSelect) modeSelect.value = mode;
