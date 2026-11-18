@@ -217,8 +217,12 @@
   .scanner-legend .legend-negative { color: #34d399; font-weight: 600; }
   .scanner-legend .legend-neutral { color: #9ca3af; font-weight: 600; }
 
-  @media (min-width: 640px) {
-    .schedule-controls { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+  /* Scanner: data e Buscar Jogos usam exatamente a mesma largura útil do painel. */
+  .schedule-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .schedule-search-button {
+    width: 100% !important;
   }
 
   /* Status do servidor com contraste legível */
