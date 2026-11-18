@@ -217,32 +217,33 @@
   .scanner-legend .legend-negative { color: #34d399; font-weight: 600; }
   .scanner-legend .legend-neutral { color: #9ca3af; font-weight: 600; }
 
-  /* Scanner: Data e Buscar Jogos ocupam exatamente a mesma largura útil. */
+  /* Scanner: Data segue exatamente o mesmo limite horizontal do campo de baixo. */
   .schedule-controls {
-    grid-template-columns: minmax(0, 1fr);
+    display: block;
     width: 100%;
     min-width: 0;
   }
-  .schedule-controls > .schedule-date-wrap,
-  .schedule-controls > .schedule-search-button {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    box-sizing: border-box !important;
-  }
-  .schedule-controls > .schedule-date-wrap {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-  }
-  .schedule-controls > .schedule-date-wrap > input[type="date"] {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    box-sizing: border-box !important;
-  }
-  .schedule-controls > .schedule-search-button {
+  .schedule-controls .schedule-date-wrap {
     display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+  .schedule-controls .schedule-date-wrap > input[type="date"] {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    inline-size: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .schedule-controls .schedule-search-button {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    margin-top: 8px;
   }
 
   /* Status do servidor com contraste legível */
