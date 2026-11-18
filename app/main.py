@@ -57,8 +57,8 @@ AUDIT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
 
 def audit_history_cutoff_date():
-    """Data de corte da visão acumulada: somente dias já encerrados."""
-    return datetime.now(AUDIT_TIMEZONE).date() - timedelta(days=1)
+    """Data de corte da visão acumulada: inclui os registros capturados até hoje."""
+    return datetime.now(AUDIT_TIMEZONE).date()
 
 
 
@@ -5184,7 +5184,7 @@ def validation_history_summary(
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
-    # Sem datas significa "Histórico acumulado": encerra no último dia completo (ontem).
+    # Sem datas significa "Histórico acumulado": inclui hoje e todos os dias anteriores da auditoria independente.
     if not date_from and not date_to:
         parsed_to = audit_history_cutoff_date()
 
@@ -5373,7 +5373,7 @@ def validation_history(
             date_to,
             "%Y-%m-%d"
         ).date()
-    # Histórico acumulado: somente até o último dia completo (ontem).
+    # Histórico acumulado: inclui hoje e todos os dias anteriores da auditoria independente.
     if not date_from and not date_to:
         parsed_to = audit_history_cutoff_date()
 
