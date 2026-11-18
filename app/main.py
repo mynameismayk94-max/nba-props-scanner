@@ -2048,6 +2048,12 @@ def fetch_espn_games(
                 {}
             )
 
+            team_logos = team.get("logos") or []
+            logo_url = (
+                team_logos[0].get("href")
+                if team_logos and isinstance(team_logos[0], dict)
+                else team.get("logo")
+            )
             item = {
                 "abbr": team.get(
                     "abbreviation",
@@ -2056,7 +2062,8 @@ def fetch_espn_games(
                 "name": team.get(
                     "displayName",
                     ""
-                )
+                ),
+                "logo": logo_url
             }
 
             if competitor.get("homeAway") == "home":
