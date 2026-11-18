@@ -4,7 +4,7 @@ import re
 import os
 import threading
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -52,6 +52,15 @@ app.add_middleware(
 # ============================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+AUDIT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+
+
+def audit_history_cutoff_date():
+    """Data de corte da visão acumulada: somente dias já encerrados."""
+    return datetime.now(AUDIT_TIMEZONE).date() - timedelta(days=1)
+
+
 
 
 def get_database_connection():
@@ -5175,6 +5184,10 @@ def validation_history_summary(
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
+    # Sem datas significa "Histórico acumulado": encerra no último dia completo (ontem).
+    if not date_from and not date_to:
+        parsed_to = audit_history_cutoff_date()
+
 
     if not DATABASE_URL:
         raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
@@ -5948,6 +5961,10 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
+    # Sem datas significa "Histórico acumulado": encerra no último dia completo (ontem).
+    if not date_from and not date_to:
+        parsed_to = audit_history_cutoff_date()
+
     if not DATABASE_URL:
         raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
 
