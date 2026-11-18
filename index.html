@@ -160,9 +160,10 @@
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
   }
   .date-field input[type="date"] {
+    appearance: none;
+    -webkit-appearance: none;
     display: block;
     inline-size: 100%;
     width: 100%;
@@ -172,6 +173,16 @@
     max-width: 100%;
     box-sizing: border-box;
     align-self: stretch;
+    margin: 0;
+    padding: 7px 8px;
+  }
+  .date-field input[type="date"]::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
+  }
+  .date-field input[type="date"]::-webkit-calendar-picker-indicator {
+    margin: 0;
+    padding: 0;
   }
   .schedule-date-wrap,
   .audit-date-wrap,
@@ -180,7 +191,6 @@
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
   }
   #audit-collection-date { appearance: none; -webkit-appearance: none; display: block; inline-size: 100%; width: 100%; min-inline-size: 0; min-width: 0; max-inline-size: 100%; max-width: 100%; box-sizing: border-box; margin: 0; padding: 7px 8px; overflow: hidden; }
   #audit-collection-date::-webkit-date-and-time-value { min-width: 0; text-align: left; }
