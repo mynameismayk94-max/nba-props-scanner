@@ -154,16 +154,34 @@
   .schedule-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; justify-items: stretch; }
   /* Data segue o mesmo modelo nativo dos filtros do projeto:
      label + campo, mesma altura, borda e largura da célula do grid. */
-  .date-field { display: flex; flex-direction: column; width: 100%; min-width: 0; }
-  .date-field input[type="date"] {
+  .date-field {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    box-sizing: border-box;
+    overflow: hidden;
   }
-  .schedule-date-wrap { width: 100%; min-width: 0; }
-  .audit-date-wrap { width: 100%; min-width: 0; }
-  .audit-date-centered, .audit-range-centered { width: 100%; min-width: 0; }
+  .date-field input[type="date"] {
+    display: block;
+    inline-size: 100%;
+    width: 100%;
+    min-inline-size: 0;
+    min-width: 0;
+    max-inline-size: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    align-self: stretch;
+  }
+  .schedule-date-wrap,
+  .audit-date-wrap,
+  .audit-date-centered,
+  .audit-range-centered {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
   #audit-collection-date { appearance: none; -webkit-appearance: none; display: block; inline-size: 100%; width: 100%; min-inline-size: 0; min-width: 0; max-inline-size: 100%; max-width: 100%; box-sizing: border-box; margin: 0; padding: 7px 8px; overflow: hidden; }
   #audit-collection-date::-webkit-date-and-time-value { min-width: 0; text-align: left; }
   #audit-collection-date::-webkit-calendar-picker-indicator { margin: 0; padding: 0; }
