@@ -141,6 +141,10 @@
   .game-team { min-width: 0; text-align: center; }
   .game-team-name { font-size: 11px; font-weight: 700; color: #f3f4f6; line-height: 1.2; }
   .game-team-abbr { display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px; min-width: 38px; height: 26px; padding: 0 8px; border-radius: 7px; background: #111827; border: 1px solid var(--team-color, #374151); color: var(--team-color, #d1d5db); font-size: 11px; font-weight: 800; letter-spacing: .03em; }
+  .game-team-identity { display: flex; align-items: center; justify-content: center; gap: 5px; margin-bottom: 4px; }
+  .game-team-logo-box { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 30px; width: 30px; height: 26px; padding: 3px; border-radius: 7px; background: #111827; border: 1px solid var(--team-color, #374151); }
+  .game-team-logo-box img { display: block; width: 19px; height: 19px; object-fit: contain; }
+  .game-team-identity .game-team-abbr { margin-bottom: 0; }
   .game-team-label { display: block; font-size: 8px; color: #6b7280; margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; }
   .team-form { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; margin-top: 7px; min-height: 19px; }
   .team-form-label { color: #6b7280; font-size: 8px; margin-right: 2px; }
@@ -995,6 +999,17 @@ async function carregarJogos(){
     };
 
     const teamColor = abbr => teamColors[abbr] || '#9CA3AF';
+    const renderTeamIdentity = (team, abbr, color) => {
+      const rawLogo = typeof team?.logo === 'string' && /^https:\/\//i.test(team.logo)
+        ? escapeHtml(team.logo)
+        : '';
+      const logoBox = rawLogo
+        ? '<span class="game-team-logo-box" style="--team-color:' + color + '"><img src="' + rawLogo +
+          '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentElement.remove()"></span>'
+        : '';
+      return '<div class="game-team-identity">' + logoBox +
+        '<span class="game-team-abbr" style="--team-color:' + color + '">' + abbr + '</span></div>';
+    };
     const renderTeamForm = team => {
       const results = Array.isArray(team?.last5) ? team.last5 : [];
       if (!results.length) {
@@ -1033,14 +1048,14 @@ async function carregarJogos(){
       html += '</div>';
       html += '<div class="game-matchup">';
       html += '<div class="game-team">';
-      html += '<span class="game-team-abbr" style="--team-color:' + homeColor + '">' + homeAbbr + '</span>';
+      html += renderTeamIdentity(j.home, homeAbbr, homeColor);
       html += '<div class="game-team-name">' + homeName + '</div>';
       html += '<span class="game-team-label">Casa</span>';
       html += renderTeamForm(j.home);
       html += '</div>';
       html += '<div class="game-vs">VS</div>';
       html += '<div class="game-team">';
-      html += '<span class="game-team-abbr" style="--team-color:' + awayColor + '">' + awayAbbr + '</span>';
+      html += renderTeamIdentity(j.away, awayAbbr, awayColor);
       html += '<div class="game-team-name">' + awayName + '</div>';
       html += '<span class="game-team-label">Fora</span>';
       html += renderTeamForm(j.away);
