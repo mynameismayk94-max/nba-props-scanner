@@ -90,6 +90,16 @@
   }
   .filter-group label { font-size: 10px; font-weight: bold; color: #9ca3af; margin-bottom: 3px; }
   .filter-group select, input[type="date"], input[type="text"] { width: 100%; min-width: 0; max-width: 100%; background: #030712; border: 1px solid #374151; color: #f3f4f6; padding: 7px; border-radius: 6px; font-size: 12px; height: 36px; }
+
+  /* iOS/WebKit pode impor uma largura mínima própria ao campo nativo de data.
+     Zera essa largura intrínseca para o campo respeitar exatamente a célula do grid. */
+  input[type="date"] {
+    -webkit-min-logical-width: 0 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
   
   button { padding: 6px 12px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: #2563eb; color: white; height: 36px; }
   button:hover { background: #1d4ed8; }
