@@ -737,7 +737,7 @@ function setAuditMode(mode) {
   const descriptions = {
     daily: 'Mostra somente os registros do mercado e da data escolhidos. Nenhum outro dia é somado.',
     range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária dentro desse intervalo.',
-    all: 'Mostra o acumulado de toda a auditoria independente desde o primeiro registro. Inclui snapshots, resultados reais, DNPs e pendências; informa o intervalo efetivamente encontrado. Não inclui o histórico antigo.'
+    all: 'Mostra o acumulado da auditoria independente até o último dia completo (ontem). Inclui snapshots, resultados reais, DNPs e pendências; informa o intervalo efetivamente encontrado. Não inclui o histórico antigo.'
   };
   ['daily','range','all'].forEach(key => {
     const button = document.getElementById('audit-mode-' + key);
