@@ -54,11 +54,17 @@ app.add_middleware(
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 AUDIT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+AUDIT_START_DATE = date(2026, 11, 16)
 
 
 def audit_history_cutoff_date():
-    """Data de corte da visão acumulada: inclui os registros capturados até hoje."""
+    """Data final da visão acumulada: sempre inclui o que já foi capturado até hoje."""
     return datetime.now(AUDIT_TIMEZONE).date()
+
+
+def audit_history_start_date():
+    """Primeiro dia oficial da auditoria independente."""
+    return AUDIT_START_DATE
 
 
 
@@ -5184,8 +5190,10 @@ def validation_history_summary(
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
-    # Sem datas significa "Histórico acumulado": inclui hoje e todos os dias anteriores da auditoria independente.
+    # Sem datas significa "Histórico acumulado": inclui toda a auditoria
+    # independente desde 16/11 até o último snapshot disponível hoje.
     if not date_from and not date_to:
+        parsed_from = audit_history_start_date()
         parsed_to = audit_history_cutoff_date()
 
 
@@ -5373,12 +5381,12 @@ def validation_history(
             date_to,
             "%Y-%m-%d"
         ).date()
-    # Histórico geral: mantém somente a janela operacional de ontem e hoje.
-    # Assim, registros antigos não reaparecem na visão geral.
+    # Histórico acumulado: começa no primeiro dia oficial da auditoria (16/11)
+    # e soma tudo que já estiver disponível até hoje, inclusive snapshots
+    # futuros em relação ao primeiro dia e pendências ainda não apuradas.
     if not date_from and not date_to:
-        today = audit_history_cutoff_date()
-        parsed_from = today - timedelta(days=1)
-        parsed_to = today
+        parsed_from = audit_history_start_date()
+        parsed_to = audit_history_cutoff_date()
 
 
     if not DATABASE_URL:
@@ -5970,8 +5978,10 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
-    # Sem datas significa "Histórico acumulado": encerra no último dia completo (ontem).
+    # Sem datas significa "Histórico acumulado": começa em 16/11 e encerra
+    # hoje, incluindo snapshots já capturados mesmo que ainda estejam pendentes.
     if not date_from and not date_to:
+        parsed_from = audit_history_start_date()
         parsed_to = audit_history_cutoff_date()
 
     if not DATABASE_URL:
