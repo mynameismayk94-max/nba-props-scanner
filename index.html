@@ -455,12 +455,14 @@
           <span class="block text-[9px] text-gray-400">Sem resultado (DNP)</span>
           <strong id="audit-noresult-count" class="block text-lg text-amber-300">—</strong>
         </div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+        <button type="button" onclick="toggleAuditPendingDetails()" class="rounded-lg bg-gray-900 border border-gray-800 p-2 text-left hover:border-amber-500/40 transition-colors" aria-expanded="false" id="audit-pending-card">
           <span class="block text-[9px] text-gray-400">Aguardando apuração</span>
           <strong id="audit-pending-count" class="block text-lg text-gray-200">—</strong>
-        </div>
+          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver os motivos</span>
+        </button>
       </div>
       <p id="audit-sample-explanation" class="text-[9px] text-gray-500">Aguardando os dados do mercado selecionado.</p>
+      <div id="audit-pending-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
     </div>
 
     <div id="audit-independent-content">
@@ -1849,6 +1851,63 @@ async function fetchHistoryValidation() {
       '<tr><td colspan="8" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
     document.getElementById('similar-profiles-table').innerHTML =
       '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
+  }
+}
+
+async function toggleAuditPendingDetails() {
+  const panel = document.getElementById('audit-pending-details');
+  const card = document.getElementById('audit-pending-card');
+  if (!panel || !card) return;
+
+  if (!panel.classList.contains('hidden')) {
+    panel.classList.add('hidden');
+    card.setAttribute('aria-expanded', 'false');
+    return;
+  }
+
+  const mode = document.getElementById('audit-mode-select')?.value || 'daily';
+  if (mode !== 'daily') {
+    panel.innerHTML = '<div class="text-[9px] text-gray-500">Os detalhes de pendências são exibidos na Visão diária, para uma data e mercado específicos.</div>';
+    panel.classList.remove('hidden');
+    card.setAttribute('aria-expanded', 'true');
+    return;
+  }
+
+  const selectedDate = document.getElementById('audit-selected-date')?.value;
+  const market = document.getElementById('hist-market')?.value;
+  if (!selectedDate || !market) return;
+
+  panel.innerHTML = '<div class="text-[9px] text-gray-400">Consultando pendências...</div>';
+  panel.classList.remove('hidden');
+  card.setAttribute('aria-expanded', 'true');
+
+  try {
+    const res = await requisicao('/audit-pending-details?date=' +
+      encodeURIComponent(selectedDate) + '&market=' + encodeURIComponent(market));
+
+    const items = res.pending || [];
+    if (!items.length) {
+      panel.innerHTML = '<div class="text-[9px] text-emerald-300">Nenhuma pendência aberta para este mercado.</div>';
+      return;
+    }
+
+    panel.innerHTML =
+      '<div class="text-[9px] font-semibold text-gray-300 mb-1.5">Pendências · ' +
+      escapeHtml(selectedDate.split('-').reverse().join('/')) + '</div>' +
+      '<div class="space-y-1.5">' +
+      items.map(item =>
+        '<div class="rounded-md border border-gray-800 bg-gray-900/70 px-2 py-1.5">' +
+          '<div class="flex items-center justify-between gap-2">' +
+            '<span class="text-[9px] font-semibold text-white">' + escapeHtml(item.player_name || 'Jogador') + '</span>' +
+            '<span class="text-[8px] text-gray-500">' + escapeHtml((item.team || '') + ' × ' + (item.opponent || '')) + '</span>' +
+          '</div>' +
+          '<div class="text-[8px] text-amber-300 mt-0.5">' + escapeHtml(item.reason || 'Motivo não informado') + '</div>' +
+          (item.detail ? '<div class="text-[8px] text-gray-500 mt-0.5">' + escapeHtml(item.detail) + '</div>' : '') +
+        '</div>'
+      ).join('') +
+      '</div>';
+  } catch (error) {
+    panel.innerHTML = '<div class="text-[9px] text-red-400">Não foi possível carregar os detalhes das pendências.</div>';
   }
 }
 
