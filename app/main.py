@@ -4410,6 +4410,7 @@ def collect_results(
     )
 
     completed_games = {}
+    completed_game_ids = []
 
     for game in schedule.get("games", []):
 
