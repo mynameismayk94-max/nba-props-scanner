@@ -98,20 +98,3 @@ jobs:
           fi
 
           echo "Todas as combinações de data/mercado foram processadas com sucesso."
-          echo "::endgroup::"
-            done
-            CURRENT_DATE="$(date -d "$CURRENT_DATE + 1 day" +%F)"
-          done
-
-          for MARKET in points assists rebounds threes two_pa fgm; do
-            echo "::group::${END_DATE} / ${MARKET}"
-            curl --fail --show-error --silent \
-              --retry 3 \
-              --retry-delay 5 \
-              --retry-all-errors \
-              --max-time 180 \
-              "${API_BASE}/collect-results?date=${END_DATE}&market=${MARKET}"
-            echo
-            echo "::endgroup::"
-          done
-          echo "::endgroup::"
