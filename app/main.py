@@ -4166,14 +4166,17 @@ def collect_candidates(
         limit=final_limit
     )
 
-    # População completa para auditoria, sem limite de exibição.
-    # Mantém-se separada de candidate_snapshots, que registra o uso operacional.
-    audit_snapshots_saved = save_audit_snapshots(
-        selected_date,
-        market,
-        eligible_all_results,
-        availability_report_status
-    )
+    # A auditoria independente só captura quando chamada explicitamente pelo
+    # endpoint /capture-audit-snapshot. O uso normal do Scanner não pode criar
+    # nem alterar a fotografia da auditoria.
+    audit_snapshots_saved = 0
+    if not persist_operational:
+        audit_snapshots_saved = save_audit_snapshots(
+            selected_date,
+            market,
+            eligible_all_results,
+            availability_report_status
+        )
 
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
@@ -5056,6 +5059,94 @@ def audit_collection_status(
         "markets": markets,
     }
 
+
+
+@app.get("/audit-pending-details")
+def audit_pending_details(
+    date: str = Query(...),
+    market: str = Query(...)
+):
+    """
+    Lista somente as pendências ainda abertas de um mercado/data,
+    com motivo curto e persistido. Não altera nenhum dado.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido.")
+
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida. Use YYYY-MM-DD.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    COALESCE(
+                        pr.reason,
+                        'Motivo ainda não registrado'
+                    ) AS reason,
+                    pr.reason_code,
+                    pr.detail,
+                    s.captured_at
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
+                LEFT JOIN audit_pending_reasons pr
+                    ON pr.selected_date = s.selected_date
+                    AND pr.market = s.market
+                    AND pr.player_id = s.player_id
+                WHERE s.selected_date = %s
+                  AND s.market = %s
+                  AND r.player_id IS NULL
+                  AND nr.player_id IS NULL
+                ORDER BY s.audit_rank, s.player_name
+                """,
+                (selected_date, market)
+            )
+            rows = cursor.fetchall()
+
+    return {
+        "status": "ok",
+        "date": date,
+        "market": market,
+        "pending": [
+            {
+                "player_id": str(player_id),
+                "player_name": player_name,
+                "team": team,
+                "opponent": opponent,
+                "reason": reason,
+                "reason_code": reason_code,
+                "detail": detail,
+                "captured_at": captured_at.isoformat() if captured_at else None,
+            }
+            for (
+                player_id,
+                player_name,
+                team,
+                opponent,
+                reason,
+                reason_code,
+                detail,
+                captured_at,
+            ) in rows
+        ],
+    }
 
 
 @app.get("/audit-collection-diagnostics")
