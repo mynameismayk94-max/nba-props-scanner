@@ -5028,6 +5028,28 @@ def audit_collection_status(
             "pending_results": max(total - completed - no_result_count, 0),
         }
 
+    # Motivos persistidos são apenas para pendências técnicas ainda abertas.
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT market, reason_code, reason, COUNT(*)
+                FROM audit_pending_reasons
+                WHERE selected_date = %s
+                GROUP BY market, reason_code, reason
+                ORDER BY market, reason_code
+                """,
+                (selected_date,)
+            )
+            reason_rows = cursor.fetchall()
+
+    for market, reason_code, reason, count in reason_rows:
+        markets.setdefault(market, {}).setdefault("audit", {}).setdefault("pending_reasons", []).append({
+            "reason_code": reason_code,
+            "reason": reason,
+            "count": int(count or 0),
+        })
+
     return {
         "status": "ok",
         "date": date,
