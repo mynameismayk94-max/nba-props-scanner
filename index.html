@@ -1007,8 +1007,9 @@ async function carregarJogos(){
         ? '<span class="game-team-logo-box" style="--team-color:' + color + '"><img src="' + rawLogo +
           '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentElement.remove()"></span>'
         : '';
-      return '<div class="game-team-identity">' + logoBox +
-        '<span class="game-team-abbr" style="--team-color:' + color + '">' + abbr + '</span></div>';
+      return '<div class="game-team-identity">' +
+        '<span class="game-team-abbr" style="--team-color:' + color + '">' + abbr + '</span>' +
+        logoBox + '</div>';
     };
     const renderTeamForm = team => {
       const results = Array.isArray(team?.last5) ? team.last5 : [];
