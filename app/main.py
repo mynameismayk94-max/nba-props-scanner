@@ -280,6 +280,32 @@ def initialize_database():
                     """
                 )
 
+                # Motivos persistidos para pendências técnicas da auditoria.
+                # Não encerra a pendência; apenas registra por que ainda não foi resolvida.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_pending_reasons (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        reason_code TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        detail TEXT,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_pending_reason
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_pending_reasons_date_market
+                    ON audit_pending_reasons (selected_date, market)
+                    """
+                )
+
         logger.info(
             "Banco Neon inicializado. Tabela candidate_snapshots disponível."
         )
@@ -4533,6 +4559,7 @@ def collect_results(
     operational_results_to_save = []
     audit_results_to_save = []
     audit_no_results_to_save = []
+    audit_pending_reasons_to_save = []
     operational_pending = 0
     audit_pending = 0
     audit_no_result_count = 0
@@ -4564,6 +4591,13 @@ def collect_results(
         if not game_id:
             if snapshot_source == "audit":
                 audit_pending += 1
+                audit_pending_reason = (
+                    target_date, market, str(player_id),
+                    "game_not_found",
+                    "Confronto não localizado entre os jogos concluídos",
+                    f"{team or '?'} x {opponent or '?'}"
+                )
+                audit_pending_reasons_to_save.append(audit_pending_reason)
             else:
                 operational_pending += 1
             continue
@@ -4573,6 +4607,12 @@ def collect_results(
         if not summary:
             if snapshot_source == "audit":
                 audit_pending += 1
+                audit_pending_reasons_to_save.append((
+                    target_date, market, str(player_id),
+                    "summary_unavailable",
+                    "Resumo da partida não disponível",
+                    f"game_id={game_id}"
+                ))
             else:
                 operational_pending += 1
             continue
@@ -4587,6 +4627,12 @@ def collect_results(
         if not player_game:
             if snapshot_source == "audit":
                 audit_pending += 1
+                audit_pending_reasons_to_save.append((
+                    target_date, market, str(player_id),
+                    "player_not_found",
+                    "Jogador não encontrado no boxscore da partida",
+                    f"game_id={game_id}"
+                ))
             else:
                 operational_pending += 1
             continue
@@ -4620,6 +4666,12 @@ def collect_results(
         if actual is None:
             if snapshot_source == "audit":
                 audit_pending += 1
+                audit_pending_reasons_to_save.append((
+                    target_date, market, str(player_id),
+                    "stat_unavailable",
+                    "Estatística do mercado não disponível no boxscore",
+                    f"game_id={game_id}; player_id={player_id}"
+                ))
             else:
                 operational_pending += 1
             continue
@@ -4694,6 +4746,58 @@ def collect_results(
                     row
                 )
 
+            # Atualiza o motivo mais recente das pendências técnicas.
+            for row in audit_pending_reasons_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_pending_reasons (
+                        selected_date, market, player_id,
+                        reason_code, reason, detail, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO UPDATE SET
+                        reason_code = EXCLUDED.reason_code,
+                        reason = EXCLUDED.reason,
+                        detail = EXCLUDED.detail,
+                        updated_at = NOW()
+                    """,
+                    row
+                )
+
+            # Um resultado concluído ou encerrado como DNP deixa de ter
+            # motivo de pendência persistido.
+            cursor.execute(
+                """
+                DELETE FROM audit_pending_reasons p
+                WHERE p.selected_date = %s
+                  AND p.market = %s
+                  AND EXISTS (
+                      SELECT 1
+                      FROM audit_results r
+                      WHERE r.selected_date = p.selected_date
+                        AND r.market = p.market
+                        AND r.player_id = p.player_id
+                  )
+                """,
+                (target_date, market)
+            )
+            cursor.execute(
+                """
+                DELETE FROM audit_pending_reasons p
+                WHERE p.selected_date = %s
+                  AND p.market = %s
+                  AND EXISTS (
+                      SELECT 1
+                      FROM audit_no_results nr
+                      WHERE nr.selected_date = p.selected_date
+                        AND nr.market = p.market
+                        AND nr.player_id = p.player_id
+                  )
+                """,
+                (target_date, market)
+            )
+
     return {
         "date": selected_date,
         "market": market,
@@ -4704,6 +4808,7 @@ def collect_results(
         "operational_pending": operational_pending,
         "audit_pending": audit_pending,
         "audit_no_results": audit_no_result_count,
+        "audit_pending_reasons_saved": len(audit_pending_reasons_to_save),
         "pending": operational_pending + audit_pending
     }
 
