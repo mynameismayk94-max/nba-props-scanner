@@ -1461,12 +1461,17 @@ async function carregarStatusColetaAuditoria(selectedDate) {
       const audit = data.audit || { snapshots_total: 0, completed_results: 0, no_results: 0, pending_results: 0 };
       const operational = data.operational || { snapshots_total: 0, completed_results: 0, no_results: 0, pending_results: 0 };
 
+      const pendingReasons = (audit.pending_reasons || []).map(item =>
+        escapeHtml(item.reason) + ' (' + item.count + ')'
+      ).join(' · ');
+
       return '<div class="space-y-0.5">' +
         '<div class="font-medium text-gray-300">' + label + '</div>' +
         '<div class="pl-2 text-[9px] text-gray-500">' +
         'Auditoria: ' + audit.completed_results + ' resultados · ' + audit.no_results + ' sem resultado · ' + audit.pending_results + ' pendentes' +
         ' &nbsp;|&nbsp; Operacional: ' + operational.completed_results + ' resultados · ' + operational.pending_results + ' pendentes' +
         '</div>' +
+        (pendingReasons ? '<div class="pl-2 text-[9px] text-amber-300">Motivo das pendências: ' + pendingReasons + '</div>' : '') +
         '</div>';
     }).join('');
 
