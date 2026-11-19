@@ -4959,6 +4959,81 @@ def collect_pending_results(
     }
 
 
+@app.get("/audit-history-coverage")
+def audit_history_coverage(
+    market: str = Query(...)
+):
+    """
+    Consulta somente leitura da cobertura da auditoria independente.
+    Retorna a quantidade de snapshots, resultados, DNPs e pendências
+    por data, além do primeiro e último dia efetivamente encontrados.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH snapshot_counts AS (
+                    SELECT selected_date, COUNT(*) AS snapshots_total
+                    FROM audit_snapshots
+                    WHERE market = %s
+                    GROUP BY selected_date
+                ),
+                result_counts AS (
+                    SELECT selected_date, COUNT(*) AS completed_results
+                    FROM audit_results
+                    WHERE market = %s
+                    GROUP BY selected_date
+                ),
+                no_result_counts AS (
+                    SELECT selected_date, COUNT(*) AS no_results
+                    FROM audit_no_results
+                    WHERE market = %s
+                    GROUP BY selected_date
+                )
+                SELECT
+                    s.selected_date,
+                    s.snapshots_total,
+                    COALESCE(r.completed_results, 0),
+                    COALESCE(n.no_results, 0)
+                FROM snapshot_counts s
+                LEFT JOIN result_counts r ON r.selected_date = s.selected_date
+                LEFT JOIN no_result_counts n ON n.selected_date = s.selected_date
+                ORDER BY s.selected_date
+                """,
+                (market, market, market)
+            )
+            rows = cursor.fetchall()
+
+    days = []
+    for selected_date, snapshots_total, completed_results, no_results in rows:
+        snapshots = int(snapshots_total or 0)
+        completed = int(completed_results or 0)
+        dnp = int(no_results or 0)
+        days.append({
+            "date": selected_date.isoformat(),
+            "snapshots": snapshots,
+            "completed_results": completed,
+            "no_results": dnp,
+            "pending_results": max(snapshots - completed - dnp, 0),
+        })
+
+    return {
+        "status": "ok",
+        "market": market,
+        "period": {
+            "first_date": days[0]["date"] if days else None,
+            "last_date": days[-1]["date"] if days else None,
+        },
+        "days": days,
+    }
+
+
 @app.get("/audit-collection-status")
 def audit_collection_status(
     date: str = Query(...)
