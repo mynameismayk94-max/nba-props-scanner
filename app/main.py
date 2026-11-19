@@ -1998,7 +1998,8 @@ def fetch_team_recent_form(team_abbr: str, selected_date: str) -> dict:
 
 
 def fetch_espn_games(
-    selected_date: str
+    selected_date: str,
+    enrich_context: bool = True
 ) -> dict:
 
     try:
@@ -2115,58 +2116,60 @@ def fetch_espn_games(
                 )
             })
 
-    # Enriquece os confrontos com o retrospecto recente das equipes.
-    # Consultas paralelas + cache de 15 minutos reduzem o impacto na agenda.
-    team_abbreviations = {
-        team.get("abbr")
-        for game in games
-        for team in (game.get("home"), game.get("away"))
-        if team and team.get("abbr")
-    }
-    team_forms = {}
-    games_context_start = time.perf_counter()
-    recent_form_cache_before = _cache_metrics(fetch_team_schedule_cached)
-    if team_abbreviations:
-        with ThreadPoolExecutor(max_workers=min(10, len(team_abbreviations))) as executor:
-            futures = {
-                executor.submit(fetch_team_recent_form, team_abbr, selected_date): team_abbr
-                for team_abbr in team_abbreviations
-            }
-            for future in as_completed(futures):
-                team_abbr = futures[future]
-                try:
-                    team_forms[team_abbr] = future.result()
-                except Exception as error:
-                    logger.warning("Falha inesperada no retrospecto de %s: %s", team_abbr, error)
-                    team_forms[team_abbr] = {
+    # A agenda completa usa contexto recente e prewarm defensivo para a interface.
+    # A coleta de resultados precisa apenas do placar/confrontos e deve evitar
+    # esse trabalho extra, pois o endpoint é chamado para cada data/mercado.
+    if enrich_context:
+        team_abbreviations = {
+            team.get("abbr")
+            for game in games
+            for team in (game.get("home"), game.get("away"))
+            if team and team.get("abbr")
+        }
+        team_forms = {}
+        games_context_start = time.perf_counter()
+        recent_form_cache_before = _cache_metrics(fetch_team_schedule_cached)
+        if team_abbreviations:
+            with ThreadPoolExecutor(max_workers=min(10, len(team_abbreviations))) as executor:
+                futures = {
+                    executor.submit(fetch_team_recent_form, team_abbr, selected_date): team_abbr
+                    for team_abbr in team_abbreviations
+                }
+                for future in as_completed(futures):
+                    team_abbr = futures[future]
+                    try:
+                        team_forms[team_abbr] = future.result()
+                    except Exception as error:
+                        logger.warning("Falha inesperada no retrospecto de %s: %s", team_abbr, error)
+                        team_forms[team_abbr] = {
+                            "last5": [], "last5_record": None,
+                            "last5_games": 0, "last5_status": "unavailable"
+                        }
+
+        games_context_elapsed = time.perf_counter() - games_context_start
+        recent_form_cache_after = _cache_metrics(fetch_team_schedule_cached)
+        logger.info(
+            "Games timing: data=%s equipes=%s tempo_contexto=%.2fs cache_hits_delta=%s cache_misses_delta=%s cache_size=%s",
+            selected_date,
+            len(team_abbreviations),
+            games_context_elapsed,
+            recent_form_cache_after["hits"] - recent_form_cache_before["hits"],
+            recent_form_cache_after["misses"] - recent_form_cache_before["misses"],
+            recent_form_cache_after["currsize"]
+        )
+
+        for game in games:
+            for side in ("home", "away"):
+                team = game.get(side)
+                if team:
+                    team.update(team_forms.get(team.get("abbr"), {
                         "last5": [], "last5_record": None,
                         "last5_games": 0, "last5_status": "unavailable"
-                    }
+                    }))
 
-    games_context_elapsed = time.perf_counter() - games_context_start
-    recent_form_cache_after = _cache_metrics(fetch_team_schedule_cached)
-    logger.info(
-        "Games timing: data=%s equipes=%s tempo_contexto=%.2fs cache_hits_delta=%s cache_misses_delta=%s cache_size=%s",
-        selected_date,
-        len(team_abbreviations),
-        games_context_elapsed,
-        recent_form_cache_after["hits"] - recent_form_cache_before["hits"],
-        recent_form_cache_after["misses"] - recent_form_cache_before["misses"],
-        recent_form_cache_after["currsize"]
-    )
-
-    for game in games:
-        for side in ("home", "away"):
-            team = game.get(side)
-            if team:
-                team.update(team_forms.get(team.get("abbr"), {
-                    "last5": [], "last5_record": None,
-                    "last5_games": 0, "last5_status": "unavailable"
-                }))
-
-    # Aquece o benchmark compartilhado enquanto o usuário escolhe o mercado.
-    # A rotina é deduplicada por data e executada em background.
-    schedule_defense_context_prewarm(selected_date)
+        # Aquece o benchmark compartilhado enquanto o usuário escolhe o mercado.
+        # A rotina é deduplicada por data e executada em background.
+        schedule_defense_context_prewarm(selected_date)
 
     return {
         "date": selected_date,
@@ -4402,7 +4405,8 @@ def collect_results(
         )
 
     schedule = fetch_espn_games(
-        selected_date
+        selected_date,
+        enrich_context=False
     )
 
     completed_games = {}
