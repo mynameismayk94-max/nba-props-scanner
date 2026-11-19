@@ -4410,7 +4410,6 @@ def collect_results(
     )
 
     completed_games = {}
-    completed_game_ids = []
 
     for game in schedule.get("games", []):
 
@@ -4492,6 +4491,17 @@ def collect_results(
             "pending": 0
         }
 
+    # Só consulta os boxscores dos jogos que realmente aparecem nos snapshots
+    # pendentes desta data/mercado. Isso reduz chamadas desnecessárias e a
+    # pressão de memória/CPU no serviço de staging.
+    pending_game_ids = {
+        completed_games.get(
+            ((snapshot[3] or "").upper(), (snapshot[4] or "").upper())
+        )
+        for snapshot in snapshots
+    }
+    pending_game_ids.discard(None)
+
     summary_cache = {}
 
     def fetch_summary(game_id):
@@ -4501,7 +4511,7 @@ def collect_results(
         )
 
     with ThreadPoolExecutor(
-        max_workers=4
+        max_workers=2
     ) as executor:
 
         futures = [
@@ -4509,7 +4519,7 @@ def collect_results(
                 fetch_summary,
                 game_id
             )
-            for game_id in completed_game_ids
+            for game_id in pending_game_ids
         ]
 
         for future in as_completed(futures):
