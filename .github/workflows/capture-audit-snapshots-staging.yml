@@ -1,0 +1,112 @@
+name: Capture audit snapshots (staging)
+
+on:
+  workflow_dispatch:
+    inputs:
+      selected_date:
+        description: "Data dos jogos (AAAA-MM-DD)"
+        required: true
+        type: string
+        default: "2026-11-17"
+      confirmation:
+        description: 'Digite CAPTURE para autorizar as seis capturas imutáveis'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          SELECTED_DATE: ${{ inputs.selected_date }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [[ ! "$SELECTED_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::Data inválida. Use AAAA-MM-DD."
+            exit 1
+          fi
+          if [[ "$CONFIRMATION" != "CAPTURE" ]]; then
+            echo "::error::Confirmação inválida. Nenhuma captura foi executada."
+            exit 1
+          fi
+          date -d "$SELECTED_DATE" >/dev/null
+
+      - name: Capture all six audit markets on staging
+        id: capture
+        shell: bash
+        env:
+          SELECTED_DATE: ${{ inputs.selected_date }}
+        run: |
+          set -uo pipefail
+          BASE_URL="https://nba-props-scanner-staging.onrender.com"
+          mkdir -p audit-capture-results
+          MARKETS=(points assists rebounds threes two_pa fgm)
+          failures=0
+
+          {
+            echo "# Resultado das capturas de auditoria"
+            echo
+            echo "- Ambiente: staging"
+            echo "- Data: $SELECTED_DATE"
+            echo
+            echo "| Mercado | HTTP | Status | Elegíveis | Snapshots informados | Consultados | Erros | Disponibilidade |"
+            echo "|---|---:|---|---:|---:|---:|---:|---|"
+          } > audit-capture-results/summary.md
+
+          for market in "${MARKETS[@]}"; do
+            body="audit-capture-results/${market}.json"
+            url="${BASE_URL}/capture-audit-snapshot?date=${SELECTED_DATE}&market=${market}"
+            echo "::group::Captura ${market}"
+            echo "Chamando endpoint de staging para ${SELECTED_DATE} / ${market}"
+
+            set +e
+            http_code=$(curl --silent --show-error --max-time 360 \
+              --output "$body" --write-out "%{http_code}" "$url")
+            curl_exit=$?
+            set -e
+
+            if [[ $curl_exit -ne 0 ]]; then
+              echo "Falha no curl (código $curl_exit); HTTP informado: ${http_code:-000}"
+              failures=$((failures + 1))
+              printf '| %s | %s | ERRO DE CONEXÃO | — | — | — | — | — |\n' "$market" "${http_code:-000}" >> audit-capture-results/summary.md
+            else
+              cat "$body"
+              echo
+              if [[ "$http_code" == "200" ]] && jq -e '.status == "captured"' "$body" >/dev/null 2>&1; then
+                status=$(jq -r '.status // "—"' "$body")
+                eligible=$(jq -r '.eligible_players // "—"' "$body")
+                saved=$(jq -r '.snapshots_saved // "—"' "$body")
+                consulted=$(jq -r '.players_consulted // "—"' "$body")
+                errors=$(jq -r '.players_with_errors // "—"' "$body")
+                availability=$(jq -r '.availability_report_status // "—"' "$body")
+                printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' "$market" "$http_code" "$status" "$eligible" "$saved" "$consulted" "$errors" "$availability" >> audit-capture-results/summary.md
+                if [[ "$errors" != "0" ]]; then failures=$((failures + 1)); fi
+              else
+                failures=$((failures + 1))
+                detail=$(jq -r '.detail // .error // "Resposta inesperada"' "$body" 2>/dev/null || echo "Resposta não JSON")
+                printf '| %s | %s | FALHA: %s | — | — | — | — | — |\n' "$market" "$http_code" "${detail//|/\\|}" >> audit-capture-results/summary.md
+              fi
+            fi
+            echo "::endgroup::"
+          done
+
+          echo >> audit-capture-results/summary.md
+          echo "Falhas ou mercados com erro de jogadores: $failures" >> audit-capture-results/summary.md
+          cat audit-capture-results/summary.md
+          echo "failures=$failures" >> "$GITHUB_OUTPUT"
+          if [[ "$failures" -gt 0 ]]; then exit 1; fi
+
+      - name: Upload capture responses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-capture-${{ inputs.selected_date }}
+          path: audit-capture-results/
+          if-no-files-found: warn
+          retention-days: 30
