@@ -253,6 +253,33 @@
   /* Status do servidor com contraste legível */
   .status { padding: 8px; background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; border-radius: 6px; margin-top: 8px; font-size: 11px; color: #34d399; font-weight: 500; }
 
+  /* Card de pendências: mantém o mesmo padrão dos demais boxes da auditoria.
+     Só fica verde enquanto o detalhe está aberto/selecionado. */
+  #audit-pending-card {
+    background: #111827;
+    border: 1px solid #1f2937;
+    color: inherit;
+    box-shadow: none;
+    outline: none;
+  }
+  #audit-pending-card:hover {
+    background: #111827;
+    border-color: #374151;
+  }
+  #audit-pending-card:focus {
+    background: #111827;
+    border-color: #1f2937;
+    box-shadow: none;
+    outline: none;
+  }
+  #audit-pending-card[aria-expanded="true"],
+  #audit-pending-card[aria-expanded="true"]:hover,
+  #audit-pending-card[aria-expanded="true"]:focus {
+    background: rgba(16, 185, 129, .13);
+    border-color: #10b981;
+    color: #34d399;
+  }
+
   /* Modais com proporção perfeita no celular */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.85); z-index: 1000; padding: 8px; overflow-y: auto; }
   .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
@@ -1625,6 +1652,19 @@ function limparIndicadoresAuditoria() {
   });
 
   gapAuditData = null;
+
+  // Ao trocar mercado/data/visão, nunca mantém o detalhe de pendências da
+  // consulta anterior. O contador e a lista serão preenchidos pela nova consulta.
+  const pendingPanel = document.getElementById('audit-pending-details');
+  const pendingCard = document.getElementById('audit-pending-card');
+  if (pendingPanel) {
+    pendingPanel.classList.add('hidden');
+    pendingPanel.innerHTML = '';
+  }
+  if (pendingCard) {
+    pendingCard.setAttribute('aria-expanded', 'false');
+  }
+
   const gapScoreBand = document.getElementById('gap-score-band-select');
   if (gapScoreBand) gapScoreBand.value = 'all';
   const gapSummary = document.getElementById('gap-summary-table');
