@@ -1,23 +1,28 @@
-name: Inspeciona entries do roster ESPN
+name: Confere partida e atleta Draymond
 
 on:
   push:
+    branches:
+      - feature/central-contexto-nba
 
 jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspecionar registros e referências do roster
+      - name: Conferir evento, IDs e roster
+        shell: bash
         run: |
           set -euo pipefail
-          URL="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401910019/competitions/401910019/competitors/9/roster"
-          ROSTER="$(curl --fail --show-error --silent --max-time 60 "$URL")"
-          echo "::group::Primeiras entradas do roster"
-          echo "$ROSTER" | jq '{draymond: [.entries[]? | select((.playerId|tostring) == "6589")], all: [.entries[]? | {playerId, displayName, active, didNotPlay, reason}]}'
+          GAME="401910019"
+          echo "::group::Resumo ESPN do evento"
+          curl --fail --show-error --silent --max-time 60 "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=$GAME" |
+            jq '{header: {id: .header.id, competitions: [.header.competitions[]? | {id, date, competitors: [.competitors[]? | {id, homeAway, team: {id: .team.id, abbreviation: .team.abbreviation, displayName: .team.displayName}}]}]}, boxscore: [.boxscore.players[]? | {team: .team.abbreviation, athletes: [.statistics[]?.athletes[]? | {athlete: .athlete.displayName, id: .athlete.id, stats}]}]}'
           echo "::endgroup::"
-          ATHLETE_REF="$(echo "$ROSTER" | jq -r '.entries[]? | select((.playerId|tostring) == "6589") | .athlete["$ref"] // empty')"
-          if [ -n "$ATHLETE_REF" ]; then
-            echo "::group::Atleta Draymond resolvido"
-            curl --fail --show-error --silent --max-time 60 "$ATHLETE_REF" | jq '{id, displayName, fullName, firstName, lastName}'
-            echo "::endgroup::"
-          fi
+          echo "::group::Recurso do atleta 6589"
+          curl --fail --show-error --silent --max-time 60 "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/6589?lang=en&region=us" |
+            jq '{id, displayName, fullName, firstName, lastName, team, active, links}'
+          echo "::endgroup::"
+          echo "::group::Roster usando competitor ID 9"
+          curl --fail --show-error --silent --max-time 60 "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/$GAME/competitions/$GAME/competitors/9/roster" |
+            jq '{count: (.entries|length), target: [.entries[]? | select((.playerId|tostring)=="6589")], names: [.entries[]? | {playerId, displayName, didNotPlay, active}]}'
+          echo "::endgroup::"
