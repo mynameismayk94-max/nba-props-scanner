@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30,<1.0
 nba_api>=1.10.0
 requests>=2.32
 psycopg[binary]>=3.2,<4.0
+pypdf>=5.0,<7.0
