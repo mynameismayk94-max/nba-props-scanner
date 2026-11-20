@@ -1,4 +1,4 @@
-name: Test audit collection 2026-11-18
+name: Test audit collection 2026-11-19
 
 on:
   push:
@@ -11,18 +11,18 @@ jobs:
       - name: Wait for staging deploy
         run: sleep 90
 
-      - name: Collect 2026-11-18 by market
+      - name: Collect 2026-11-19 by market
         run: |
           set -u
           API_BASE="https://nba-props-scanner-staging.onrender.com"
           FAILED=0
 
           for MARKET in points assists rebounds threes two_pa fgm; do
-            echo "::group::2026-11-18 / $MARKET"
+            echo "::group::2026-11-19 / $MARKET"
             BODY_FILE="/tmp/response-$MARKET.txt"
             HTTP_CODE=$(curl -sS -o "$BODY_FILE" -w "%{http_code}" \
               --retry 2 --retry-delay 5 --retry-all-errors --max-time 180 \
-              "$API_BASE/collect-results?date=2026-11-18&market=$MARKET" || true)
+              "$API_BASE/collect-results?date=2026-11-19&market=$MARKET" || true)
             echo "HTTP $HTTP_CODE"
             cat "$BODY_FILE" || true
             echo
