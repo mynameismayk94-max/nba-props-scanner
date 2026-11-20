@@ -2669,6 +2669,96 @@ def find_player_in_summary_for_diagnostic(
     return None
 
 
+@lru_cache(maxsize=300)
+def get_game_team_player_status(
+    game_id: str,
+    team_abbr: str,
+    player_id: str
+):
+    """
+    Consulta o roster da partida na ESPN quando o atleta não aparece no
+    bloco tradicional de estatísticas. Esse endpoint mantém atletas que não
+    jogaram e expõe didNotPlay/active, permitindo fechar DNP sem transformar
+    ausência do boxscore em DNP por suposição.
+    """
+    summary = get_game_summary(game_id)
+
+    competitions = (
+        summary.get("header", {})
+        .get("competitions", [])
+    )
+
+    team_id = None
+
+    for competition in competitions:
+        for competitor in competition.get("competitors", []):
+            competitor_team = (
+                competitor.get("team", {})
+                .get("abbreviation", "")
+            ).upper()
+            if competitor_team == str(team_abbr or "").upper():
+                team_id = str(
+                    competitor.get("id")
+                    or competitor.get("team", {}).get("id")
+                    or ""
+                ).strip()
+                break
+        if team_id:
+            break
+
+    if not team_id:
+        return None
+
+    roster_url = (
+        "https://sports.core.api.espn.com/v2/sports/basketball/"
+        "leagues/nba/events/{event}/competitions/{competition}/"
+        "competitors/{team}/roster"
+    ).format(
+        event=str(game_id),
+        competition=str(game_id),
+        team=team_id
+    )
+
+    roster = request_json(roster_url)
+
+    items = roster.get("athletes", [])
+    if not isinstance(items, list):
+        items = roster.get("items", [])
+
+    for entry in items:
+        athlete = entry.get("athlete", entry) if isinstance(entry, dict) else {}
+        athlete_id = str(
+            athlete.get("id") or entry.get("id") or ""
+        ).strip()
+
+        if athlete_id != str(player_id).strip():
+            continue
+
+        did_not_play = (
+            entry.get("didNotPlay")
+            or entry.get("did_not_play")
+            or athlete.get("didNotPlay")
+            or athlete.get("did_not_play")
+        )
+
+        active = entry.get("active")
+        if active is None:
+            active = athlete.get("active")
+
+        return {
+            "player_id": athlete_id,
+            "did_not_play": bool(did_not_play),
+            "active": active,
+            "reason": (
+                entry.get("reason")
+                or entry.get("notPlayingReason")
+                or athlete.get("reason")
+            )
+        }
+
+    return None
+
+
 def extract_player_game_from_summary(
     summary,
     player_id
