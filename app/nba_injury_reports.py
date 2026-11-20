@@ -62,9 +62,20 @@ def _player_name_patterns(player_name):
     return patterns
 
 
+def _normalize_matchup(matchup):
+    """Converte siglas ESPN para as siglas oficiais usadas no PDF da NBA."""
+    aliases = {"GS": "GSW", "SA": "SAS", "NO": "NOP", "NY": "NYK"}
+    teams = [part.strip().upper() for part in (matchup or "").split("@")]
+    if len(teams) != 2 or not all(teams):
+        return ""
+    return "@".join(aliases.get(team, team) for team in teams)
+
+
 def _status_for_player(report_text, matchup, player_name):
     normalized = re.sub(r"\s+", " ", report_text or "")
-    if not normalized or (matchup and matchup.upper() not in normalized.upper()):
+    normalized_matchup = _normalize_matchup(matchup)
+    compact_report = re.sub(r"\s+", "", normalized).upper()
+    if not normalized or (normalized_matchup and normalized_matchup not in compact_report):
         return None
 
     for player_pattern in _player_name_patterns(player_name):
