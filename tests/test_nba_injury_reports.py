@@ -1,6 +1,6 @@
 import unittest
 
-from app.nba_injury_reports import _status_for_player, _player_name_patterns
+from app.nba_injury_reports import _status_for_player, _player_name_patterns, _normalize_matchup
 
 
 class OfficialNbaInjuryReportTests(unittest.TestCase):
@@ -11,6 +11,14 @@ class OfficialNbaInjuryReportTests(unittest.TestCase):
         )
         self.assertEqual(
             _status_for_player(report, "GSW@MEM", "Draymond Green"),
+            "Out",
+        )
+
+    def test_normalizes_espn_golden_state_abbreviation(self):
+        self.assertEqual(_normalize_matchup("GS@MEM"), "GSW@MEM")
+        report = "Matchup GSW@MEM Green, Draymond Out Injury/Illness"
+        self.assertEqual(
+            _status_for_player(report, "GS@MEM", "Draymond Green"),
             "Out",
         )
 
