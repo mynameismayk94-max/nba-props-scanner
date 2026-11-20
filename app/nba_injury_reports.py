@@ -38,9 +38,10 @@ def _fetch_report_text(url):
             timeout=5,
         )
         response.raise_for_status()
-        if not response.content.startswith(b"%PDF"):
+        pdf_content = response.content.lstrip()
+        if not pdf_content.startswith(b"%PDF"):
             return ""
-        reader = PdfReader(BytesIO(response.content))
+        reader = PdfReader(BytesIO(pdf_content))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception:
         # Cacheia também URLs inexistentes/indisponíveis para evitar repetir
@@ -107,12 +108,9 @@ def get_official_nba_injury_status(
     except (TypeError, ValueError):
         return None
 
-    # A NBA publica relatórios em horários programados (incluindo a janela
-    # de 11h a 13h locais) e os atualiza continuamente. Para jogos noturnos,
-    # o primeiro relatório útil pode sair muitas horas antes do tipoff.
-    # Procuramos até 12 horas antes, sempre em slots de 15 minutos e do mais
-    # recente para o mais antigo. O cache evita baixar o mesmo PDF repetidamente.
-    for minutes_before in range(15, 721, 15):
+    # Procuramos os relatórios mais próximos do tipoff, em slots de 15 minutos.
+    # O cache evita baixar o mesmo PDF repetidamente e mantém a apuração leve.
+    for minutes_before in range(15, 121, 15):
         report_time = tipoff_et - timedelta(minutes=minutes_before)
         slot = report_time.strftime("%I_%M%p")
         report_date = report_time.strftime("%Y-%m-%d")
