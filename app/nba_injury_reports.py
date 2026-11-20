@@ -31,17 +31,21 @@ STATUS_PATTERN = re.compile(
 
 @lru_cache(maxsize=256)
 def _fetch_report_text(url):
-    response = requests.get(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 NBA Props Analytics"},
-        timeout=5,
-    )
-    response.raise_for_status()
-    if not response.content.startswith(b"%PDF"):
-        raise ValueError("A resposta da NBA não é um PDF válido.")
-
-    reader = PdfReader(BytesIO(response.content))
-    return "\n".join(page.extract_text() or "" for page in reader.pages)
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 NBA Props Analytics"},
+            timeout=5,
+        )
+        response.raise_for_status()
+        if not response.content.startswith(b"%PDF"):
+            return ""
+        reader = PdfReader(BytesIO(response.content))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        # Cacheia também URLs inexistentes/indisponíveis para evitar repetir
+        # as mesmas tentativas em cada jogador e em cada mercado.
+        return ""
 
 
 def _player_name_patterns(player_name):
@@ -100,9 +104,8 @@ def get_official_nba_injury_status(
         report_date = report_time.strftime("%Y-%m-%d")
         url = NBA_INJURY_REPORT_BASE.format(date=report_date, time=slot)
 
-        try:
-            report_text = _fetch_report_text(url)
-        except Exception:
+        report_text = _fetch_report_text(url)
+        if not report_text:
             continue
 
         status = _status_for_player(report_text, matchup, player_name)
