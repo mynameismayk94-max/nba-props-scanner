@@ -1380,7 +1380,14 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>🎯 Minutagem semelhante · ±5 min</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Faixa</td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td></tr><tr><td>Defesa · média/jogador</td><td><b>' + numero(bandDefense5) + '</b></td><td><b>' + numero(bandDefense10) + '</b></td></tr><tr><td>Liga · média/jogador</td><td><b>' + numero(bandLeague5) + '</b></td><td><b>' + numero(bandLeague10) + '</b></td></tr><tr><td>Diferença vs liga</td><td><b>' + (bandDeviation5 == null ? '—' : (bandDeviation5 > 0 ? '+' : '') + bandDeviation5.toFixed(1) + '%') + '</b></td><td><b>' + (bandDeviation10 == null ? '—' : (bandDeviation10 > 0 ? '+' : '') + bandDeviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Amostra da defesa</td><td>' + participacoes(p.opponent_position_minute_band_defense_l5_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l5_games) + ' jg</td><td>' + participacoes(p.opponent_position_minute_band_defense_l10_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l10_games) + ' jg</td></tr><tr><td>Amostra liga</td><td>' + participacoes(p.league_position_minute_band_l5_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l5_games) + ' jg</td><td>' + participacoes(p.league_position_minute_band_l10_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l10_games) + ' jg</td></tr></table><div class="analysis-note">Média individual de atletas da posição na faixa de minutos indicada. Comparação contextual; não altera o Score.</div></div>';
   html += '</div>';
 
-  document.getElementById('modalBody').innerHTML = html;
+  const modalBody = document.getElementById('modalBody');
+  modalBody.innerHTML = html;
+
+  // Cada nova análise deve começar no topo, sem herdar a posição
+  // de rolagem da análise do jogador anterior.
+  modalBody.scrollTop = 0;
+  modal.scrollTop = 0;
+
   modal.classList.add('active');
   document.body.style.overflow = 'hidden';
 }
