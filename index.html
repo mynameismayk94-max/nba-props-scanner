@@ -334,24 +334,24 @@
 <!-- SaaS Top Header Proporcional -->
 <header class="glass-panel sticky top-0 z-50 border-b border-gray-800 rounded-none">
   <div class="max-w-7xl mx-auto px-3 h-12 flex items-center justify-between gap-2">
-    <div class="flex items-center space-x-2 min-w-0">
+    <div class="flex items-center space-x-2 min-w-0 shrink-0">
       <div class="h-7 w-7 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-bold text-gray-950 text-xs shrink-0 shadow">
         🏀
       </div>
-      <div class="truncate">
-        <span class="font-bold text-xs sm:text-sm tracking-tight text-white block truncate">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
+      <div class="shrink-0 whitespace-nowrap">
+        <span class="font-bold text-[11px] sm:text-sm tracking-tight text-white block whitespace-nowrap">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
       </div>
     </div>
 
     <!-- Navegação por Abas Compacta -->
-    <nav class="flex space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
-      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="tab-button active px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+    <nav class="flex space-x-0.5 sm:space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
+      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="tab-button active px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Scanner
       </button>
-      <button id="tab-history-btn" onclick="switchTab('history')" class="tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+      <button id="tab-history-btn" onclick="switchTab('history')" class="tab-button px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Auditoria
       </button>
-      <button id="tab-context-btn" onclick="switchTab('context')" class="tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+      <button id="tab-context-btn" onclick="switchTab('context')" class="tab-button px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Contexto NBA
       </button>
     </nav>
