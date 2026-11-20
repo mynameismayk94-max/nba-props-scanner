@@ -27,6 +27,7 @@ from app.availability_context import (
     parse_espn_injuries,
     select_eligible_players,
 )
+from app.nba_injury_reports import get_official_nba_injury_status
 
 
 logging.basicConfig(level=logging.INFO)
@@ -4580,6 +4581,7 @@ def collect_results(
 
     completed_games = {}
     completed_game_ids = []
+    completed_game_context = {}
 
     for game in schedule.get("games", []):
 
@@ -4594,6 +4596,10 @@ def collect_results(
             completed_games[(home.upper(), away.upper())] = game_id
             completed_games[(away.upper(), home.upper())] = game_id
             completed_game_ids.append(game_id)
+            completed_game_context[game_id] = {
+                "matchup": f"{away.upper()}@{home.upper()}",
+                "start_time_brt": game.get("start_time_brt"),
+            }
 
     with get_database_connection() as connection:
         with connection.cursor() as cursor:
@@ -4801,6 +4807,45 @@ def collect_results(
                         "reason": roster_status.get("reason") or "did_not_play",
                         "game_date": selected_date,
                         "source": "game_roster"
+                    })
+                ))
+                audit_no_result_count += 1
+                continue
+
+        # Segunda fonte independente: relatório oficial de lesões da NBA.
+        # Só status explícito "Out" no relatório do confronto pode encerrar
+        # como DNP; ausência do atleta ou falha da consulta mantém pendente.
+        if not player_game and snapshot_source == "audit":
+            game_context = completed_game_context.get(game_id, {})
+            try:
+                official_status = get_official_nba_injury_status(
+                    selected_date=selected_date,
+                    start_time_brt=game_context.get("start_time_brt"),
+                    matchup=game_context.get("matchup"),
+                    player_name=player_name,
+                )
+            except Exception as error:
+                logger.warning(
+                    "Falha ao consultar relatório oficial NBA: game_id=%s player=%s error=%s",
+                    game_id, player_name, error
+                )
+                official_status = None
+
+            if official_status and official_status.get("status") == "Out":
+                audit_no_results_to_save.append((
+                    target_date,
+                    market,
+                    str(player_id),
+                    player_name,
+                    team,
+                    opponent,
+                    "did_not_play",
+                    game_id,
+                    Jsonb({
+                        "minutes": 0.0,
+                        "reason": "official_nba_status_out",
+                        "game_date": selected_date,
+                        **official_status,
                     })
                 ))
                 audit_no_result_count += 1
