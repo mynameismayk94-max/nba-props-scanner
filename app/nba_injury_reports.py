@@ -96,7 +96,7 @@ def get_official_nba_injury_status(
     # Verificamos até duas horas antes do início, do mais recente ao mais antigo.
     for minutes_before in range(15, 121, 15):
         report_time = tipoff_et - timedelta(minutes=minutes_before)
-        slot = report_time.strftime("%I_%M%p").lstrip("0")
+        slot = report_time.strftime("%I_%M%p")
         report_date = report_time.strftime("%Y-%m-%d")
         url = NBA_INJURY_REPORT_BASE.format(date=report_date, time=slot)
 
