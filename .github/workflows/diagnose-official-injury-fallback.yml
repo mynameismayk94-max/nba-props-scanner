@@ -1,0 +1,53 @@
+name: Diagnosticar fallback do relatório oficial NBA
+
+on:
+  push:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install diagnostic dependencies
+        run: pip install requests pypdf
+      - name: Testar contexto do staging e consulta oficial
+        run: |
+          python - <<'PY'
+          import requests
+          from app.nba_injury_reports import get_official_nba_injury_status, _normalize_matchup
+
+          base = "https://nba-props-scanner-staging.onrender.com"
+          cases = [
+              ("2026-11-17", "Grayson Allen", "CHA", "LAL", "401910005"),
+              ("2026-11-18", "Scottie Barnes", "TOR", "WSH", "401910012"),
+              ("2026-11-18", "RJ Barrett", "TOR", "WSH", "401910012"),
+              ("2026-11-18", "Austin Reaves", "LAL", "UTAH", "401910017"),
+          ]
+
+          for day, player, team, opponent, game_id in cases:
+              print(f"CASE {day} | {player} | {team}-{opponent} | {game_id}")
+              response = requests.get(f"{base}/games", params={"date": day}, timeout=90)
+              print("GAMES_HTTP", response.status_code)
+              response.raise_for_status()
+              games = response.json().get("games", [])
+              game = next((g for g in games if
+                  {str((g.get("home") or {}).get("abbr", "")).upper(),
+                   str((g.get("away") or {}).get("abbr", "")).upper()}
+                  == {team, opponent}), None)
+              if not game:
+                  print("GAME_CONTEXT_NOT_FOUND")
+                  continue
+              away = (game.get("away") or {}).get("abbr", "").upper()
+              home = (game.get("home") or {}).get("abbr", "").upper()
+              matchup = f"{away}@{home}"
+              start = game.get("start_time_brt")
+              print("GAME_CONTEXT", {"game_id": game.get("game_id"), "matchup": matchup,
+                                     "normalized": _normalize_matchup(matchup),
+                                     "start_time_brt": start, "completed": game.get("completed")})
+              result = get_official_nba_injury_status(day, start, matchup, player)
+              print("OFFICIAL_RESULT", result)
+          PY
