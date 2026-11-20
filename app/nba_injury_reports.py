@@ -107,9 +107,12 @@ def get_official_nba_injury_status(
     except (TypeError, ValueError):
         return None
 
-    # Temporada 2026-27: relatórios publicados em intervalos de 15 minutos.
-    # Verificamos até duas horas antes do início, do mais recente ao mais antigo.
-    for minutes_before in range(15, 121, 15):
+    # A NBA publica relatórios em horários programados (incluindo a janela
+    # de 11h a 13h locais) e os atualiza continuamente. Para jogos noturnos,
+    # o primeiro relatório útil pode sair muitas horas antes do tipoff.
+    # Procuramos até 12 horas antes, sempre em slots de 15 minutos e do mais
+    # recente para o mais antigo. O cache evita baixar o mesmo PDF repetidamente.
+    for minutes_before in range(15, 721, 15):
         report_time = tipoff_et - timedelta(minutes=minutes_before)
         slot = report_time.strftime("%I_%M%p")
         report_date = report_time.strftime("%Y-%m-%d")
