@@ -2806,7 +2806,32 @@ def extract_player_game_from_summary(
                     )
                 )
 
+                # A ESPN pode listar atletas que não participaram da partida
+                # sem bloco de estatísticas. Se o próprio registro do boxscore
+                # marcar didNotPlay, esse caso é DNP confirmado, não pendência.
+                did_not_play = (
+                    athlete_entry.get("didNotPlay")
+                    or athlete_entry.get("did_not_play")
+                )
+                dnp_reason = athlete_entry.get("reason")
+
                 if raw_stats is None:
+                    if did_not_play:
+                        return {
+                            "player_id": player_id,
+                            "player": player_name,
+                            "team": team_abbr,
+                            "minutes": 0.0,
+                            "assists": None,
+                            "rebounds": None,
+                            "points": None,
+                            "fga": None,
+                            "three_pa": None,
+                            "two_pa": None,
+                            "fgm": None,
+                            "did_not_play": True,
+                            "dnp_reason": dnp_reason
+                        }
                     return None
 
                 minutes = get_player_stat_value(
