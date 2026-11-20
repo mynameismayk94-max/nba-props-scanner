@@ -1,6 +1,9 @@
-name: Capture independent audit snapshots
+name: Auditoria independente — captura e apuração
 
 on:
+  push:
+    paths:
+      - ".github/workflows/capture-independent-audit.yml"
   workflow_dispatch:
     inputs:
       api_base:
@@ -13,8 +16,12 @@ on:
         required: false
         type: string
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "7 9 * * *"
       timezone: "America/Sao_Paulo"
+
+concurrency:
+  group: independent-audit-staging
+  cancel-in-progress: false
 
 jobs:
   capture:
