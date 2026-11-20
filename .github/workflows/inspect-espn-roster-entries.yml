@@ -1,0 +1,25 @@
+name: Inspeciona entries do roster ESPN
+
+on:
+  push:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspecionar registros e referências do roster
+        run: |
+          set -euo pipefail
+          URL="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401910019/competitions/401910019/competitors/9/roster"
+          ROSTER="$(curl --fail --show-error --silent --max-time 60 "$URL")"
+          echo "::group::Primeiras entradas do roster"
+          echo "$ROSTER" | jq '.entries[:3]'
+          echo "::endgroup::"
+          INDEX=0
+          while IFS= read -r REF; do
+            [ -n "$REF" ] || continue
+            echo "::group::Entrada $INDEX resolvida"
+            curl --fail --show-error --silent --max-time 60 "$REF" | jq '{keys: keys, id, athlete, player, didNotPlay, did_not_play, active, status, reason, notPlayingReason}'
+            echo "::endgroup::"
+            INDEX=$((INDEX + 1))
+          done < <(echo "$ROSTER" | jq -r '.entries[]? | if type == "object" then .["$ref"] // empty else empty end' | head -n 12)
