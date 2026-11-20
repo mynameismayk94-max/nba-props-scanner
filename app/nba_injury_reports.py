@@ -64,7 +64,7 @@ def _player_name_patterns(player_name):
 
 def _normalize_matchup(matchup):
     """Converte siglas ESPN para as siglas oficiais usadas no PDF da NBA."""
-    aliases = {"GS": "GSW", "SA": "SAS", "NO": "NOP", "NY": "NYK"}
+    aliases = {"GS": "GSW", "SA": "SAS", "NO": "NOP", "NY": "NYK", "WSH": "WAS"}
     teams = [part.strip().upper() for part in (matchup or "").split("@")]
     if len(teams) != 2 or not all(teams):
         return ""
