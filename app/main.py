@@ -2676,25 +2676,21 @@ def get_game_team_player_status(
     player_id: str
 ):
     """
-    Consulta o roster da partida na ESPN quando o atleta não aparece no
-    bloco tradicional de estatísticas. Esse endpoint mantém atletas que não
-    jogaram e expõe didNotPlay/active, permitindo fechar DNP sem transformar
-    ausência do boxscore em DNP por suposição.
+    Consulta o roster específico da partida. A API Core da ESPN retorna
+    a coleção de atletas em "entries" (não em "athletes"/"items") e pode
+    entregar referências $ref que precisam ser resolvidas.
     """
     summary = get_game_summary(game_id)
-
     competitions = (
         summary.get("header", {})
         .get("competitions", [])
     )
 
     team_id = None
-
     for competition in competitions:
         for competitor in competition.get("competitors", []):
             competitor_team = (
-                competitor.get("team", {})
-                .get("abbreviation", "")
+                competitor.get("team", {}).get("abbreviation", "")
             ).upper()
             if competitor_team == str(team_abbr or "").upper():
                 team_id = str(
@@ -2718,29 +2714,57 @@ def get_game_team_player_status(
         competition=str(game_id),
         team=team_id
     )
-
     roster = request_json(roster_url)
 
-    items = roster.get("athletes", [])
-    if not isinstance(items, list):
-        items = roster.get("items", [])
+    # O endpoint Core usa "entries". Mantém compatibilidade com formatos
+    # alternativos, mas prioriza a estrutura realmente retornada pela ESPN.
+    entries = roster.get("entries")
+    if not isinstance(entries, list):
+        entries = roster.get("athletes")
+    if not isinstance(entries, list):
+        entries = roster.get("items")
+    if not isinstance(entries, list):
+        return None
 
-    for entry in items:
-        athlete = entry.get("athlete", entry) if isinstance(entry, dict) else {}
+    def resolve_reference(value):
+        if isinstance(value, str) and value.startswith("http"):
+            return request_json(value)
+        if isinstance(value, dict) and value.get("$ref"):
+            return request_json(value["$ref"])
+        return value if isinstance(value, dict) else {}
+
+    target_id = str(player_id).strip()
+
+    for raw_entry in entries:
+        entry = resolve_reference(raw_entry)
+        if not isinstance(entry, dict):
+            continue
+
+        athlete_value = entry.get("athlete")
+        athlete = resolve_reference(athlete_value)
+        if not athlete and entry.get("player"):
+            athlete = resolve_reference(entry.get("player"))
+
         athlete_id = str(
-            athlete.get("id") or entry.get("id") or ""
+            athlete.get("id")
+            or entry.get("playerId")
+            or entry.get("athleteId")
+            or entry.get("id")
+            or ""
         ).strip()
 
-        if athlete_id != str(player_id).strip():
+        # Algumas respostas guardam a referência do atleta em um objeto
+        # com URL e o ID só aparece após resolver esse recurso.
+        if athlete_id != target_id:
             continue
 
         did_not_play = (
             entry.get("didNotPlay")
             or entry.get("did_not_play")
+            or entry.get("notPlayed")
             or athlete.get("didNotPlay")
             or athlete.get("did_not_play")
         )
-
         active = entry.get("active")
         if active is None:
             active = athlete.get("active")
@@ -2752,6 +2776,7 @@ def get_game_team_player_status(
             "reason": (
                 entry.get("reason")
                 or entry.get("notPlayingReason")
+                or entry.get("status", {}).get("description")
                 or athlete.get("reason")
             )
         }
