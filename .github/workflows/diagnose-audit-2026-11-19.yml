@@ -1,4 +1,4 @@
-name: Diagnóstico somente leitura da auditoria 2026-11-19
+name: Diagnóstico somente leitura das pendências de 17 e 18/11
 
 on:
   push:
@@ -6,23 +6,25 @@ on:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Consultar pendências e diagnóstico por mercado no staging
+      - name: Consultar pendências e diagnóstico no staging
         run: |
           set -euo pipefail
           API_BASE="https://nba-props-scanner-staging.onrender.com"
 
-          for MARKET in points assists rebounds threes two_pa fgm; do
-            echo "::group::Pendências 2026-11-19 / $MARKET"
-            curl --fail --show-error --silent --max-time 60 \
-              "$API_BASE/audit-pending-details?date=2026-11-19&market=$MARKET"
+          for RUN_DATE in 2026-11-17 2026-11-18; do
+            for MARKET in points assists rebounds threes two_pa fgm; do
+              echo "::group::Pendências $RUN_DATE / $MARKET"
+              curl --fail --show-error --silent --max-time 60 \
+                "$API_BASE/audit-pending-details?date=$RUN_DATE&market=$MARKET"
+              echo
+              echo "::endgroup::"
+            done
+
+            echo "::group::Diagnóstico consolidado $RUN_DATE"
+            curl --fail --show-error --silent --max-time 120 \
+              "$API_BASE/audit-collection-diagnostics?date=$RUN_DATE"
             echo
             echo "::endgroup::"
           done
-
-          echo "::group::Diagnóstico consolidado 2026-11-19"
-          curl --fail --show-error --silent --max-time 120 \
-            "$API_BASE/audit-collection-diagnostics?date=2026-11-19"
-          echo
-          echo "::endgroup::"
