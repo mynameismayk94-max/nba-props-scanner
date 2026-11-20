@@ -1974,6 +1974,14 @@ function toggleAuditMetricDetails(kind) {
   if (!card) return;
 
   const alreadyOpen = !panel.classList.contains('hidden') && card.getAttribute('aria-expanded') === 'true';
+  const pendingPanel = document.getElementById('audit-pending-details');
+  if (pendingPanel) {
+    pendingPanel.classList.add('hidden');
+    pendingPanel.innerHTML = '';
+  }
+  const pendingCard = document.getElementById('audit-pending-card');
+  if (pendingCard) pendingCard.setAttribute('aria-expanded', 'false');
+
   ['audit-total-card', 'audit-completed-card', 'audit-noresult-card', 'audit-pending-card'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.setAttribute('aria-expanded', 'false');
@@ -2006,11 +2014,23 @@ async function toggleAuditPendingDetails() {
   const card = document.getElementById('audit-pending-card');
   if (!panel || !card) return;
 
+  const metricPanel = document.getElementById('audit-metric-details');
+  const metricCards = ['audit-total-card', 'audit-completed-card', 'audit-noresult-card'];
+
   if (!panel.classList.contains('hidden')) {
     panel.classList.add('hidden');
     card.setAttribute('aria-expanded', 'false');
     return;
   }
+
+  if (metricPanel) {
+    metricPanel.classList.add('hidden');
+    metricPanel.innerHTML = '';
+  }
+  metricCards.forEach(id => {
+    const metricCard = document.getElementById(id);
+    if (metricCard) metricCard.setAttribute('aria-expanded', 'false');
+  });
 
   const mode = document.getElementById('audit-mode-select')?.value || 'daily';
   if (mode !== 'daily') {
