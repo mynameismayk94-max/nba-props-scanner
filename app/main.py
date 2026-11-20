@@ -6241,7 +6241,19 @@ def validation_history(
 
     completed_count = len(completed_rows)
     no_result_count = len(no_result_rows)
-    pending_count = max(snapshots_total - completed_count - no_result_count, 0)
+    pending_rows = [
+        row for row in audit_rows
+        if row[10] is None and row[11] == 'pending'
+    ]
+    pending_count = len(pending_rows)
+
+    def period_for_rows(rows):
+        dates = sorted({row[0] for row in rows if row[0] is not None})
+        return {
+            "first_date": dates[0].isoformat() if dates else None,
+            "last_date": dates[-1].isoformat() if dates else None
+        }
+
     resolved_count = completed_count + no_result_count
     completion_rate = (
         round(resolved_count / snapshots_total * 100, 2)
@@ -6261,6 +6273,12 @@ def validation_history(
             "pending_results": pending_count,
             "completion_rate_pct": completion_rate,
             **overall_metrics
+        },
+        "periods": {
+            "snapshots": period_for_rows(audit_rows),
+            "completed": period_for_rows(completed_rows),
+            "no_result": period_for_rows(no_result_rows),
+            "pending": period_for_rows(pending_rows)
         },
         "score_bands": bands_output,
         "similarity_analysis": similarity_analysis,
