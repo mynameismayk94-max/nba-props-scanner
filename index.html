@@ -127,6 +127,9 @@
   .market-button { grid-column: span 2; display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; min-height: 52px; height: auto; padding: 9px 8px; background: #111827; border: 1px solid #374151; color: #d1d5db; white-space: normal; overflow-wrap: break-word; word-break: normal; text-align: center; line-height: 1.3; }
   .market-button:hover { background: #1f2937; border-color: #4b5563; }
   .market-button.active, .market-button.active:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
+.audit-metric-card { display: flex; flex-direction: column; justify-content: center; width: 100%; height: 100%; min-height: 68px; background: #111827; border: 1px solid #1f2937; color: #d1d5db; }
+  .audit-metric-card:hover { background: #1f2937; border-color: #374151; }
+  .audit-metric-card[aria-expanded="true"], .audit-metric-card[aria-expanded="true"]:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
   .audit-cohort-buttons .market-button { grid-column: span 1; min-height: 40px; }
   .schedule-search-button { min-height: 36px; height: 36px; padding: 6px 12px; }
 
@@ -476,24 +479,28 @@
         <span class="text-[9px] text-gray-500">Mercado e período selecionados</span>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+        <button type="button" onclick="toggleAuditMetricDetails('snapshots')" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-total-card">
           <span class="block text-[9px] text-gray-400">Snapshots capturados</span>
           <strong id="audit-total-count" class="block text-lg text-white">—</strong>
-        </div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver o período</span>
+        </button>
+        <button type="button" onclick="toggleAuditMetricDetails('completed')" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-completed-card">
           <span class="block text-[9px] text-gray-400">Com resultado real</span>
           <strong id="audit-completed-count" class="block text-lg text-emerald-400">—</strong>
-        </div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver o período</span>
+        </button>
+        <button type="button" onclick="toggleAuditMetricDetails('no_result')" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-noresult-card">
           <span class="block text-[9px] text-gray-400">Sem resultado (DNP)</span>
           <strong id="audit-noresult-count" class="block text-lg text-amber-300">—</strong>
-        </div>
-        <button type="button" onclick="toggleAuditPendingDetails()" class="rounded-lg bg-gray-900 border border-gray-800 p-2 text-left hover:border-amber-500/40 transition-colors" aria-expanded="false" id="audit-pending-card">
+          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver o período</span>
+        </button>
+        <button type="button" onclick="toggleAuditPendingDetails()" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-pending-card">
           <span class="block text-[9px] text-gray-400">Aguardando apuração</span>
           <strong id="audit-pending-count" class="block text-lg text-gray-200">—</strong>
           <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver os motivos</span>
         </button>
       </div>
+      <div id="audit-metric-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
       <p id="audit-sample-explanation" class="text-[9px] text-gray-500">Aguardando os dados do mercado selecionado.</p>
       <div id="audit-pending-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
     </div>
@@ -850,6 +857,7 @@ let gapValidationRequestId = 0;
 let gapAuditData = null;
 let auditCohort = 'all';
 let auditMode = 'daily';
+let auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
 
 function setAuditMode(mode) {
   if (!['daily', 'range', 'all'].includes(mode)) return;
@@ -1678,6 +1686,17 @@ function limparIndicadoresAuditoria() {
   });
 
   gapAuditData = null;
+  auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
+  const metricDetails = document.getElementById('audit-metric-details');
+  if (metricDetails) {
+    metricDetails.classList.add('hidden');
+    metricDetails.innerHTML = '';
+  }
+  ['audit-total-card', 'audit-completed-card', 'audit-noresult-card', 'audit-pending-card'].forEach(id => {
+    const card = document.getElementById(id);
+    if (card) card.setAttribute('aria-expanded', 'false');
+  });
+
 
   // Ao trocar mercado/data/visão, nunca mantém o detalhe de pendências da
   // consulta anterior. O contador e a lista serão preenchidos pela nova consulta.
@@ -1799,6 +1818,12 @@ async function fetchHistoryValidation() {
     document.getElementById('audit-pending-count').innerText = summary.pending_results ?? 0;
     const firstDate = res.period?.first_date || null;
     const lastDate = res.period?.last_date || null;
+    auditMetricPeriods = res.periods || {
+      snapshots: { first_date: firstDate, last_date: lastDate },
+      completed: null,
+      no_result: null,
+      pending: null
+    };
     const dateCoverage = firstDate && lastDate
       ? ' Período efetivamente encontrado: ' + firstDate + ' a ' + lastDate + '.'
       : ' Não há datas com snapshots nesta consulta.';
@@ -1918,6 +1943,62 @@ async function fetchHistoryValidation() {
     document.getElementById('similar-profiles-table').innerHTML =
       '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
   }
+}
+
+function formatAuditPeriod(period) {
+  if (!period || !period.first_date || !period.last_date) return null;
+  const fmt = value => value.split('-').reverse().join('/');
+  return period.first_date === period.last_date
+    ? fmt(period.first_date)
+    : fmt(period.first_date) + ' → ' + fmt(period.last_date);
+}
+
+function auditMetricLabel(kind) {
+  return {
+    snapshots: 'Snapshots capturados',
+    completed: 'Resultados reais',
+    no_result: 'DNP / sem resultado',
+    pending: 'Pendências abertas'
+  }[kind] || 'Dados da auditoria';
+}
+
+function toggleAuditMetricDetails(kind) {
+  const panel = document.getElementById('audit-metric-details');
+  if (!panel) return;
+  const card = document.getElementById({
+    snapshots: 'audit-total-card',
+    completed: 'audit-completed-card',
+    no_result: 'audit-noresult-card',
+    pending: 'audit-pending-card'
+  }[kind]);
+  if (!card) return;
+
+  const alreadyOpen = !panel.classList.contains('hidden') && card.getAttribute('aria-expanded') === 'true';
+  ['audit-total-card', 'audit-completed-card', 'audit-noresult-card', 'audit-pending-card'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('aria-expanded', 'false');
+  });
+  if (alreadyOpen) {
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
+    return;
+  }
+
+  const period = auditMetricPeriods[kind];
+  const count = document.getElementById({
+    snapshots: 'audit-total-count',
+    completed: 'audit-completed-count',
+    no_result: 'audit-noresult-count',
+    pending: 'audit-pending-count'
+  }[kind])?.innerText || '—';
+  const periodText = formatAuditPeriod(period);
+  card.setAttribute('aria-expanded', 'true');
+  panel.innerHTML = periodText
+    ? '<div class="text-[9px] font-semibold text-gray-300">' + auditMetricLabel(kind) + '</div>' +
+      '<div class="mt-0.5 text-[10px] text-white">Período: <span class="font-semibold text-emerald-300">' + escapeHtml(periodText) + '</span></div>' +
+      '<div class="mt-0.5 text-[9px] text-gray-500">' + escapeHtml(count) + ' registro(s) neste recorte.</div>'
+    : '<div class="text-[9px] text-gray-500">' + auditMetricLabel(kind) + ': não há registros neste recorte.</div>';
+  panel.classList.remove('hidden');
 }
 
 async function toggleAuditPendingDetails() {
