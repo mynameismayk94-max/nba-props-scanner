@@ -4742,6 +4742,45 @@ def collect_results(
             )
         )
 
+        # Alguns boxscores da ESPN não trazem atletas inativos/DNP no bloco
+        # tradicional de estatísticas. Antes de manter o caso como pendente,
+        # consulta o roster da própria partida para confirmar didNotPlay.
+        if not player_game and snapshot_source == "audit":
+            try:
+                roster_status = get_game_team_player_status(
+                    game_id,
+                    team,
+                    player_id
+                )
+            except Exception as error:
+                logger.warning(
+                    "Falha ao consultar roster da partida para DNP: game_id=%s player_id=%s error=%s",
+                    game_id,
+                    player_id,
+                    error
+                )
+                roster_status = None
+
+            if roster_status and roster_status.get("did_not_play"):
+                audit_no_results_to_save.append((
+                    target_date,
+                    market,
+                    str(player_id),
+                    player_name,
+                    team,
+                    opponent,
+                    "did_not_play",
+                    game_id,
+                    Jsonb({
+                        "minutes": 0.0,
+                        "reason": roster_status.get("reason") or "did_not_play",
+                        "game_date": selected_date,
+                        "source": "game_roster"
+                    })
+                ))
+                audit_no_result_count += 1
+                continue
+
         if not player_game:
             if snapshot_source == "audit":
                 audit_pending += 1
