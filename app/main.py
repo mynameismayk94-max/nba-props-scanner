@@ -4529,6 +4529,137 @@ def capture_audit_snapshot(
     }
 
 
+@app.get("/refresh-audit")
+def refresh_audit(
+    selected_date: str = Query(alias="date"),
+):
+    """
+    Rotina híbrida da Auditoria:
+    1) garante a captura do dia informado para todos os mercados ativos;
+    2) em seguida, tenta apurar todas as pendências de resultados já capturadas
+       em datas anteriores, sem exigir seleção manual de cada data.
+    """
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    try:
+        target_date = datetime.strptime(
+            selected_date,
+            "%Y-%m-%d"
+        ).date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize AAAA-MM-DD."
+        )
+
+    capture_results = []
+    capture_failures = []
+
+    for market in ACTIVE_MARKETS:
+        try:
+            result = collect_candidates(
+                selected_date,
+                market,
+                10,
+                persist_operational=False
+            )
+            capture_results.append({
+                "market": market,
+                "status": "captured",
+                "snapshots_saved": result.get("audit_snapshots_saved", 0),
+                "eligible_players": result.get("selection_summary", {}).get("eligible_candidates", 0),
+                "players_consulted": result.get("players_consulted", 0),
+                "players_with_errors": result.get("players_with_errors", 0),
+            })
+        except Exception as error:
+            logger.exception(
+                "Falha na captura híbrida da auditoria: data=%s mercado=%s",
+                selected_date,
+                market
+            )
+            capture_failures.append({
+                "market": market,
+                "error": str(error)
+            })
+
+    # A captura do dia informado é separada da apuração histórica.
+    # Depois de garantir os snapshots do dia, procura combinações que já
+    # possuem snapshots pendentes em datas anteriores e tenta atualizá-las.
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT s.selected_date, s.market
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
+                WHERE s.selected_date < %s
+                  AND r.id IS NULL
+                  AND nr.id IS NULL
+                ORDER BY s.selected_date ASC, s.market ASC
+                """,
+                (target_date,)
+            )
+            pending_combinations = cursor.fetchall()
+
+    collection_results = []
+    collection_failures = []
+
+    for pending_date, market in pending_combinations:
+        try:
+            result = collect_results(
+                selected_date=pending_date.isoformat(),
+                market=market
+            )
+            collection_results.append({
+                "date": pending_date.isoformat(),
+                "market": market,
+                "status": result.get("status"),
+                "results_saved": result.get("audit_results_saved", 0),
+                "dnp": result.get("audit_no_results", 0),
+                "pending": result.get("audit_pending", 0),
+            })
+        except Exception as error:
+            logger.exception(
+                "Falha na apuração híbrida da auditoria: data=%s mercado=%s",
+                pending_date,
+                market
+            )
+            collection_failures.append({
+                "date": pending_date.isoformat(),
+                "market": market,
+                "error": str(error)
+            })
+
+    return {
+        "status": (
+            "ok"
+            if not capture_failures and not collection_failures
+            else "partial"
+        ),
+        "date": selected_date,
+        "capture": {
+            "markets": capture_results,
+            "failures": capture_failures,
+        },
+        "collection": {
+            "combinations_found": len(pending_combinations),
+            "processed": collection_results,
+            "failures": collection_failures,
+        }
+    }
+
+
 @app.get("/collect-results")
 def collect_results(
     selected_date: str = Query(
