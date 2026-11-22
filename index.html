@@ -471,6 +471,17 @@
         </div>
         <p id="audit-cohort-description" class="text-[9px] text-gray-400 mt-1">Dez candidatos mais bem classificados em cada data do período, neste mercado.</p>
       </div>
+      <div class="rounded-lg border border-gray-800 bg-gray-950/70 p-2.5 space-y-1.5">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <div class="text-[10px] font-semibold text-white">Sincronização da Auditoria</div>
+            <div class="text-[9px] text-gray-500">Captura o dia selecionado e tenta apurar pendências de dias anteriores.</div>
+          </div>
+          <button type="button" id="audit-refresh-btn" onclick="atualizarAuditoriaHibrida()" class="market-button whitespace-nowrap">↻ Atualizar auditoria</button>
+        </div>
+        <div id="audit-refresh-status" class="text-[9px] text-gray-500" aria-live="polite">Pronto para sincronizar.</div>
+      </div>
+      </div>
     </div>
 
     <div class="glass-panel p-3 space-y-2">
@@ -1793,6 +1804,67 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
+async function atualizarAuditoriaHibrida() {
+  const btn = document.getElementById('audit-refresh-btn');
+  const statusEl = document.getElementById('audit-refresh-status');
+  const selectedDate = document.getElementById('audit-selected-date')?.value || todayLocal;
+
+  if (!selectedDate) {
+    if (statusEl) statusEl.innerText = 'Selecione uma data para sincronizar.';
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('opacity-60');
+  }
+  if (statusEl) {
+    statusEl.innerText = 'Sincronizando: capturando a data selecionada e apurando pendências anteriores...';
+  }
+
+  try {
+    const result = await requisicao('/refresh-audit?date=' + encodeURIComponent(selectedDate));
+    const captureFailures = result?.capture?.failures || [];
+    const collectionFailures = result?.collection?.failures || [];
+    const capturedMarkets = result?.capture?.markets || [];
+    const processed = result?.collection?.processed || [];
+
+    const savedToday = capturedMarkets.reduce((sum, item) => sum + Number(item.snapshots_saved || 0), 0);
+    const savedResults = processed.reduce((sum, item) => sum + Number(item.results_saved || 0), 0);
+    const dnp = processed.reduce((sum, item) => sum + Number(item.dnp || 0), 0);
+    const pending = processed.reduce((sum, item) => sum + Number(item.pending || 0), 0);
+
+    if (captureFailures.length || collectionFailures.length) {
+      if (statusEl) {
+        statusEl.innerText =
+          '⚠️ Atualização parcial · hoje: ' + savedToday +
+          ' snapshots · resultados salvos: ' + savedResults +
+          ' · DNP: ' + dnp +
+          ' · pendentes: ' + pending +
+          ' · falhas: ' + (captureFailures.length + collectionFailures.length) + '.';
+      }
+    } else {
+      if (statusEl) {
+        statusEl.innerText =
+          '✓ Auditoria atualizada · hoje: ' + savedToday +
+          ' snapshots · resultados salvos: ' + savedResults +
+          ' · DNP: ' + dnp +
+          ' · pendentes: ' + pending + '.';
+      }
+    }
+
+    await fetchHistoryValidation();
+  } catch (error) {
+    console.error('Erro ao atualizar auditoria:', error);
+    if (statusEl) statusEl.innerText = '❌ Não foi possível executar a atualização híbrida.';
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('opacity-60');
+    }
+  }
+}
+
 async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
   let dateFrom = null, dateTo = null;
