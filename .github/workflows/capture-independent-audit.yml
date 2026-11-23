@@ -26,8 +26,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_API_BASE: ${{ inputs.api_base }}
           INPUT_TARGET_DATE: ${{ inputs.target_date }}
+          STAGING_ADMIN_API_KEY: ${{ secrets.STAGING_ADMIN_API_KEY }}
         run: |
           set -euo pipefail
+
+          if [ -z "${STAGING_ADMIN_API_KEY:-}" ]; then
+            echo "::error::Secret STAGING_ADMIN_API_KEY não configurado."
+            exit 1
+          fi
 
           if [ "$EVENT_NAME" = "schedule" ]; then
             API_BASE="https://nba-props-scanner-staging.onrender.com"
@@ -45,6 +51,7 @@ jobs:
             echo "::group::${TARGET_DATE} / ${MARKET}"
             curl --fail --show-error --silent \
               --max-time 900 \
+              --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
               "${API_BASE}/capture-audit-snapshot?date=${TARGET_DATE}&market=${MARKET}"
             echo
             echo "::endgroup::"
@@ -53,6 +60,7 @@ jobs:
           echo "::group::Collect pending audit results"
           curl --fail --show-error --silent \
             --max-time 900 \
+            --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
             "${API_BASE}/collect-pending-results?max_combinations=100"
           echo
           echo "::endgroup::"
