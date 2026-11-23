@@ -40,12 +40,24 @@ app = FastAPI(
     version="3.17.0"
 )
 
+# CORS restrito por ambiente. O frontend atual é servido pela própria aplicação;
+# origens adicionais só entram mediante variável explícita.
+_DEFAULT_CORS_ORIGINS = (
+    "https://nba-props-scanner.onrender.com,"
+    "https://nba-props-scanner-staging.onrender.com"
+)
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
