@@ -52,6 +52,46 @@ def _metrics(rows: list[tuple], model: str) -> dict:
     }
 
 
+
+def spearman_correlation(pairs: Iterable[tuple[float, float]]) -> float | None:
+    """Spearman rank correlation with average ranks for tied values."""
+    values = list(pairs)
+    if len(values) < 2:
+        return None
+
+    def average_ranks(column_index: int) -> list[float]:
+        ordered = sorted(
+            enumerate(float(pair[column_index]) for pair in values),
+            key=lambda item: item[1]
+        )
+        ranks = [0.0] * len(values)
+        index = 0
+        while index < len(ordered):
+            end = index + 1
+            while end < len(ordered) and ordered[end][1] == ordered[index][1]:
+                end += 1
+            average_rank = ((index + 1) + end) / 2
+            for offset in range(index, end):
+                ranks[ordered[offset][0]] = average_rank
+            index = end
+        return ranks
+
+    rank_x = average_ranks(0)
+    rank_y = average_ranks(1)
+    mean_x = sum(rank_x) / len(rank_x)
+    mean_y = sum(rank_y) / len(rank_y)
+    numerator = sum(
+        (x - mean_x) * (y - mean_y)
+        for x, y in zip(rank_x, rank_y)
+    )
+    denominator_x = sum((x - mean_x) ** 2 for x in rank_x)
+    denominator_y = sum((y - mean_y) ** 2 for y in rank_y)
+    denominator = (denominator_x * denominator_y) ** 0.5
+    if denominator == 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
 def _window_game_count(row: tuple, index: int) -> int | None:
     try:
         value = row[index]
