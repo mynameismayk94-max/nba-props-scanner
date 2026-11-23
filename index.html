@@ -2329,7 +2329,9 @@ async function atualizarBaseContexto(autoRefresh = false) {
     } else {
       updateMessage = 'Falha total: nenhuma equipe foi salva. Snapshot anterior preservado, se existente.';
     }
-    await carregarRankingContexto();
+    if (result.status === 'ok') {
+      await carregarRankingContexto();
+    }
     status.innerText = updateMessage;
   } catch(error) {
     status.innerText = 'Não foi possível atualizar a base: ' + error.message;
