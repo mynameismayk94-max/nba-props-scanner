@@ -2,7 +2,7 @@ import unittest
 from contextlib import contextmanager
 from datetime import date
 
-from app.context_center import create_context_router
+from app.context_center import build_venue_windows, create_context_router
 
 
 class RecordingCursor:
@@ -61,6 +61,30 @@ class ContextRefreshTests(unittest.TestCase):
         )
         response = route.endpoint(selected_date="2026-11-13")
         return response, statements
+
+    def test_venue_windows_filter_mand_from_within_team_window(self):
+        games = []
+        for index in range(10):
+            venue = "home" if index % 2 == 0 else "away"
+            points = float((index + 1) * 10)
+            games.append({
+                "home_away": venue,
+                "positions": {
+                    "G": {
+                        "players_count": 1,
+                        "points": points,
+                        "stat_players_count": {"points": 1}
+                    }
+                }
+            })
+
+        windows = build_venue_windows({"games": games}, "home")
+        self.assertEqual(windows["L5"]["team_games_window"], 5)
+        self.assertEqual(windows["L5"]["venue_games_in_window"], 3)
+        self.assertEqual(windows["L5"]["positions"]["G"]["averages"]["points"], 30.0)
+        self.assertEqual(windows["L10"]["team_games_window"], 10)
+        self.assertEqual(windows["L10"]["venue_games_in_window"], 5)
+        self.assertEqual(windows["L10"]["positions"]["G"]["averages"]["points"], 50.0)
 
     def test_complete_refresh_persists_all_teams(self):
         history = {"games_analyzed": 10}
