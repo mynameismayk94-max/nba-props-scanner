@@ -28,7 +28,7 @@ from app.availability_context import (
     select_eligible_players,
 )
 from app.nba_injury_reports import get_official_nba_injury_status
-from app.audit_metrics import build_model_comparison
+from app.audit_metrics import build_model_comparison, is_temporally_valid_peer
 
 
 logging.basicConfig(level=logging.INFO)
@@ -6606,7 +6606,7 @@ def validation_history(
             ranked_peers = []
 
             for candidate in other_candidates:
-                if str(candidate[1]) == target_player_id:
+                if not is_temporally_valid_peer(candidate, target):
                     continue
                 if normalize_audit_position(candidate[5]) != target_position:
                     continue
@@ -6731,10 +6731,12 @@ def validation_history(
             "cohorts": similarity_cohorts,
             "method_note": (
                 "Compara registros concluídos da faixa selecionada com até três "
-                "registros de outros jogadores fora dessa faixa, da mesma posição "
-                "e com L5, L10 e minutos médios mais próximos. As variáveis são "
-                "padronizadas pelo desvio-padrão do mercado; pares com distância "
-                "média padronizada acima de 1,25 são descartados. Análise exploratória."
+                "registros de outros jogadores em datas estritamente anteriores "
+                "à data de cada alvo, fora dessa faixa e da mesma posição, com L5, "
+                "L10 e minutos médios mais próximos. Isso evita usar resultados "
+                "futuros como referência. As variáveis são padronizadas pelo "
+                "desvio-padrão do mercado; pares com distância média padronizada "
+                "acima de 1,25 são descartados. Análise exploratória, não previsão."
             )
         }
 
