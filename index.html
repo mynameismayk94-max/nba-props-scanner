@@ -594,6 +594,21 @@
     </div>
     <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. MAE / média prevista é uma razão agregada (não é MAPE). Pearson mede associação linear entre Score e resultado real (-1 a +1); não mede acerto nem causalidade.</p>
 
+    <!-- Comparação de referências estatísticas na mesma amostra -->
+    <div class="glass-panel p-3 space-y-2">
+      <h3 class="text-xs font-semibold text-white">⚖️ Comparação de referências pré-jogo</h3>
+      <p class="text-[10px] text-gray-400">Compara L5, L10, média bruta 60/40 e Score atual usando os mesmos registros concluídos. O Score original permanece inalterado.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Referência</th><th>Amostra</th><th>MAE</th><th>Viés</th></tr></thead>
+          <tbody id="model-comparison-table" class="text-gray-300">
+            <tr><td colspan="4" class="text-gray-400">Comparação será carregada com os dados da auditoria.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p id="model-comparison-note" class="text-[9px] text-gray-500">MAE menor indica menor erro. Viés = previsão média menos resultado médio; valor negativo indica subestimação. A validação temporal exige pelo menos 14 datas distintas.</p>
+    </div>
+
     <!-- Tabela de Calibração e qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">📊 Desempenho observado por faixa de Score</h3>
@@ -1958,6 +1973,37 @@ async function fetchHistoryValidation() {
     document.getElementById('kpi-completion').innerText = (summary.completion_rate_pct || 0) + '%';
     document.getElementById('kpi-l5-relative').innerText = summary.l5_relative_error_pct == null ? '--%' : numero(summary.l5_relative_error_pct, 1) + '%';
     document.getElementById('kpi-l10-relative').innerText = summary.l10_relative_error_pct == null ? '--%' : numero(summary.l10_relative_error_pct, 1) + '%';
+
+    const comparison = res.model_comparison;
+    const comparisonBody = document.getElementById('model-comparison-table');
+    const comparisonLabels = {
+      l5: 'L5',
+      l10: 'L10',
+      blend_60_40: 'Média 60/40 sem ajuste',
+      score_current: 'Score atual'
+    };
+    if (comparison && comparison.models && comparisonBody) {
+      comparisonBody.innerHTML = Object.entries(comparisonLabels).map(([key, label]) => {
+        const metric = comparison.models[key] || {};
+        return '<tr><td class="font-semibold">' + label + '</td>' +
+          '<td>' + (metric.sample ?? 0) + '</td>' +
+          '<td>' + (metric.mae == null ? '—' : numero(metric.mae, 3)) + '</td>' +
+          '<td>' + (metric.bias == null ? '—' : numero(metric.bias, 3)) + '</td></tr>';
+      }).join('');
+      const holdout = comparison.temporal_holdout || {};
+      document.getElementById('model-comparison-note').innerText =
+        'Comparação descritiva: ' + (comparison.sample ?? 0) + ' registros na mesma amostra. ' +
+        (holdout.status === 'ready'
+          ? 'Holdout temporal: ' + holdout.test_start_date + ' a ' + holdout.test_end_date +
+            ' (' + holdout.test_dates + ' datas). MAE no período: ' +
+            Object.entries(comparisonLabels).map(([key, label]) =>
+              label + ' ' + (holdout.models?.[key]?.mae == null ? '—' : numero(holdout.models[key].mae, 3))
+            ).join(' · ') + '.'
+          : 'Validação temporal ainda em coleta: ' + (holdout.dates_available ?? 0) +
+            '/' + (holdout.minimum_dates ?? 14) + ' datas distintas; ainda não há holdout suficiente.');
+    } else if (comparisonBody) {
+      comparisonBody.innerHTML = '<tr><td colspan="4" class="text-gray-400">Aguardando a versão da API com comparação de modelos.</td></tr>';
+    }
 
     const tableBody = document.getElementById('score-bands-table');
     tableBody.innerHTML = res.score_bands.map(b => `
