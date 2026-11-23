@@ -150,11 +150,35 @@ def create_context_router(
             for team, payload, captured_at in rows
         }
 
+    @router.get("/context/defense/status")
+    def defense_context_status(
+        selected_date: str | None = Query(default=None, alias="date")
+    ):
+        target_date = parse_date(selected_date) if selected_date else date.today()
+        ensure_table()
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM context_defense_snapshots
+                    WHERE snapshot_date = %s
+                    """,
+                    (target_date,)
+                )
+                saved = int(cursor.fetchone()[0] or 0)
+        return {
+            "status": "ready" if saved == len(teams) else "not_ready",
+            "date": target_date.isoformat(),
+            "teams_expected": len(teams),
+            "teams_saved": saved
+        }
+
     @router.post("/context/defense/refresh")
     def refresh_defense_context(
-        selected_date: str = Query(alias="date")
+        selected_date: str | None = Query(default=None, alias="date")
     ):
-        target_date = parse_date(selected_date)
+        target_date = parse_date(selected_date) if selected_date else date.today()
         ensure_table()
 
         results = {}
@@ -164,7 +188,9 @@ def create_context_router(
         # em paralelo internamente. A atualização é explícita e nunca ocorre
         # durante a abertura dos painéis de leitura.
         def fetch_team(team):
-            return team, get_team_defense_history(team, 40, target_date)
+            # O contexto usa L5/L10. Buscar 20 jogos dá margem para partidas
+            # inválidas sem repetir a coleta desnecessariamente até 40 jogos.
+            return team, get_team_defense_history_fresh(team, 20, target_date)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
@@ -235,7 +261,7 @@ def create_context_router(
 
         return {
             "status": status,
-            "date": selected_date,
+            "date": target_date.isoformat(),
             "teams_expected": len(teams),
             "teams_collected": len(results),
             "teams_saved": teams_saved,
