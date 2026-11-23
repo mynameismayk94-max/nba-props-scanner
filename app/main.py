@@ -4649,9 +4649,12 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
+    # O endpoint /games precisa responder rápido: o histórico recente e o
+    # prewarm de jogadores não devem bloquear a resposta inicial da tela.
+    # O contexto completo continua sendo carregado pelo fluxo de candidatos.
     return fetch_espn_games(
         selected_date,
-        prewarm_player_history=True
+        enrich_context=False
     )
 
 
