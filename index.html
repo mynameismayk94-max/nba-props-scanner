@@ -632,7 +632,7 @@
         <table>
           <thead>
             <tr>
-              <th>Faixa score</th>
+              <th>Faixa relativa ao mercado</th>
               <th>Amostra</th>
               <th>Score médio</th>
               <th>Média real</th>
@@ -647,7 +647,7 @@
           </tbody>
         </table>
       </div>
-      <p id="score-band-distribution-note" class="text-[9px] text-gray-500">As faixas são limites fixos e devem ser avaliadas por mercado; não compare diretamente as mesmas faixas entre estatísticas diferentes.</p>
+      <p id="score-band-distribution-note" class="text-[9px] text-gray-500">As faixas são quintis da distribuição observada do Score neste mercado e neste recorte. “Muito alto” = parte superior da distribuição; “Muito baixo” = parte inferior. Isso não representa probabilidade, confiança calibrada ou mudança na fórmula do Score.</p>
     </div>
 
 
@@ -666,7 +666,7 @@
           </select>
         </div>
         <div>
-          <label for="gap-score-band-select" class="block text-[10px] text-gray-400 mb-1">Faixa de Score</label>
+          <label for="gap-score-band-select" class="block text-[10px] text-gray-400 mb-1">Faixa absoluta do Score (Gap)</label>
           <select id="gap-score-band-select" onchange="fetchGapValidation(document.getElementById('hist-market').value)" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
             <option value="all" selected>Todas</option>
             <option value="7+">7+</option>
@@ -686,7 +686,7 @@
         </table>
       </div>
       <p id="gap-audit-note" class="text-[10px] text-gray-400">Aguardando dados concluídos...</p>
-      <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da média da liga para a mesma posição. Δ vs média pessoal = resultado real menos a média pré-jogo L5/L10 do próprio jogador; valor positivo indica produção acima do histórico recente, negativo indica abaixo. É uma comparação descritiva, não uma previsão. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
+      <p class="text-[9px] text-gray-500">No Gap, as faixas abaixo continuam absolutas (7+, 6–6,99 etc.) porque esta classificação é uma regra contextual separada. Margem de classificação: ±10% da média da liga para a mesma posição. Δ vs média pessoal = resultado real menos a média pré-jogo L5/L10 do próprio jogador; valor positivo indica produção acima do histórico recente, negativo indica abaixo. É uma comparação descritiva, não uma previsão. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
     </div>
 
     <!-- Validação dos contextos pré-jogo capturados no snapshot -->
@@ -723,21 +723,17 @@
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
-      <p class="text-[10px] text-gray-400">Selecione uma faixa de Score para comparar registros concluídos com até três referências de outros jogadores da mesma posição, usando apenas datas anteriores ao registro analisado. É uma análise exploratória, não uma previsão.</p>
+      <p class="text-[10px] text-gray-400">Selecione uma faixa relativa ao próprio mercado para comparar registros concluídos com até três referências de outros jogadores da mesma posição, usando apenas datas anteriores ao registro analisado. As faixas seguem os quintis da distribuição observada. É uma análise exploratória, não uma previsão.</p>
       <div class="flex flex-wrap items-center gap-2">
         <label for="similarity-band-select" class="text-[10px] text-gray-400">Faixa analisada</label>
         <select id="similarity-band-select" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white">
-          <option value="7+" selected>7+</option>
-          <option value="6-6.99">6–6,99</option>
-          <option value="5-5.99">5–5,99</option>
-          <option value="4-4.99">4–4,99</option>
-          <option value="<4">Abaixo de 4</option>
+          <option value="" selected>Aguardando dados...</option>
         </select>
         <span id="similar-sample-status" class="text-[9px] text-gray-400">Amostra reduzida</span>
       </div>
       <div class="grid grid-cols-2 gap-2 text-center">
         <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span id="similar-target-label" class="block text-[9px] text-gray-400 uppercase">Faixa 6–6,99 · média real</span>
+          <span id="similar-target-label" class="block text-[9px] text-gray-400 uppercase">Faixa relativa · média real</span>
           <strong id="similar-target-average" class="text-lg text-emerald-400">—</strong>
           <span id="similar-target-count" class="block text-[9px] text-gray-500">0 registros · 0 jogadores</span>
         </div>
@@ -1831,9 +1827,9 @@ async function fetchMarketComparison() {
 }
 
 function limparIndicadoresAuditoria() {
-  // Ao trocar o mercado, reinicia a faixa exploratória no padrão 7+.
+  // A faixa exploratória passa a acompanhar as faixas relativas do mercado.
   const similarityBandSelect = document.getElementById('similarity-band-select');
-  if (similarityBandSelect) similarityBandSelect.value = '7+';
+  if (similarityBandSelect) similarityBandSelect.innerHTML = '<option value="">Aguardando dados...</option>';
 
   [
     'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson', 'kpi-spearman',
@@ -2231,7 +2227,7 @@ async function fetchHistoryValidation() {
     const tableBody = document.getElementById('score-bands-table');
     tableBody.innerHTML = res.score_bands.map(b => `
       <tr>
-        <td class="font-semibold text-emerald-400">${b.band}</td>
+        <td class="font-semibold text-emerald-400">${b.band}<div class="text-[8px] text-gray-500">Score observado: ${b.score_min_observed == null ? '—' : numero(b.score_min_observed, 2)}–${b.score_max_observed == null ? '—' : numero(b.score_max_observed, 2)}</div></td>
         <td>${b.games}</td>
         <td>${b.score_average ?? '--'}</td>
         <td class="font-bold text-white">${b.actual_average ?? '--'}</td>
@@ -2250,14 +2246,22 @@ async function fetchHistoryValidation() {
     const bandNote = document.getElementById('score-band-distribution-note');
     if (bandNote) {
       const share = bandTotal && dominantBand ? (dominantBand.games / bandTotal) * 100 : 0;
+      const marketBandMethod = res.score_band_reference?.method || 'quintis da distribuição observada do mercado';
       bandNote.innerText = dominantBand && share >= 70
-        ? 'Atenção: ' + numero(share, 1) + '% dos resultados estão concentrados na faixa ' +
-          dominantBand.band + '. Os limites fixos atuais não discriminam bem este mercado; a redefinição das faixas por mercado ainda está pendente.'
-        : 'Faixas fixas deste mercado. Não compare diretamente os mesmos limites entre estatísticas diferentes; a calibração por mercado segue em avaliação.';
+        ? 'Atenção: ' + numero(share, 1) + '% dos resultados estão concentrados em ' +
+          dominantBand.band + '. Mesmo sendo uma faixa relativa ao mercado, a concentração reduz a utilidade discriminativa deste recorte.'
+        : 'Método: ' + marketBandMethod + '. As faixas são recalculadas para o mercado/recorte consultado e servem para comparação descritiva dentro dele.';
     }
 
-    const similarityAnalyses = res.similarity_analyses || { '6-6.99': res.similarity_analysis || {} };
+    const similarityAnalyses = res.similarity_analyses || {};
     const similarityBandSelect = document.getElementById('similarity-band-select');
+    if (similarityBandSelect) {
+      const currentSimilarityBand = similarityBandSelect.value;
+      similarityBandSelect.innerHTML = Object.keys(similarityAnalyses).map((label, index) =>
+        '<option value="' + escapeHtml(label) + '"' + (index === 0 || label === currentSimilarityBand ? ' selected' : '') + '>' +
+        escapeHtml(label) + '</option>'
+      ).join('');
+    }
     const renderSimilarityAnalysis = () => {
       const selectedBand = similarityBandSelect.value;
       const similarity = similarityAnalyses[selectedBand] || {};
