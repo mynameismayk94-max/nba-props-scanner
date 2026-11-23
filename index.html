@@ -328,6 +328,22 @@
   .availability-out { color: #fca5a5; background: rgba(239, 68, 68, .10); border: 1px solid rgba(239, 68, 68, .25); }
   .availability-unknown { color: #9ca3af; background: rgba(107, 114, 128, .10); border: 1px solid rgba(107, 114, 128, .22); }
 
+  /* Status de evidência da Auditoria: leitura imediata, sem sugerir validação antes do holdout. */
+  .evidence-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .evidence-status-card { min-width: 0; border: 1px solid #1f2937; background: #0b1220; border-radius: 8px; padding: 7px 8px; }
+  .evidence-status-card .evidence-status-label { display: flex; align-items: center; justify-content: space-between; gap: 5px; font-size: 8px; color: #9ca3af; text-transform: uppercase; font-weight: 700; }
+  .evidence-status-card .evidence-status-value { margin-top: 3px; font-size: 9px; font-weight: 800; letter-spacing: .03em; }
+  .evidence-status-card .evidence-status-detail { margin-top: 2px; font-size: 8px; line-height: 1.25; color: #6b7280; }
+  .evidence-badge { display: inline-flex; align-items: center; justify-content: center; padding: 2px 5px; border-radius: 4px; font-size: 7px; font-weight: 800; white-space: nowrap; }
+  .evidence-descriptive { color: #cbd5e1; background: rgba(100, 116, 139, .12); border: 1px solid rgba(100, 116, 139, .25); }
+  .evidence-exploratory { color: #fcd34d; background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .25); }
+  .evidence-collecting { color: #93c5fd; background: rgba(59, 130, 246, .10); border: 1px solid rgba(59, 130, 246, .25); }
+  .evidence-ready { color: #a7f3d0; background: rgba(16, 185, 129, .10); border: 1px solid rgba(16, 185, 129, .25); }
+  .evidence-validated { color: #6ee7b7; background: rgba(16, 185, 129, .16); border: 1px solid rgba(16, 185, 129, .35); }
+  @media (min-width: 640px) {
+    .evidence-status-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+
   /* Diagnóstico de auditoria: nunca deixar JSON/IDs longos estourarem o viewport. */
   #collection-status { min-width: 0; max-width: 100%; overflow: hidden; }
 
@@ -558,6 +574,36 @@
       <p class="text-[9px] text-gray-500 border-t border-gray-800 pt-2">
         <strong class="text-gray-300">Regra de leitura:</strong> “descritivo” mostra o que aconteceu; “exploratório” procura sinais para investigar; “validado” exige comparação temporal fora da amostra de ajuste. Enquanto houver menos de 14 datas compartilhadas, os blocos temporais permanecem em coleta.
       </p>
+    </div>
+
+    <div class="glass-panel p-3 space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-xs font-semibold text-white">📌 Status da evidência</h3>
+        <span class="text-[9px] text-gray-500">Leitura rápida</span>
+      </div>
+      <div class="evidence-status-grid">
+        <div class="evidence-status-card">
+          <div class="evidence-status-label"><span>Precisão L5/L10</span><span id="evidence-status-accuracy-badge" class="evidence-badge evidence-descriptive">DESCRITIVO</span></div>
+          <div id="evidence-status-accuracy" class="evidence-status-value text-gray-200">Desempenho observado</div>
+          <div id="evidence-status-accuracy-detail" class="evidence-status-detail">MAE e viés no histórico disponível.</div>
+        </div>
+        <div class="evidence-status-card">
+          <div class="evidence-status-label"><span>Modelos</span><span id="evidence-status-model-badge" class="evidence-badge evidence-collecting">COLETA</span></div>
+          <div id="evidence-status-model" class="evidence-status-value text-blue-200">Aguardando holdout</div>
+          <div id="evidence-status-model-detail" class="evidence-status-detail">Comparação temporal exige 14 datas compartilhadas.</div>
+        </div>
+        <div class="evidence-status-card">
+          <div class="evidence-status-label"><span>Contextos pré-jogo</span><span id="evidence-status-context-badge" class="evidence-badge evidence-exploratory">EXPLORATÓRIO</span></div>
+          <div id="evidence-status-context" class="evidence-status-value text-amber-200">Sem validação temporal</div>
+          <div id="evidence-status-context-detail" class="evidence-status-detail">Defesa, minutos e jogo equivalente não alteram o Score.</div>
+        </div>
+        <div class="evidence-status-card">
+          <div class="evidence-status-label"><span>Teammates / perfis</span><span id="evidence-status-teammate-badge" class="evidence-badge evidence-exploratory">EXPLORATÓRIO</span></div>
+          <div id="evidence-status-teammate" class="evidence-status-value text-amber-200">Sem validação temporal</div>
+          <div id="evidence-status-teammate-detail" class="evidence-status-detail">Splits e perfis semelhantes são investigação, não efeito automático.</div>
+        </div>
+      </div>
+      <p id="evidence-status-note" class="text-[9px] text-gray-500 border-t border-gray-800 pt-2">Nenhum bloco é marcado como validado apenas por ter amostra histórica. Validação exige comparação temporal fora da amostra.</p>
     </div>
 
     <div id="audit-independent-content">
@@ -1969,6 +2015,77 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
+function setEvidenceStatus(id, kind, title, detail) {
+  const badge = document.getElementById(id + '-badge');
+  const value = document.getElementById(id);
+  const detailEl = document.getElementById(id + '-detail');
+  if (!badge || !value || !detailEl) return;
+  const labels = {
+    descriptive: 'DESCRITIVO',
+    exploratory: 'EXPLORATÓRIO',
+    collecting: 'COLETA',
+    ready: 'PRONTO',
+    validated: 'VALIDADO'
+  };
+  badge.className = 'evidence-badge evidence-' + kind;
+  badge.innerText = labels[kind] || kind.toUpperCase();
+  value.innerText = title;
+  detailEl.innerText = detail;
+}
+
+function updateEvidenceStatusFromComparison(comparison) {
+  const holdout = comparison?.temporal_holdout || {};
+  const dates = Number(holdout.dates_available ?? comparison?.full_window_distinct_dates ?? 0);
+  const minimum = Number(holdout.minimum_dates ?? 14);
+  if (holdout.status === 'ready' || dates >= minimum) {
+    setEvidenceStatus(
+      'evidence-status-model',
+      'ready',
+      'Holdout disponível',
+      dates + '/' + minimum + ' datas compartilhadas; a comparação temporal pode ser executada.'
+    );
+  } else {
+    setEvidenceStatus(
+      'evidence-status-model',
+      'collecting',
+      'Em coleta temporal',
+      dates + '/' + minimum + ' datas compartilhadas; ainda não há validação fora da amostra.'
+    );
+  }
+}
+
+function updateEvidenceContextStatus(data) {
+  const dates = Number(data?.distinct_dates || 0);
+  const minimum = 14;
+  if (dates >= minimum) {
+    setEvidenceStatus(
+      'evidence-status-context',
+      'ready',
+      'Holdout disponível',
+      dates + '/' + minimum + ' datas; resultado ainda é exploratório até a comparação temporal.'
+    );
+    setEvidenceStatus(
+      'evidence-status-teammate',
+      'ready',
+      'Holdout disponível',
+      dates + '/' + minimum + ' datas; resultado ainda é exploratório até a comparação temporal.'
+    );
+  } else {
+    setEvidenceStatus(
+      'evidence-status-context',
+      'exploratory',
+      'Exploratório',
+      dates + '/' + minimum + ' datas; sem efeito automático no Score.'
+    );
+    setEvidenceStatus(
+      'evidence-status-teammate',
+      'exploratory',
+      'Exploratório',
+      dates + '/' + minimum + ' datas; sem efeito automático no Score.'
+    );
+  }
+}
+
 function renderContextValidation() {
   const data = contextValidationData || {};
   const metrics = data.metrics || {};
@@ -2001,6 +2118,8 @@ function renderContextValidation() {
   if (teammateSampleEl) teammateSampleEl.innerText =
     (teammate.completed_records || 0) + ' snapshots · cobertura ' +
     numero(teammate.context_coverage_pct || 0, 1) + '%';
+
+  updateEvidenceContextStatus(data);
 
   const note = document.getElementById('context-validation-note');
   if (note) {
@@ -2179,6 +2298,13 @@ async function fetchHistoryValidation() {
     document.getElementById('kpi-completion').innerText = (summary.completion_rate_pct || 0) + '%';
     document.getElementById('kpi-l5-relative').innerText = summary.l5_relative_error_pct == null ? '--%' : numero(summary.l5_relative_error_pct, 1) + '%';
     document.getElementById('kpi-l10-relative').innerText = summary.l10_relative_error_pct == null ? '--%' : numero(summary.l10_relative_error_pct, 1) + '%';
+    setEvidenceStatus(
+      'evidence-status-accuracy',
+      'descriptive',
+      'Desempenho observado',
+      'L5/L10, MAE, viés e associações no histórico selecionado; não são taxa de acerto.'
+    );
+
 
     const comparison = res.model_comparison;
     const comparisonBody = document.getElementById('model-comparison-table');
@@ -2197,6 +2323,7 @@ async function fetchHistoryValidation() {
           '<td>' + (metric.bias == null ? '—' : numero(metric.bias, 3)) + '</td></tr>';
       }).join('');
       const holdout = comparison.temporal_holdout || {};
+      updateEvidenceStatusFromComparison(comparison);
       document.getElementById('model-comparison-note').innerText =
         'Comparação descritiva: ' + (comparison.sample ?? 0) +
         ' registros com janelas disponíveis. O Score é índice de triagem, não projeção; seu MAE é apenas diagnóstico numérico.';
