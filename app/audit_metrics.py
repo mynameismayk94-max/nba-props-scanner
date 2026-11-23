@@ -211,6 +211,91 @@ def is_temporally_valid_peer(candidate_row: tuple, target_row: tuple) -> bool:
 
 
 
+
+def build_market_score_bands(rows: Iterable[tuple]) -> dict:
+    """Build descriptive, market-specific score bands from the observed distribution.
+
+    Bands are quintiles of the completed records for the selected market. They are
+    intentionally descriptive: they do not represent probabilities, calibrated
+    confidence, or changes to the underlying Score formula.
+    """
+    completed = [
+        row for row in rows
+        if row[6] is not None and row[10] is not None
+    ]
+    scores = sorted(float(row[6]) for row in completed)
+
+    if not scores:
+        return {
+            "status": "insufficient",
+            "sample": 0,
+            "method": "quintis da distribuição observada do mercado",
+            "bands": [],
+        }
+
+    def percentile(values, fraction):
+        if len(values) == 1:
+            return values[0]
+        position = (len(values) - 1) * fraction
+        lower = int(position)
+        upper = min(lower + 1, len(values) - 1)
+        weight = position - lower
+        return values[lower] + (values[upper] - values[lower]) * weight
+
+    cut20 = percentile(scores, 0.20)
+    cut40 = percentile(scores, 0.40)
+    cut60 = percentile(scores, 0.60)
+    cut80 = percentile(scores, 0.80)
+    cuts = [cut20, cut40, cut60, cut80]
+
+    labels = ("Muito alto", "Alto", "Médio", "Baixo", "Muito baixo")
+    lower_bounds = (cut80, cut60, cut40, cut20, None)
+    upper_bounds = (None, cut80, cut60, cut40, cut20)
+
+    def band_index(score):
+        if score >= cut80:
+            return 0
+        if score >= cut60:
+            return 1
+        if score >= cut40:
+            return 2
+        if score >= cut20:
+            return 3
+        return 4
+
+    bands = []
+    for index, label in enumerate(labels):
+        band_rows = [
+            row for row in completed
+            if band_index(float(row[6])) == index
+        ]
+        values = [float(row[6]) for row in band_rows]
+        bands.append({
+            "label": label,
+            "index": index,
+            "lower_bound": round(lower_bounds[index], 4) if lower_bounds[index] is not None else None,
+            "upper_bound": round(upper_bounds[index], 4) if upper_bounds[index] is not None else None,
+            "score_min_observed": round(min(values), 4) if values else None,
+            "score_max_observed": round(max(values), 4) if values else None,
+            "records": len(band_rows),
+            "share_pct": round(len(band_rows) / len(completed) * 100, 2) if completed else 0.0,
+        })
+
+    return {
+        "status": "collecting",
+        "sample": len(completed),
+        "method": "quintis da distribuição observada do mercado",
+        "cut_points": [round(value, 4) for value in cuts],
+        "bands": bands,
+        "method_note": (
+            "As faixas são específicas do mercado e do recorte consultado, "
+            "definidas pelos quintis da distribuição observada do Score. "
+            "Servem para comparar concentração e desempenho relativo dentro "
+            "do próprio mercado; não são probabilidades, calibração nem "
+            "mudança da fórmula do Score."
+        ),
+    }
+
 def build_top10_vs_rest_metrics(rows: Iterable[tuple], min_records: int = 30, min_players: int = 15) -> dict:
     """Compare daily top-10 audit ranks with the remaining eligible candidates."""
     completed = [
