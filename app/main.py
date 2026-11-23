@@ -4826,7 +4826,7 @@ def capture_audit_snapshot(
     }
 
 
-@app.get("/refresh-audit"), dependencies=[Depends(require_admin_api_key)]
+@app.get("/refresh-audit", dependencies=[Depends(require_admin_api_key)])
 def refresh_audit(
     selected_date: Optional[str] = Query(default=None, alias="date"),
     history: bool = Query(default=False),
@@ -5004,7 +5004,7 @@ def refresh_audit(
     }
 
 
-@app.get("/collect-results"), dependencies=[Depends(require_admin_api_key)]
+@app.get("/collect-results", dependencies=[Depends(require_admin_api_key)])
 def collect_results(
     selected_date: str = Query(
         alias="date"
@@ -5515,7 +5515,7 @@ def collect_results(
     }
 
 
-@app.get("/collect-pending-results"), dependencies=[Depends(require_admin_api_key)]
+@app.get("/collect-pending-results", dependencies=[Depends(require_admin_api_key)])
 def collect_pending_results(
     max_combinations: int = Query(default=100, ge=1, le=200)
 ):
