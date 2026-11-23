@@ -1991,14 +1991,18 @@ function renderContextValidation() {
   });
 
   const teammate = data.teammate || {};
-  const teammateValue = teammate.effect_average;
+  const positive = teammate.groups?.positive?.effect_average;
+  const negative = teammate.groups?.negative?.effect_average;
   const teammateEl = document.getElementById('teammate-validation-effect');
   const teammateSampleEl = document.getElementById('teammate-validation-sample');
   if (teammateEl) teammateEl.innerText =
-    teammateValue == null ? '—' : ((teammateValue > 0 ? '+' : '') + numero(teammateValue, 2));
+    (positive == null && negative == null)
+      ? '—'
+      : 'Pos ' + (positive == null ? '—' : '+' + numero(positive, 2)) +
+        ' · Neg ' + (negative == null ? '—' : numero(negative, 2));
   if (teammateSampleEl) teammateSampleEl.innerText =
-    (teammate.usable_splits || 0) + ' splits utilizáveis · ' +
-    (teammate.coverage_pct == null ? '—' : numero(teammate.coverage_pct, 1) + '% cobertura');
+    (teammate.completed_records || 0) + ' snapshots · cobertura ' +
+    numero(teammate.context_coverage_pct || 0, 1) + '%';
 
   const note = document.getElementById('context-validation-note');
   if (note) {
