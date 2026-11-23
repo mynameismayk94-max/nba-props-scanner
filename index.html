@@ -2030,7 +2030,7 @@ async function fetchHistoryValidation() {
     const bandNote = document.getElementById('score-band-distribution-note');
     if (bandNote) {
       const share = bandTotal && dominantBand ? (dominantBand.games / bandTotal) * 100 : 0;
-      bandNote.innerText = dominantBand && share >= 80
+      bandNote.innerText = dominantBand && share >= 70
         ? 'Atenção: ' + numero(share, 1) + '% dos resultados estão concentrados na faixa ' +
           dominantBand.band + '. Os limites fixos atuais não discriminam bem este mercado; a calibração por mercado ainda está pendente.'
         : 'Faixas fixas deste mercado. Não compare diretamente os mesmos limites entre estatísticas diferentes; a calibração por mercado segue em avaliação.';
