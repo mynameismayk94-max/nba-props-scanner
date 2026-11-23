@@ -597,7 +597,7 @@
     <!-- Comparação de referências estatísticas na mesma amostra -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">⚖️ Comparação de referências pré-jogo</h3>
-      <p class="text-[10px] text-gray-400">Compara L5, L10, média bruta 60/40 e o Score atual tratado apenas como estimativa numérica, usando os mesmos registros concluídos. É uma comparação exploratória, não uma taxa de acerto. O Score original permanece inalterado.</p>
+      <p class="text-[10px] text-gray-400">Compara L5, L10, média bruta 60/40 e o Score atual apenas como referência numérica de ranking, usando os mesmos registros concluídos. É uma comparação exploratória, não uma taxa de acerto. O Score original permanece inalterado.</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>Referência</th><th>Amostra</th><th>MAE</th><th>Viés</th></tr></thead>
@@ -1983,7 +1983,7 @@ async function fetchHistoryValidation() {
       l5: 'L5',
       l10: 'L10',
       blend_60_40: 'Média 60/40 sem ajuste',
-      score_current: 'Score atual (como estimativa)'
+      score_current: 'Score atual (diagnóstico numérico)'
     };
     if (comparison && comparison.models && comparisonBody) {
       comparisonBody.innerHTML = Object.entries(comparisonLabels).map(([key, label]) => {
@@ -1995,7 +1995,7 @@ async function fetchHistoryValidation() {
       }).join('');
       const holdout = comparison.temporal_holdout || {};
       document.getElementById('model-comparison-note').innerText =
-        'Comparação descritiva: ' + (comparison.sample ?? 0) + ' registros na mesma amostra. ' +
+        'Comparação descritiva: ' + (comparison.sample ?? 0) + ' registros na mesma amostra. O Score é um índice de triagem, não uma projeção; seu MAE é apenas diagnóstico numérico.  +
         (holdout.status === 'ready'
           ? 'Holdout temporal: ' + holdout.test_start_date + ' a ' + holdout.test_end_date +
             ' (' + holdout.test_dates + ' datas). MAE no período: ' +
