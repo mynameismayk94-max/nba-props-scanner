@@ -75,17 +75,19 @@ class ModelComparisonTests(unittest.TestCase):
     def test_top10_ranking_compares_player_adjusted_results_with_remaining_candidates(self):
         rows = [
             make_row(0, actual=5, l10=4, audit_rank=1),
-            make_row(1, actual=7, l10=6, audit_rank=2),
+            make_row(1, actual=7, l10=6, games_last10=5, audit_rank=2),
             make_row(0, actual=3, l10=4, audit_rank=11),
-            make_row(1, actual=5, l10=6, audit_rank=12),
+            make_row(1, actual=5, l10=6, games_last10=5, audit_rank=12),
         ]
         rows[2] = tuple(list(rows[2][:1]) + ["player-2"] + list(rows[2][2:]))
         rows[3] = tuple(list(rows[3][:1]) + ["player-2"] + list(rows[3][2:]))
 
-        result = build_top10_vs_rest_metrics(rows, min_records=2, min_players=1)
+        result = build_top10_vs_rest_metrics(rows, min_records=1, min_players=1)
 
         self.assertEqual(result["top10"]["records"], 2)
         self.assertEqual(result["rest"]["records"], 2)
+        self.assertEqual(result["top10"]["l10_residual_sample"], 1)
+        self.assertEqual(result["rest"]["l10_residual_sample"], 1)
         self.assertEqual(result["actual_average_difference"], 2.0)
         self.assertEqual(result["l10_residual_difference"], 2.0)
         self.assertEqual(result["sample_status"], "sufficient")
