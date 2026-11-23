@@ -8,8 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Wait for staging deploy
-        run: sleep 90
+      - name: Refresh immediately
       - name: Refresh audit for 2026-11-22
         run: |
           set -u
