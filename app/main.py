@@ -6385,6 +6385,12 @@ def validation_history(
                 "games": 0,
                 "l5_sample": 0,
                 "l10_sample": 0,
+                "l5_full_window_sample": 0,
+                "l5_partial_window_sample": 0,
+                "l5_unknown_window_sample": 0,
+                "l10_full_window_sample": 0,
+                "l10_partial_window_sample": 0,
+                "l10_unknown_window_sample": 0,
                 "pearson_sample": 0,
                 "actual_average": None,
                 "score_average": None,
@@ -6403,6 +6409,8 @@ def validation_history(
         l10_errors = []
         l5_predictions = []
         l10_predictions = []
+        l5_window_counts = []
+        l10_window_counts = []
         pairs = []
 
         for row in rows:
@@ -6419,11 +6427,22 @@ def validation_history(
                 last10_avg,
                 minutes_last5_avg,
                 actual_value,
-                result_status
+                result_status,
+                games_last5_raw,
+                games_last10_raw
             ) = row
 
             actual = float(actual_value)
             actual_values.append(actual)
+
+            try:
+                l5_window_counts.append(int(games_last5_raw) if games_last5_raw is not None else None)
+            except (TypeError, ValueError):
+                l5_window_counts.append(None)
+            try:
+                l10_window_counts.append(int(games_last10_raw) if games_last10_raw is not None else None)
+            except (TypeError, ValueError):
+                l10_window_counts.append(None)
 
             if last5_avg is not None:
                 prediction_l5 = float(last5_avg)
@@ -6478,6 +6497,12 @@ def validation_history(
             "games": len(rows),
             "l5_sample": len(l5_errors),
             "l10_sample": len(l10_errors),
+            "l5_full_window_sample": sum(value is not None and value >= 5 for value in l5_window_counts),
+            "l5_partial_window_sample": sum(value is not None and value < 5 for value in l5_window_counts),
+            "l5_unknown_window_sample": sum(value is None for value in l5_window_counts),
+            "l10_full_window_sample": sum(value is not None and value >= 10 for value in l10_window_counts),
+            "l10_partial_window_sample": sum(value is not None and value < 10 for value in l10_window_counts),
+            "l10_unknown_window_sample": sum(value is None for value in l10_window_counts),
             "pearson_sample": len(pairs),
             "actual_average": safe_average(actual_values),
             "score_average": safe_average(score_values),
