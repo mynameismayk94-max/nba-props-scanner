@@ -341,6 +341,8 @@ def create_context_router(
                 "team": team,
                 "allowed_per_game": value,
                 "games_analyzed": games,
+                "team_games_window": period.get("team_games_window", int(window[1:])),
+                "venue_games_in_window": period.get("venue_games_in_window"),
                 "players_per_game_avg": position_data.get("players_per_game_avg"),
                 "captured_at": record["captured_at"]
             })
