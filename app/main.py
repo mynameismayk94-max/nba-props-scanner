@@ -6777,11 +6777,10 @@ def validation_history(
     # Mantém compatibilidade com consumidores da versão anterior da API.
     similarity_analysis = similarity_analyses.get("6-6.99", {})
     overall_metrics = build_metrics(completed_rows)
-    model_comparison = build_model    # Avalia o ranking diário real: top 10 por data versus demais candidatos.
+    model_comparison = build_model_comparison(completed_rows)
+
+    # Avalia o ranking diário real: top 10 por data versus demais candidatos.
     top10_vs_rest = build_top10_vs_rest_metrics(completed_rows)
-tabilidade."
-        )
-    }
 
     daily_output = []
     audit_rows_by_date = {}
