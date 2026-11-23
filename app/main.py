@@ -1615,6 +1615,145 @@ _GAME_SUMMARY_LOCKS = tuple(
     for _ in range(64)
 )
 
+# Prewarm opcional do histórico de atletas. É disparado pela tela de jogos
+# antes da seleção do mercado, para que a primeira pesquisa possa aproveitar
+# o cache sem tornar o endpoint /games lento.
+_PLAYER_HISTORY_PREWARM_LOCK = threading.Lock()
+_PLAYER_HISTORY_PREWARM_STATE = {}
+
+
+def _player_history_prewarm_worker(selected_date, team_abbreviations, year, event):
+    try:
+        started = time.perf_counter()
+        players_by_id = {}
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {
+                executor.submit(get_team_roster, team): team
+                for team in team_abbreviations
+            }
+            for future in as_completed(futures):
+                try:
+                    roster = future.result()
+                    for player in roster:
+                        players_by_id[str(player["id"])] = player
+                except Exception as error:
+                    logger.warning(
+                        "Prewarm roster falhou em %s/%s: %s",
+                        selected_date,
+                        futures[future],
+                        error
+                    )
+
+        players = list(players_by_id.values())
+        successful = 0
+        errors = 0
+
+        def fetch_player(player):
+            try:
+                get_athlete_logs(player["id"], year)
+                return True
+            except Exception as error:
+                logger.warning(
+                    "Prewarm histórico falhou para %s/%s: %s",
+                    selected_date,
+                    player.get("player"),
+                    error
+                )
+                return False
+
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            futures = [
+                executor.submit(fetch_player, player)
+                for player in players
+            ]
+            for future in as_completed(futures):
+                if future.result():
+                    successful += 1
+                else:
+                    errors += 1
+
+        elapsed = time.perf_counter() - started
+        with _PLAYER_HISTORY_PREWARM_LOCK:
+            state = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+            if state:
+                state["status"] = "ok"
+                state["elapsed"] = elapsed
+                state["players"] = len(players)
+                state["successful"] = successful
+                state["errors"] = errors
+        logger.info(
+            "Player history prewarm: data=%s status=ok jogadores=%s sucesso=%s erros=%s tempo=%.2fs",
+            selected_date,
+            len(players),
+            successful,
+            errors,
+            elapsed
+        )
+    except Exception as error:
+        with _PLAYER_HISTORY_PREWARM_LOCK:
+            state = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+            if state:
+                state["status"] = "error"
+                state["elapsed"] = time.perf_counter() - state["started"]
+                state["error"] = str(error)
+        logger.warning(
+            "Player history prewarm falhou para %s: %s",
+            selected_date,
+            error
+        )
+    finally:
+        event.set()
+
+
+def schedule_player_history_prewarm(selected_date, team_abbreviations):
+    year = season_year(
+        datetime.strptime(selected_date, "%Y-%m-%d").date()
+    )
+    with _PLAYER_HISTORY_PREWARM_LOCK:
+        current = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+        if current and current.get("status") in {"running", "ok"}:
+            return current
+
+        event = threading.Event()
+        state = {
+            "status": "running",
+            "started": time.perf_counter(),
+            "event": event,
+        }
+        _PLAYER_HISTORY_PREWARM_STATE[selected_date] = state
+
+    thread = threading.Thread(
+        target=_player_history_prewarm_worker,
+        args=(selected_date, tuple(sorted(team_abbreviations)), year, event),
+        daemon=True,
+        name=f"player-history-prewarm-{selected_date}"
+    )
+    thread.start()
+    return state
+
+
+def wait_player_history_prewarm(selected_date):
+    with _PLAYER_HISTORY_PREWARM_LOCK:
+        state = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+        event = state.get("event") if state else None
+
+    if event is None:
+        return
+
+    wait_started = time.perf_counter()
+    event.wait()
+    waited = time.perf_counter() - wait_started
+    if waited > 0.01:
+        logger.info(
+            "Player history prewarm wait: data=%s wait=%.2fs status=%s",
+            selected_date,
+            waited,
+            state.get("status", "unknown") if state else "unknown"
+        )
+
+
+
 
 def get_game_summary(
     event_id: str
@@ -2026,7 +2165,8 @@ def fetch_team_recent_form(team_abbr: str, selected_date: str) -> dict:
 
 def fetch_espn_games(
     selected_date: str,
-    enrich_context: bool = True
+    enrich_context: bool = True,
+    prewarm_player_history: bool = False
 ) -> dict:
 
     try:
@@ -2197,6 +2337,15 @@ def fetch_espn_games(
         # Aquece o benchmark compartilhado enquanto o usuário escolhe o mercado.
         # A rotina é deduplicada por data e executada em background.
         schedule_defense_context_prewarm(selected_date)
+
+        # Também inicia, somente na tela de jogos, o histórico dos atletas.
+        # A pesquisa do mercado pode esperar esse prewarm se ele ainda estiver
+        # em andamento; assim evitamos duplicar chamadas à ESPN.
+        if prewarm_player_history and team_abbreviations:
+            schedule_player_history_prewarm(
+                selected_date,
+                team_abbreviations
+            )
 
     return {
         "date": selected_date,
@@ -3919,6 +4068,10 @@ def collect_candidates(
         roster_elapsed
     )
 
+    # Se a tela de jogos já iniciou o prewarm, aproveitamos o trabalho
+    # em andamento antes de abrir novas consultas individuais.
+    wait_player_history_prewarm(selected_date)
+
     # Primeiro buscamos os históricos dos jogadores. Isso permite
     # identificar quem realmente pode virar candidato antes de
     # consultar o histórico defensivo dos adversários.
@@ -4442,7 +4595,10 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    return fetch_espn_games(selected_date)
+    return fetch_espn_games(
+        selected_date,
+        prewarm_player_history=True
+    )
 
 
 @app.get("/candidates")
