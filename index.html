@@ -580,19 +580,19 @@
         <div class="text-base font-bold text-indigo-400 mt-0.5" id="kpi-pearson">--</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">Apuração concluída</span>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Resolvido (resultado + DNP)</span>
         <div class="text-base font-bold text-gray-200 mt-0.5" id="kpi-completion">--%</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro relativo L5</span>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">MAE / média prevista L5</span>
         <div class="text-base font-bold text-emerald-300 mt-0.5" id="kpi-l5-relative">--%</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro relativo L10</span>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">MAE / média prevista L10</span>
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro médio absoluto em unidades da estatística; menor é melhor. Erro relativo = MAE dividido pela média prevista. Pearson mede a associação linear entre Score e resultado real (de -1 a +1), não uma taxa de acerto.</p>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. MAE / média prevista é uma razão agregada (não é MAPE). Pearson mede associação linear entre Score e resultado real (-1 a +1); não mede acerto nem causalidade.</p>
 
     <!-- Tabela de Calibração e qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
@@ -1319,8 +1319,8 @@ function renderizarResultados(){
     html += '<td>' + escapeHtml(p.team || '—') + '</td>';
     html += '<td>' + escapeHtml(p.position || '—') + '</td>';
     html += '<td>' + escapeHtml(p.opponent || '—') + '</td>';
-    html += '<td>' + numero(p.last5_avg) + '</td>';
-    html += '<td>' + numero(p.last10_avg) + '</td>';
+    html += '<td><div>' + numero(p.last5_avg) + '</div><div class="text-[9px] text-gray-500">' + (p.games_last5 ?? '—') + '/5 jogos</div></td>';
+    html += '<td><div>' + numero(p.last10_avg) + '</div><div class="text-[9px] text-gray-500">' + (p.games_last10 ?? '—') + '/10 jogos</div></td>';
     html += '<td>' + numero(p.minutes_last5_avg, 1) + '</td>';
     html += celulaParticipacaoEquipe(p);
     html += '<td class="metric">' + numero(p.triage_score) + '</td>';
@@ -1403,7 +1403,7 @@ function abrirAnalise(indice){
     '<tr><td>Verificado</td><td colspan="2">' + escapeHtml(availabilityVerifiedAt) + '</td></tr></table>' +
     '<div class="analysis-note">A disponibilidade representa a fotografia consultada no momento da análise. O status pode mudar posteriormente.</div></div>';
 
-  html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
+  html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b><div class="text-[9px] text-gray-500">' + (p.games_last5 ?? '—') + '/5 jogos</div></td><td><b>' + numero(p.last10_avg) + '</b><div class="text-[9px] text-gray-500">' + (p.games_last10 ?? '—') + '/10 jogos</div></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
 
   html += '<div class="analysis-card"><h3>🏠 Produção por local</h3><table class="analysis-table"><tr><th></th><th>Casa</th><th>Fora</th></tr><tr><td>Temporada</td><td><b>' + venueAverage('home', 'season') + '</b></td><td><b>' + venueAverage('away', 'season') + '</b></td></tr><tr><td>Jogos · temporada</td><td>' + participacoes(venueGames('home', 'season')) + '</td><td>' + participacoes(venueGames('away', 'season')) + '</td></tr><tr><td>Últimos 10 por local</td><td><b>' + venueAverage('home', 'last10') + '</b></td><td><b>' + venueAverage('away', 'last10') + '</b></td></tr><tr><td>Jogos · recorte</td><td>' + participacoes(venueGames('home', 'last10')) + '</td><td>' + participacoes(venueGames('away', 'last10')) + '</td></tr><tr><td>Minutos · últimos 10</td><td>' + venueMinutes('home', 'last10') + '</td><td>' + venueMinutes('away', 'last10') + '</td></tr></table><div class="analysis-note">L10 calculado separadamente para jogos em casa e fora. Partidas sem mando identificado pela ESPN não entram nesta comparação. Não altera o Score.</div></div>';
   html += '<div class="analysis-card"><h3>🏟️ Participação</h3><table class="analysis-table"><tr><th>Período</th><th>Jogos</th><th>Taxa</th></tr><tr><td>L5</td><td><b>' + participacoes(p.team_games_last5_played) + '/' + participacoes(p.team_games_last5_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</b></td></tr><tr><td>L10</td><td><b>' + participacoes(p.team_games_last10_played) + '/' + participacoes(p.team_games_last10_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</b></td></tr></table></div>';
@@ -1951,7 +1951,7 @@ async function fetchHistoryValidation() {
       'Amostras usadas: MAE L5 = ' + (summary.l5_sample ?? summary.completed_results ?? 0) +
       ' registros; MAE L10 = ' + (summary.l10_sample ?? summary.completed_results ?? 0) +
       ' registros; Pearson = ' + (summary.pearson_sample ?? summary.completed_results ?? 0) +
-      ' pares Score/resultado. MAE menor indica menor erro; Pearson mede associação, não taxa de acerto.';
+      ' pares Score/resultado. MAE menor indica menor erro; MAE / média prevista não é MAPE; Pearson mede associação linear, não acerto.';
     document.getElementById('kpi-l5-mae').innerText = summary.l5_mae ?? '--';
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
