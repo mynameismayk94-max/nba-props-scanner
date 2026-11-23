@@ -6583,6 +6583,14 @@ def validation_history(
     # entre estatísticas com distribuições distintas.
     market_score_bands = build_market_score_bands(completed_rows)
     score_band_defs = market_score_bands.get("bands", [])
+    score_bands = [
+        {
+            "label": item["label"],
+            "min": item["lower_bound"],
+            "max": item["upper_bound"],
+        }
+        for item in score_band_defs
+    ]
 
     bands_output = []
     for band_def in score_band_defs:
@@ -6828,7 +6836,10 @@ def validation_history(
         }
 
     # Mantém compatibilidade com consumidores da versão anterior da API.
-    similarity_analysis = similarity_analyses.get("6-6.99", {})
+    similarity_analysis = similarity_analyses.get(
+        score_bands[0]["label"] if score_bands else "",
+        {}
+    )
     overall_metrics = build_metrics(completed_rows)
     model_comparison = build_model_comparison(completed_rows)
 
