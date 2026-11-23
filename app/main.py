@@ -3609,7 +3609,9 @@ def build_player_result(
     avg5 = average(last5)
     avg10 = average(last10)
 
-    consistency = (
+    # Frequência de jogos L5 que atingem/superam a própria média L5.
+    # Este fator não mede dispersão ou estabilidade estatística.
+    above_l5_mean_rate = (
         sum(
             game[stat_key] >= avg5
             for game in last5
@@ -3622,7 +3624,7 @@ def build_player_result(
         + avg10 * 0.40
     ) * (
         0.80
-        + consistency * 0.20
+        + above_l5_mean_rate * 0.20
     )
 
     defense_l5 = (
@@ -7024,7 +7026,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         "classification_margin_pct": 10,
         "periods": {"l5": summarize("l5"), "l10": summarize("l10")},
         "records": detailed,
-        "method_note": "Contexto defensivo = total da estatística cedida aos jogadores da posição por partida, comparado à média da liga para a mesma posição e período. Acima significa que a defesa permite mais de 10% que a liga; Abaixo, menos de 10%; Próximo, dentro de ±10%. A média real exibida é a produção individual dos candidatos agrupados pela classificação defensiva. Snapshots antigos não possuem o benchmark da liga e ficam sem referência."
+        "method_note": "Contexto defensivo = total da estatística cedida aos jogadores da posição por partida, comparado à média da liga para a mesma posição e período. Acima significa que a defesa permite mais de 10% que a liga; Abaixo, menos de 10%; Próximo, dentro de ±10%. A média real exibida é descritiva e não demonstra causalidade nem capacidade preditiva da classificação. Snapshots antigos não possuem o benchmark da liga e ficam sem referência."
     }
 
 
