@@ -1743,12 +1743,12 @@ function limparIndicadoresAuditoria() {
   if (similarityBandSelect) similarityBandSelect.value = '7+';
 
   [
-    'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson',
+    'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson', 'kpi-spearman',
     'kpi-completion', 'kpi-l5-relative', 'kpi-l10-relative',
     'audit-total-count', 'audit-completed-count', 'audit-noresult-count', 'audit-pending-count',
     'audit-sample-explanation', 'audit-metric-sample-note',
-    'ranking-high-average', 'ranking-high-count',
-    'ranking-low-average', 'ranking-low-count',
+    'ranking-top10-average', 'ranking-top10-count',
+    'ranking-rest-average', 'ranking-rest-count',
     'similar-target-average', 'similar-target-count',
     'similar-peer-average', 'similar-peer-count',
     'similar-sample-status', 'similar-difference', 'ranking-separation',
@@ -1757,6 +1757,15 @@ function limparIndicadoresAuditoria() {
     const element = document.getElementById(id);
     if (element) element.innerText = '—';
   });
+
+  ['model-comparison-table', 'model-comparison-full-table'].forEach(id => {
+    const table = document.getElementById(id);
+    if (table) table.innerHTML = '<tr><td colspan="4" class="text-gray-400">Aguardando dados da auditoria...</td></tr>';
+  });
+  const comparisonNote = document.getElementById('model-comparison-note');
+  if (comparisonNote) comparisonNote.innerText = 'Aguardando dados do mercado selecionado.';
+  const fullComparisonNote = document.getElementById('model-comparison-full-note');
+  if (fullComparisonNote) fullComparisonNote.innerText = 'Aguardando dados de janelas completas.';
 
   gapAuditData = null;
   auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
