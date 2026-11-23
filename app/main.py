@@ -28,7 +28,7 @@ from app.availability_context import (
     select_eligible_players,
 )
 from app.nba_injury_reports import get_official_nba_injury_status
-from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer
+from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer, spearman_correlation
 
 
 logging.basicConfig(level=logging.INFO)
@@ -6400,7 +6400,8 @@ def validation_history(
                 "l10_mae": None,
                 "l5_relative_error_pct": None,
                 "l10_relative_error_pct": None,
-                "score_actual_pearson": None
+                "score_actual_pearson": None,
+                "score_actual_spearman": None
             }
 
         actual_values = []
@@ -6475,6 +6476,8 @@ def validation_history(
             if den != 0:
                 pearson = round(num / den, 4)
 
+        spearman = spearman_correlation(pairs)
+
         l5_mae = safe_average(l5_errors)
         l10_mae = safe_average(l10_errors)
         l5_prediction_average = safe_average(l5_predictions)
@@ -6511,7 +6514,8 @@ def validation_history(
             "l10_mae": l10_mae,
             "l5_relative_error_pct": l5_relative_error,
             "l10_relative_error_pct": l10_relative_error,
-            "score_actual_pearson": pearson
+            "score_actual_pearson": pearson,
+            "score_actual_spearman": spearman
         }
 
     # Faixas fixas de Score para análise descritiva
