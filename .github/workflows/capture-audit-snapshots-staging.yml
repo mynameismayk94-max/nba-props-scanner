@@ -25,6 +25,7 @@ jobs:
         shell: bash
         env:
           SELECTED_DATE: ${{ inputs.selected_date }}
+          STAGING_ADMIN_API_KEY: ${{ secrets.STAGING_ADMIN_API_KEY }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           if [[ ! "$SELECTED_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
@@ -44,6 +45,10 @@ jobs:
           SELECTED_DATE: ${{ inputs.selected_date }}
         run: |
           set -uo pipefail
+          if [[ -z "${STAGING_ADMIN_API_KEY:-}" ]]; then
+            echo "::error::Secret STAGING_ADMIN_API_KEY não configurado."
+            exit 1
+          fi
           BASE_URL="https://nba-props-scanner-staging.onrender.com"
           mkdir -p audit-capture-results
           MARKETS=(points assists rebounds threes two_pa fgm)
@@ -67,6 +72,7 @@ jobs:
 
             set +e
             http_code=$(curl --silent --show-error --max-time 360 \
+              --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
               --output "$body" --write-out "%{http_code}" "$url")
             curl_exit=$?
             set -e
