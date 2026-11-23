@@ -566,7 +566,7 @@
     </div>
 
     <!-- KPIs de precisão e cobertura -->
-    <div class="grid grid-cols-2 gap-2">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
       <div class="glass-panel p-2.5">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro L5 (MAE)</span>
         <div class="text-base font-bold text-emerald-400 mt-0.5" id="kpi-l5-mae">--</div>
@@ -578,6 +578,10 @@
       <div class="glass-panel p-2.5">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Pearson</span>
         <div class="text-base font-bold text-indigo-400 mt-0.5" id="kpi-pearson">--</div>
+      </div>
+      <div class="glass-panel p-2.5">
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Spearman</span>
+        <div class="text-base font-bold text-violet-400 mt-0.5" id="kpi-spearman">--</div>
       </div>
       <div class="glass-panel p-2.5">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Resolvido (resultado + DNP)</span>
@@ -592,7 +596,7 @@
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. As amostras distinguem janelas completas e parciais. MAE / média prevista não é MAPE. Pearson mede associação linear, não acerto nem causalidade.</p>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. As amostras distinguem janelas completas e parciais. MAE / média prevista não é MAPE. Pearson mede associação linear; Spearman mede associação monotônica da ordem do ranking. Nenhum dos dois é taxa de acerto.</p>
 
     <!-- Comparação de referências estatísticas na mesma amostra -->
     <div class="glass-panel p-3 space-y-2">
@@ -1987,10 +1991,11 @@ async function fetchHistoryValidation() {
       (summary.l10_partial_window_sample ?? 0) + ' parciais, ' +
       (summary.l10_unknown_window_sample ?? 0) + ' sem contagem). Pearson: ' +
       (summary.pearson_sample ?? summary.completed_results ?? 0) +
-      ' pares Score/resultado. MAE menor indica menor erro; Pearson não mede acerto.';
+      ' pares Score/resultado. Spearman usa os mesmos pares e mede a ordem do ranking; nenhum dos dois mede taxa de acerto.';
     document.getElementById('kpi-l5-mae').innerText = summary.l5_mae ?? '--';
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
+    document.getElementById('kpi-spearman').innerText = summary.score_actual_spearman ?? '--';
     document.getElementById('kpi-completion').innerText = (summary.completion_rate_pct || 0) + '%';
     document.getElementById('kpi-l5-relative').innerText = summary.l5_relative_error_pct == null ? '--%' : numero(summary.l5_relative_error_pct, 1) + '%';
     document.getElementById('kpi-l10-relative').innerText = summary.l10_relative_error_pct == null ? '--%' : numero(summary.l10_relative_error_pct, 1) + '%';
