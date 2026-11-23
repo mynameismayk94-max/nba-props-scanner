@@ -2,6 +2,7 @@ import logging
 import time
 import re
 import os
+import secrets
 import threading
 
 from datetime import datetime, date, timedelta
@@ -15,7 +16,8 @@ import requests
 import psycopg
 from psycopg.types.json import Jsonb
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.security import APIKeyHeader
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -57,7 +59,7 @@ app.add_middleware(
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Admin-Key"],
 )
 
 
@@ -66,6 +68,34 @@ app.add_middleware(
 # ============================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Chave administrativa para rotinas que alteram o histórico persistido.
+# A chave nunca fica no código nem é registrada em logs.
+admin_api_key_header = APIKeyHeader(
+    name="X-Admin-Key",
+    auto_error=False,
+    description="Chave administrativa para rotinas internas de captura/coleta."
+)
+
+
+def require_admin_api_key(api_key: Optional[str] = Depends(admin_api_key_header)):
+    """Protege rotinas internas de escrita/atualização com uma chave de serviço.
+
+    Falha fechado quando a variável não existe: uma rota protegida não pode
+    permanecer publicamente gravável por configuração incompleta.
+    """
+    configured_key = os.getenv("ADMIN_API_KEY")
+    if not configured_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Autenticação administrativa não configurada."
+        )
+    if not api_key or not secrets.compare_digest(api_key, configured_key):
+        raise HTTPException(
+            status_code=401,
+            detail="Chave administrativa inválida ou ausente."
+        )
+    return True
 
 AUDIT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 AUDIT_START_DATE = date(2026, 11, 16)
@@ -4709,7 +4739,7 @@ def candidates(
     )
 
 
-@app.get("/capture-audit-snapshot")
+@app.get("/capture-audit-snapshot"), dependencies=[Depends(require_admin_api_key)]
 def capture_audit_snapshot(
     selected_date: str = Query(alias="date"),
     market: str = Query(...)
@@ -4754,7 +4784,7 @@ def capture_audit_snapshot(
     }
 
 
-@app.get("/refresh-audit")
+@app.get("/refresh-audit"), dependencies=[Depends(require_admin_api_key)]
 def refresh_audit(
     selected_date: Optional[str] = Query(default=None, alias="date"),
     history: bool = Query(default=False),
@@ -4932,7 +4962,7 @@ def refresh_audit(
     }
 
 
-@app.get("/collect-results")
+@app.get("/collect-results"), dependencies=[Depends(require_admin_api_key)]
 def collect_results(
     selected_date: str = Query(
         alias="date"
@@ -5443,7 +5473,7 @@ def collect_results(
     }
 
 
-@app.get("/collect-pending-results")
+@app.get("/collect-pending-results"), dependencies=[Depends(require_admin_api_key)]
 def collect_pending_results(
     max_combinations: int = Query(default=100, ge=1, le=200)
 ):
@@ -7359,6 +7389,7 @@ app.include_router(
     create_context_router(
         get_database_connection,
         get_team_defense_history_fresh,
-        NBA_TEAM_ABBREVIATIONS
+        NBA_TEAM_ABBREVIATIONS,
+        require_admin_api_key
     )
 )
