@@ -16,7 +16,11 @@ on:
         required: false
         type: string
   schedule:
+    # Execução principal: 09:07 (horário de São Paulo).
+    # Segunda janela no mesmo dia para reduzir o risco de atraso do scheduler.
     - cron: "7 9 * * *"
+      timezone: "America/Sao_Paulo"
+    - cron: "37 9 * * *"
       timezone: "America/Sao_Paulo"
 
 concurrency:
