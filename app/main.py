@@ -28,7 +28,7 @@ from app.availability_context import (
     select_eligible_players,
 )
 from app.nba_injury_reports import get_official_nba_injury_status
-from app.audit_metrics import build_context_reference_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
+from app.audit_metrics import build_context_reference_metrics, build_teammate_split_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
 
 
 logging.basicConfig(level=logging.INFO)
@@ -7055,6 +7055,100 @@ def context_validation(
             "jogador somente para diagnóstico exploratório. A média L10 permanece "
             "a referência individual; nenhuma dessas métricas altera o triage_score."
         ),
+    }
+
+
+@app.get("/teammate-split-validation")
+def teammate_split_validation(
+    market: str = Query(default="assists"),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    cohort: str = Query(default="all"),
+):
+    """Audita a associação entre splits históricos de companheiros e erro L10."""
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+    if cohort not in {"all", "top10"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
+    try:
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_history_start_date()
+        parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else audit_history_cutoff_date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período de datas inválido.")
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH snapshot_source AS (
+            SELECT
+                s.selected_date,
+                s.player_id,
+                s.player_name,
+                s.last10_avg,
+                s.audit_rank,
+                s.payload,
+                ar.actual_value,
+                ROW_NUMBER() OVER (
+                    PARTITION BY s.selected_date, s.market
+                    ORDER BY s.audit_rank ASC, s.player_id ASC
+                ) AS cohort_rank
+            FROM audit_snapshots s
+            LEFT JOIN audit_results ar
+              ON ar.selected_date = s.selected_date
+             AND ar.market = s.market
+             AND ar.player_id = s.player_id
+            WHERE s.market = %s
+              AND s.selected_date >= %s
+              AND s.selected_date <= %s
+        )
+        SELECT selected_date, player_id, player_name, last10_avg,
+               actual_value, payload
+        FROM snapshot_source
+        WHERE actual_value IS NOT NULL
+          AND (%s = 'all' OR cohort_rank <= 10)
+        ORDER BY selected_date ASC, player_name ASC
+    """
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, [market, parsed_from, parsed_to, cohort])
+            rows = cursor.fetchall()
+
+    stat_key = {
+        "points": "points",
+        "assists": "assists",
+        "rebounds": "rebounds",
+        "threes": "three_pa",
+        "two_pa": "two_pa",
+        "fgm": "fgm",
+    }[market]
+    records = []
+    for selected_date, player_id, player_name, last10_avg, actual, payload in rows:
+        payload = payload if isinstance(payload, dict) else {}
+        records.append({
+            "date": selected_date.isoformat() if selected_date else None,
+            "player_id": str(player_id),
+            "player": player_name,
+            "player_l10_avg": last10_avg,
+            "actual": actual,
+            "teammate_context": payload.get("teammate_context") or {},
+        })
+
+    metrics = build_teammate_split_metrics(records, stat_key)
+    dates = sorted({item["date"] for item in records if item.get("date")})
+    return {
+        "status": "ok",
+        "market": market,
+        "market_label": MARKETS[market]["label"],
+        "cohort": cohort,
+        "date_from": parsed_from.isoformat(),
+        "date_to": parsed_to.isoformat(),
+        "metrics": metrics,
+        "coverage": {
+            "records_completed": len(records),
+            "distinct_dates": len(dates),
+            "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None,
+        },
     }
 
 
