@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from app.audit_metrics import build_model_comparison
+from app.audit_metrics import build_model_comparison, is_temporally_valid_peer
 
 
 def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0):
@@ -53,6 +53,21 @@ class ModelComparisonTests(unittest.TestCase):
             metric["sample"] == 1
             for metric in result["models"].values()
         ))
+
+    def test_similarity_peers_must_be_other_players_from_prior_dates(self):
+        target = make_row(5)
+        prior_other_player = list(make_row(4))
+        prior_other_player[1] = "player-2"
+        same_date_other_player = list(make_row(5))
+        same_date_other_player[1] = "player-2"
+        future_other_player = list(make_row(6))
+        future_other_player[1] = "player-2"
+        prior_same_player = list(make_row(4))
+
+        self.assertTrue(is_temporally_valid_peer(tuple(prior_other_player), target))
+        self.assertFalse(is_temporally_valid_peer(tuple(same_date_other_player), target))
+        self.assertFalse(is_temporally_valid_peer(tuple(future_other_player), target))
+        self.assertFalse(is_temporally_valid_peer(tuple(prior_same_player), target))
 
 
 if __name__ == "__main__":
