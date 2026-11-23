@@ -28,7 +28,7 @@ from app.availability_context import (
     select_eligible_players,
 )
 from app.nba_injury_reports import get_official_nba_injury_status
-from app.audit_metrics import build_model_comparison, is_temporally_valid_peer
+from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer
 
 
 logging.basicConfig(level=logging.INFO)
@@ -6994,6 +6994,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
             "date": game_date.isoformat() if game_date else None,
             "player_id": str(player_id), "player": player, "team": team, "opponent": opponent,
             "position": position, "score": number(score), "actual": actual,
+            "player_l5_avg": number(l5), "player_l10_avg": number(l10),
             "l5": period(class5, allowed5, league5, pct5, games5, league_games5),
             "l10": period(class10, allowed10, league10, pct10, games10, league_games10)
         })
@@ -7002,19 +7003,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         output = {}
         for label in ("Acima", "Próximo", "Abaixo", "Sem referência"):
             group = [item for item in detailed if item[period_key]["classification"] == label]
-            valid = [item for item in group if item["actual"] is not None]
-            def avg(values):
-                return round(sum(values) / len(values), 2) if values else None
-            output[label] = {
-                "count": len(group),
-                "completed": len(valid),
-                "defense_allowed_average": avg([x[period_key]["defense_allowed"] for x in group if x[period_key]["defense_allowed"] is not None]),
-                "league_average": avg([x[period_key]["league_average"] for x in group if x[period_key]["league_average"] is not None]),
-                "actual_player_average": avg([x["actual"] for x in valid]),
-                "deviation_pct_average": avg([x[period_key]["difference_pct"] for x in group if x[period_key]["difference_pct"] is not None]),
-                "defense_games_average": avg([x[period_key]["games"] for x in group if x[period_key]["games"] > 0]),
-                "league_games_average": avg([x[period_key]["league_games"] for x in group if x[period_key]["league_games"] > 0])
-            }
+            output[label] = build_gap_group_metrics(group, period_key)
         return output
 
     return {
