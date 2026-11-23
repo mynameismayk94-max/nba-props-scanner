@@ -152,3 +152,57 @@ class ModelComparisonTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_context_reference_metrics_compares_baseline_and_context():
+    rows = [
+        {
+            "actual": 8,
+            "player_l10_avg": 6,
+            "opponent_position_minutes_filtered_defense_l10_avg": 7,
+            "opponent_position_minute_band_defense_l10_avg": 8,
+            "opponent_position_equal_game_defense_l10_avg": 5,
+        },
+        {
+            "actual": 4,
+            "player_l10_avg": 5,
+            "opponent_position_minutes_filtered_defense_l10_avg": 4,
+            "opponent_position_minute_band_defense_l10_avg": 6,
+            "opponent_position_equal_game_defense_l10_avg": 5,
+        },
+    ]
+
+    result = build_context_reference_metrics(rows)
+
+    assert result["completed_records"] == 2
+    filtered = result["references"]["opponent_position_minutes_filtered_defense_l10_avg"]
+    assert filtered["sample"] == 2
+    assert filtered["coverage_pct"] == 100.0
+    assert filtered["baseline_l10_mae"] == 1.5
+    assert filtered["context_mae"] == 0.5
+    assert filtered["context_mae_delta_vs_l10"] == -1.0
+
+
+def test_context_reference_metrics_excludes_missing_context_only():
+    rows = [
+        {
+            "actual": 10,
+            "player_l10_avg": 8,
+            "opponent_position_minutes_filtered_defense_l10_avg": None,
+            "opponent_position_minute_band_defense_l10_avg": 9,
+            "opponent_position_equal_game_defense_l10_avg": 8,
+        },
+        {
+            "actual": 5,
+            "player_l10_avg": 5,
+            "opponent_position_minutes_filtered_defense_l10_avg": 5,
+            "opponent_position_minute_band_defense_l10_avg": None,
+            "opponent_position_equal_game_defense_l10_avg": 5,
+        },
+    ]
+
+    result = build_context_reference_metrics(rows)
+
+    assert result["completed_records"] == 2
+    assert result["references"]["opponent_position_minutes_filtered_defense_l10_avg"]["sample"] == 1
+    assert result["references"]["opponent_position_minute_band_defense_l10_avg"]["sample"] == 1
