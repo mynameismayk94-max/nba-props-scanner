@@ -180,7 +180,7 @@ def create_context_router(
     def refresh_defense_context(
         selected_date: str | None = Query(default=None, alias="date")
     ):
-        target_date = parse_date(selected_date) if selected_date else date.today()
+        target_date = parse_date(selected_date) if selected_date else datetime.now(context_timezone).date()
         ensure_table()
 
         results = {}
@@ -190,9 +190,9 @@ def create_context_router(
         # em paralelo internamente. A atualização é explícita e nunca ocorre
         # durante a abertura dos painéis de leitura.
         def fetch_team(team):
-            # O contexto usa L5/L10. Buscar 20 jogos dá margem para partidas
-            # inválidas sem repetir a coleta desnecessariamente até 40 jogos.
-            return team, get_team_defense_history_fresh(team, 20, target_date)
+            # O contexto usa somente L5/L10. Dez jogos são suficientes para a amostra
+            # exibida e evitam pré-carregar summaries que o Scanner não precisa.
+            return team, get_team_defense_history_fresh(team, 10, target_date)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
