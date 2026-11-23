@@ -6435,21 +6435,20 @@ def validation_history(
             actual = float(actual_value)
             actual_values.append(actual)
 
-            try:
-                l5_window_counts.append(int(games_last5_raw) if games_last5_raw is not None else None)
-            except (TypeError, ValueError):
-                l5_window_counts.append(None)
-            try:
-                l10_window_counts.append(int(games_last10_raw) if games_last10_raw is not None else None)
-            except (TypeError, ValueError):
-                l10_window_counts.append(None)
-
             if last5_avg is not None:
+                try:
+                    l5_window_counts.append(int(games_last5_raw) if games_last5_raw is not None else None)
+                except (TypeError, ValueError):
+                    l5_window_counts.append(None)
                 prediction_l5 = float(last5_avg)
                 l5_predictions.append(prediction_l5)
                 l5_errors.append(abs(actual - prediction_l5))
 
             if last10_avg is not None:
+                try:
+                    l10_window_counts.append(int(games_last10_raw) if games_last10_raw is not None else None)
+                except (TypeError, ValueError):
+                    l10_window_counts.append(None)
                 prediction_l10 = float(last10_avg)
                 l10_predictions.append(prediction_l10)
                 l10_errors.append(abs(actual - prediction_l10))
