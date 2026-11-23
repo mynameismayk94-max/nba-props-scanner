@@ -28,7 +28,7 @@ from app.availability_context import (
     select_eligible_players,
 )
 from app.nba_injury_reports import get_official_nba_injury_status
-from app.audit_metrics import build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
+from app.audit_metrics import build_context_reference_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
 
 
 logging.basicConfig(level=logging.INFO)
@@ -6867,6 +6867,140 @@ def validation_history(
             "Registros sem resultado (ex.: DNP) e pendentes não entram nas métricas; "
             "a cobertura considera concluídos + sem resultado; Score original não é alterado."
         )
+    }
+
+
+
+
+@app.get("/context-validation")
+def context_validation(
+    market: str = Query(default="assists"),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    cohort: str = Query(default="all"),
+):
+    """Audita referências defensivas pré-jogo capturadas no snapshot independente.
+
+    É deliberadamente exploratório: não altera Score, Gap ou snapshots históricos.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+    if cohort not in {"all", "top10"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
+
+    try:
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_history_start_date()
+        parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else audit_history_cutoff_date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período de datas inválido.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH snapshot_source AS (
+            SELECT
+                s.selected_date,
+                s.player_id,
+                s.player_name,
+                s.triage_score,
+                s.last10_avg,
+                s.audit_rank,
+                s.payload,
+                ar.actual_value,
+                ROW_NUMBER() OVER (
+                    PARTITION BY s.selected_date, s.market
+                    ORDER BY s.audit_rank ASC, s.player_id ASC
+                ) AS cohort_rank
+            FROM audit_snapshots s
+            LEFT JOIN audit_results ar
+              ON ar.selected_date = s.selected_date
+             AND ar.market = s.market
+             AND ar.player_id = s.player_id
+            WHERE s.market = %s
+              AND s.selected_date >= %s
+              AND s.selected_date <= %s
+        )
+        SELECT
+            selected_date,
+            player_id,
+            player_name,
+            last10_avg,
+            actual_value,
+            payload->>'opponent_position_minutes_filtered_defense_l10_avg',
+            payload->>'opponent_position_minute_band_defense_l10_avg',
+            payload->>'opponent_position_equal_game_defense_l10_avg',
+            payload->>'opponent_position_minutes_filtered_defense_l10_games',
+            payload->>'opponent_position_minute_band_defense_l10_games',
+            payload->>'opponent_position_equal_game_defense_l10_games',
+            payload->>'minutes_last5_avg'
+        FROM snapshot_source
+        WHERE actual_value IS NOT NULL
+          AND (%s = 'all' OR cohort_rank <= 10)
+        ORDER BY selected_date ASC, player_name ASC
+    """
+    params = [market, parsed_from, parsed_to, cohort]
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+    records = []
+    for row in rows:
+        (
+            selected_date,
+            player_id,
+            player_name,
+            player_l10_avg,
+            actual,
+            minutes_filtered,
+            minute_band,
+            equal_game,
+            minutes_filtered_games,
+            minute_band_games,
+            equal_game_games,
+            minutes_last5_avg,
+        ) = row
+        records.append({
+            "date": selected_date.isoformat() if selected_date else None,
+            "player_id": str(player_id),
+            "player": player_name,
+            "player_l10_avg": player_l10_avg,
+            "actual": actual,
+            "opponent_position_minutes_filtered_defense_l10_avg": minutes_filtered,
+            "opponent_position_minute_band_defense_l10_avg": minute_band,
+            "opponent_position_equal_game_defense_l10_avg": equal_game,
+            "minutes_filtered_games": int(minutes_filtered_games or 0),
+            "minute_band_games": int(minute_band_games or 0),
+            "equal_game_games": int(equal_game_games or 0),
+            "minutes_last5_avg": minutes_last5_avg,
+        })
+
+    dates = sorted({item["date"] for item in records if item["date"]})
+    metrics = build_context_reference_metrics(records)
+    metrics["distinct_dates"] = len(dates)
+    metrics["minimum_dates_for_temporal_validation"] = 14
+    metrics["temporal_status"] = "ready" if len(dates) >= 14 else "collecting"
+
+    return {
+        "status": "ok",
+        "market": market,
+        "cohort": cohort,
+        "date_from": parsed_from.isoformat(),
+        "date_to": parsed_to.isoformat(),
+        "metrics": metrics,
+        "coverage": {
+            "records_completed": len(records),
+            "distinct_dates": len(dates),
+            "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None,
+        },
+        "method_note": (
+            "As referências de minutagem são comparadas com a média L10 do próprio "
+            "jogador somente para diagnóstico exploratório. A média L10 permanece "
+            "a referência individual; nenhuma dessas métricas altera o triage_score."
+        ),
     }
 
 
