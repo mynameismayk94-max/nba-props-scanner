@@ -6276,7 +6276,7 @@ def validation_history(
                     SELECT
                         selected_date, market, player_id, player_name,
                         team, opponent, position, triage_score, last5_avg,
-                        last10_avg, minutes_last5_avg,
+                        last10_avg, minutes_last5_avg, payload,
                         audit_rank AS display_rank,
                         'audit' AS snapshot_source
                     FROM audit_snapshots
@@ -6311,7 +6311,7 @@ def validation_history(
                     SELECT
                         selected_date, market, player_id, player_name,
                         team, opponent, position, triage_score, last5_avg,
-                        last10_avg, minutes_last5_avg, snapshot_source,
+                        last10_avg, minutes_last5_avg, payload, snapshot_source,
                         ROW_NUMBER() OVER (
                             PARTITION BY selected_date, market
                             ORDER BY
@@ -6338,7 +6338,9 @@ def validation_history(
                         WHEN ar.id IS NOT NULL THEN 'completed'
                         WHEN nr.id IS NOT NULL THEN 'no_result'
                         ELSE 'pending'
-                    END AS result_status
+                    END AS result_status,
+                    s.payload->>'games_last5' AS games_last5,
+                    s.payload->>'games_last10' AS games_last10
                 FROM ranked_snapshots s
                 LEFT JOIN audit_results ar
                     ON s.snapshot_source = 'audit'
