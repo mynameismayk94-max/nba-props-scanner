@@ -217,9 +217,15 @@
   #api { color: #111827; background: #f9fafb; border-color: #9ca3af; font-weight: 500; }
   #api:focus { color: #111827; background: #ffffff; border-color: #10b981; outline: none; box-shadow: 0 0 0 2px rgba(16, 185, 129, .12); }
 
-  /* Legenda do critério de leitura do GAP */
-  .scanner-legend { display: grid; gap: 5px; margin-top: 8px; padding: 9px 10px; background: rgba(3, 7, 18, .45); border: 1px solid #1f2937; border-radius: 8px; font-size: 10px; line-height: 1.35; color: #9ca3af; }
-  .scanner-legend strong { color: #d1d5db; }
+  /* Legendas compactas da Pesquisa: informação essencial visível e detalhe expansível. */
+  .scanner-legend { display: grid; gap: 4px; margin-top: 8px; padding: 8px 9px; background: rgba(3, 7, 18, .45); border: 1px solid #1f2937; border-radius: 8px; font-size: 10px; line-height: 1.35; color: #9ca3af; }
+  .scanner-legend details { width: 100%; }
+  .scanner-legend summary { list-style: none; cursor: pointer; color: #d1d5db; font-weight: 600; }
+  .scanner-legend summary::-webkit-details-marker { display: none; }
+  .scanner-legend summary::before { content: 'ⓘ'; color: #9ca3af; margin-right: 5px; }
+  .scanner-legend summary::after { content: '＋'; float: right; color: #6b7280; font-weight: 400; }
+  .scanner-legend details[open] summary::after { content: '−'; }
+  .scanner-legend .legend-detail { margin-top: 5px; padding-top: 5px; border-top: 1px solid #1f2937; color: #9ca3af; }
   .scanner-legend .legend-positive { color: #f87171; font-weight: 600; }
   .scanner-legend .legend-negative { color: #34d399; font-weight: 600; }
   .scanner-legend .legend-neutral { color: #9ca3af; font-weight: 600; }
@@ -412,12 +418,23 @@
         </div>
       </div>
 
-      <div class="scanner-legend" aria-label="Contexto defensivo por posição">
-        <div><strong>Como interpretar o contexto defensivo:</strong></div>
-        <div><span class="text-emerald-400">Acima</span> — defesa permite mais de 10% que a média da liga para a posição.</div>
-        <div><span class="text-amber-300">Próximo</span> — defesa dentro de ±10% da média da liga.</div>
-        <div><span class="text-red-400">Abaixo</span> — defesa permite menos de 10% que a média da liga.</div>
-        <div>Referência geral: total cedido à posição por partida, sem corte mínimo de minutos. No modal, análise complementar de jogadores da mesma posição com minutagem ±5 min.</div>
+      <div class="scanner-legend" aria-label="Como interpretar o Score e o contexto defensivo">
+        <details open>
+          <summary>Como o Score é formado?</summary>
+          <div class="legend-detail">
+            <div><strong>L5 60% + L10 40% + ajuste de consistência</strong></div>
+            <div class="mt-1">A média L5 recebe peso de 60% e a média L10, 40%. Depois, o resultado é ajustado pela consistência dos últimos 5 jogos: quanto mais vezes o jogador atinge ou supera sua própria média L5, maior o ajuste.</div>
+            <div class="text-gray-500 mt-1">O Score é um indicador estatístico de prioridade, não uma recomendação ou garantia de resultado.</div>
+          </div>
+        </details>
+        <details>
+          <summary>Como interpretar o contexto defensivo?</summary>
+          <div class="legend-detail">
+            <div><strong>Menor valor = defesa mais forte · maior valor = mais vulnerável</strong></div>
+            <div class="mt-1"><span class="text-emerald-400">Acima</span> — defesa permite mais de 10% que a média da liga para a posição. <span class="text-amber-300">Próximo</span> — dentro de ±10%. <span class="text-red-400">Abaixo</span> — permite menos de 10%.</div>
+            <div class="text-gray-500 mt-1">Referência geral: total cedido à posição por partida, sem corte mínimo de minutos. No modal, há análise complementar de jogadores da mesma posição com minutagem ±5 min.</div>
+          </div>
+        </details>
       </div>
 
       <div id="resultado"></div>
@@ -1507,16 +1524,7 @@ async function buscar(mercado){
     let html = '<div class="space-y-2 mt-2">';
     html += '<div class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">' + escapeHtml(r.market_label) + ' — ' + escapeHtml(r.date) + '</div>';
     html += renderizarResumoSelecao(r.selection_summary);
-    html += '<div class="glass-panel p-2.5 space-y-2">' + filtrosHtml() +
-    '<div class="scanner-legend">' +
-      '<div class="flex items-center justify-between gap-2">' +
-        '<strong>Como o Score é formado?</strong>' +
-        '<span class="text-gray-500">Ordenação padrão: Score ↓</span>' +
-      '</div>' +
-      '<div>O Score combina a produção recente do jogador com a consistência desse desempenho. A média L5 recebe peso de <strong>60%</strong> e a média L10, <strong>40%</strong>. Em seguida, o resultado é ajustado pela consistência dos últimos 5 jogos: quanto mais vezes o jogador atinge ou supera sua própria média L5, maior o ajuste.</div>' +
-      '<div class="text-gray-500">O Score é um indicador estatístico de prioridade e não representa, sozinho, uma recomendação ou garantia de resultado.</div>' +
-    '</div>' +
-  '</div>';
+    html += '<div class="glass-panel p-2.5 space-y-2">' + filtrosHtml() + '</div>';
     html += '<div id="resultadosLista"></div>';
     html += '</div>';
 
