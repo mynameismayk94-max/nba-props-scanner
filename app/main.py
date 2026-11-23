@@ -6577,40 +6577,36 @@ def validation_history(
             "score_actual_spearman": spearman
         }
 
-    # Faixas fixas de Score para análise descritiva
-    score_bands = [
-        {"label": "7+", "min": 7.0, "max": None},
-        {"label": "6-6.99", "min": 6.0, "max": 7.0},
-        {"label": "5-5.99", "min": 5.0, "max": 6.0},
-        {"label": "4-4.99", "min": 4.0, "max": 5.0},
-        {"label": "<4", "min": None, "max": 4.0}
-    ]
+    # Faixas relativas ao próprio mercado: quintis da distribuição observada.
+    # A fórmula do Score permanece intacta; aqui só mudamos a forma de agrupá-lo
+    # para evitar que os mesmos limites absolutos tenham interpretações diferentes
+    # entre estatísticas com distribuições distintas.
+    market_score_bands = build_market_score_bands(completed_rows)
+    score_band_defs = market_score_bands.get("bands", [])
 
     bands_output = []
-
-    for band in score_bands:
-
+    for band_def in score_band_defs:
         band_rows = []
-
+        lower = band_def.get("lower_bound")
+        upper = band_def.get("upper_bound")
         for row in completed_rows:
-
             score = row[6]
-
             if score is None:
                 continue
-
             score = float(score)
-
-            if band["min"] is not None and score < band["min"]:
+            if lower is not None and score < lower:
                 continue
-            if band["max"] is not None and score >= band["max"]:
+            if upper is not None and score >= upper:
                 continue
-
             band_rows.append(row)
 
         metrics = build_metrics(band_rows)
         bands_output.append({
-            "band": band["label"],
+            "band": band_def["label"],
+            "band_index": band_def["index"],
+            "score_min_observed": band_def["score_min_observed"],
+            "score_max_observed": band_def["score_max_observed"],
+            "share_pct": band_def["share_pct"],
             **metrics
         })
 
@@ -6909,6 +6905,7 @@ def validation_history(
             "pending": period_for_rows(pending_rows)
         },
         "score_bands": bands_output,
+        "score_band_reference": market_score_bands,
         "model_comparison": model_comparison,
         "similarity_analysis": similarity_analysis,
         "similarity_analyses": similarity_analyses,
@@ -6920,7 +6917,7 @@ def validation_history(
             "Erro relativo: MAE dividido pela média das previsões correspondentes. "
             "Pearson mede associação linear e Spearman associação monotônica do ranking. "
             "Top 10 versus demais compara também o resultado ajustado pela média L10. "
-            "Faixas de Score são descritivas, não calibração probabilística. "
+            "Faixas de Score são específicas do mercado e do recorte, baseadas em quintis da distribuição observada; não são calibração probabilística. "
             "Registros sem resultado (ex.: DNP) e pendentes não entram nas métricas; "
             "a cobertura considera concluídos + sem resultado; Score original não é alterado."
         )
