@@ -6879,11 +6879,12 @@ def validation_history(
         "daily": daily_output,
         "data_source_policy": "Base oficial independente: somente audit_snapshots, audit_results e audit_no_results. O histórico legado operacional permanece preservado, mas não compõe estes indicadores.",
         "method_note": (
-            "Precisão: MAE L5/L10. Erro relativo: MAE dividido pela média "
-            "das previsões correspondentes, usando a mesma amostra válida. "
-            "Ranking: médias reais e quantidade por faixa de score. "
+            "Precisão: MAE L5/L10, com amostras completas e parciais identificadas. "
+            "Erro relativo: MAE dividido pela média das previsões correspondentes. "
+            "Pearson mede associação linear e Spearman associação monotônica do ranking. "
+            "Desempenho por faixa é descritivo, não calibração probabilística. "
             "Registros sem resultado (ex.: DNP) e pendentes não entram nas métricas; "
-            "a cobertura considera concluídos + sem resultado; score original não é alterado."
+            "a cobertura considera concluídos + sem resultado; Score original não é alterado."
         )
     }
 
