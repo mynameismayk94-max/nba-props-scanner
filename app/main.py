@@ -39,6 +39,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nba_props_scanner")
 
 app = FastAPI(
+    title="NBA Props Scanner",
+    description="API de triagem estatística NBA via ESPN.",
+    version="3.17.0"
+)
 
 # Rate limit simples e local para a camada HTTP.
 _RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -79,11 +83,6 @@ async def rate_limit_requests(request, call_next):
             )
         bucket.append(now)
     return await call_next(request)
-
-    title="NBA Props Scanner",
-    description="API de triagem estatística NBA via ESPN.",
-    version="3.17.0"
-)
 
 # CORS restrito por ambiente. O frontend atual é servido pela própria aplicação;
 # origens adicionais só entram mediante variável explícita.
