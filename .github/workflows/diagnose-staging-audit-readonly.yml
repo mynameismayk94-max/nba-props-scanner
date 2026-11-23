@@ -6,6 +6,9 @@ on:
       - feature/central-contexto-nba
     paths:
       - ".github/workflows/diagnose-staging-audit-readonly.yml"
+      - "app/main.py"
+      - "app/audit_metrics.py"
+      - "index.html"
   workflow_dispatch:
 
 permissions:
