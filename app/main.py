@@ -38,6 +38,7 @@ from app.audit_metrics import build_context_reference_metrics, build_market_scor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nba_props_scanner")
 
+app = FastAPI(
 
 # Rate limit simples e local para a camada HTTP.
 _RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -79,8 +80,6 @@ async def rate_limit_requests(request, call_next):
         bucket.append(now)
     return await call_next(request)
 
-
-app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
     version="3.17.0"
