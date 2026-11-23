@@ -1,7 +1,7 @@
 name: Reprocess audit collection 2026-11-16 to 2026-11-19
 
 on:
-  push:
+  workflow_dispatch:
 
 jobs:
   collect:

@@ -192,7 +192,7 @@ def create_context_router(
         def fetch_team(team):
             # O contexto usa somente L5/L10. Dez jogos são suficientes para a amostra
             # exibida e evitam pré-carregar summaries que o Scanner não precisa.
-            return team, get_team_defense_history_fresh(team, 10, target_date)
+            return team, get_team_defense_history(team, 10, target_date)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {

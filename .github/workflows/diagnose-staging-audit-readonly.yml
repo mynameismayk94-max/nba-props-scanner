@@ -31,11 +31,11 @@ jobs:
             "${BASE_URL}/health" > staging-audit-diagnostic/health.http
 
           for market in "${MARKETS[@]}"; do
-            for endpoint in validation-history-summary gap-validation; do
+            for endpoint in validation-history-summary validation-history gap-validation; do
               file="staging-audit-diagnostic/${market}-${endpoint}.json"
               url="${BASE_URL}/${endpoint}?market=${market}&cohort=all"
               echo "::group::${market} / ${endpoint}"
-              http_code=$(curl --silent --show-error --max-time 180 \
+              http_code=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 300 \
                 --output "$file" --write-out "%{http_code}" "$url")
               echo "HTTP: ${http_code}"
               if [[ "$http_code" != "200" ]] || ! jq -e '.status == "ok"' "$file" >/dev/null 2>&1; then
@@ -43,7 +43,7 @@ jobs:
                 failures=$((failures + 1))
                 cat "$file" || true
               else
-                jq '{market, cohort, snapshots_total, completed_results, no_result_results, pending_results, completion_rate_pct, actual_average, score_average, l5_mae, l10_mae, l5_relative_error_pct, l10_relative_error_pct, score_actual_pearson, completed_records, legacy_records_without_new_reference, periods, score_bands, ranking_quality, method_note, data_source_policy}' "$file" 2>/dev/null || true
+                jq '{market, cohort, summary, periods, score_bands, ranking_quality, similarity_analysis, similarity_analyses, completed_records, legacy_records_without_new_reference, classification_margin_pct, method_note, data_source_policy}' "$file" 2>/dev/null || true
               fi
               echo "::endgroup::"
             done

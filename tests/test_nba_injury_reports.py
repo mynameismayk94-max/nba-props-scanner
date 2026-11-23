@@ -44,14 +44,14 @@ class OfficialNbaInjuryReportTests(unittest.TestCase):
         )
 
 
-    def test_searches_reports_published_more_than_two_hours_before_tipoff(self):
+    def test_searches_reports_within_two_hour_lookback(self):
         report = (
             "Matchup WAS@TOR Toronto Raptors "
             "Barnes, Scottie Out Injury/Illness - Left Groin"
         )
 
         def fake_fetch(url):
-            return report if "2026-11-18_01_30PM.pdf" in url else ""
+            return report if "2026-11-18_05_30PM.pdf" in url else ""
 
         with patch("app.nba_injury_reports._fetch_report_text", side_effect=fake_fetch):
             result = get_official_nba_injury_status(
@@ -60,7 +60,7 @@ class OfficialNbaInjuryReportTests(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], "Out")
-        self.assertIn("01_30PM", result["report_url"])
+        self.assertIn("05_30PM", result["report_url"])
 
     def test_name_patterns_supports_full_name_and_report_order(self):
         patterns = _player_name_patterns("Draymond Green")
