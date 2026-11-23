@@ -1,10 +1,10 @@
 import unittest
 from datetime import date, timedelta
 
-from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer, spearman_correlation
+from app.audit_metrics import build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
 
 
-def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0, games_last5=5, games_last10=10):
+def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0, games_last5=5, games_last10=10, audit_rank=1):
     return (
         date(2026, 11, 1) + timedelta(days=day),
         "player-1",
@@ -20,6 +20,7 @@ def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0, games_last5=5, games_l
         "completed",
         games_last5,
         games_last10,
+        audit_rank,
     )
 
 
@@ -70,6 +71,24 @@ class ModelComparisonTests(unittest.TestCase):
             metric["sample"] == 1
             for metric in result["models"].values()
         ))
+
+    def test_top10_ranking_compares_player_adjusted_results_with_remaining_candidates(self):
+        rows = [
+            make_row(0, actual=5, l10=4, audit_rank=1),
+            make_row(1, actual=7, l10=6, audit_rank=2),
+            make_row(0, actual=3, l10=4, audit_rank=11),
+            make_row(1, actual=5, l10=6, audit_rank=12),
+        ]
+        rows[2] = tuple(list(rows[2][:1]) + ["player-2"] + list(rows[2][2:]))
+        rows[3] = tuple(list(rows[3][:1]) + ["player-2"] + list(rows[3][2:]))
+
+        result = build_top10_vs_rest_metrics(rows, min_records=2, min_players=1)
+
+        self.assertEqual(result["top10"]["records"], 2)
+        self.assertEqual(result["rest"]["records"], 2)
+        self.assertEqual(result["actual_average_difference"], 2.0)
+        self.assertEqual(result["l10_residual_difference"], 2.0)
+        self.assertEqual(result["sample_status"], "sufficient")
 
     def test_spearman_measures_monotonic_ranking_and_handles_ties(self):
         self.assertEqual(
