@@ -8,7 +8,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from typing import Callable
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg.types.json import Jsonb
 
 
@@ -87,10 +87,12 @@ def create_context_router(
     get_database_connection: Callable,
     get_team_defense_history: Callable,
     team_abbreviations,
+    admin_dependency: Callable | None = None,
 ):
     router = APIRouter(tags=["Central de Contexto NBA"])
     context_timezone = ZoneInfo("America/Sao_Paulo")
     teams = tuple(sorted(set(team_abbreviations)))
+    route_dependencies = [Depends(admin_dependency)] if admin_dependency else []
 
     def ensure_table():
         with get_database_connection() as connection:
@@ -185,7 +187,7 @@ def create_context_router(
             "teams_saved": saved
         }
 
-    @router.post("/context/defense/refresh")
+    @router.post("/context/defense/refresh", dependencies=route_dependencies)
     def refresh_defense_context(
         selected_date: str | None = Query(default=None, alias="date")
     ):
