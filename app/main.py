@@ -4619,13 +4619,14 @@ def refresh_audit(
                     ON nr.selected_date = s.selected_date
                     AND nr.market = s.market
                     AND nr.player_id = s.player_id
-                WHERE s.selected_date ${history ? "<=" : "<"} %s
-                  AND s.selected_date >= %s
+                WHERE s.selected_date >= %s
+                  AND s.selected_date <= %s
+                  AND (%s OR s.selected_date < %s)
                   AND r.id IS NULL
                   AND nr.id IS NULL
                 ORDER BY s.selected_date ASC, s.market ASC
                 """,
-                (audit_history_start_date(), target_date)
+                (audit_history_start_date(), target_date, history, target_date)
             )
             pending_combinations = cursor.fetchall()
 
