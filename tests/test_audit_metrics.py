@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from app.audit_metrics import build_model_comparison, is_temporally_valid_peer
+from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer
 
 
 def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0):
@@ -53,6 +53,32 @@ class ModelComparisonTests(unittest.TestCase):
             metric["sample"] == 1
             for metric in result["models"].values()
         ))
+
+    def test_gap_metrics_adjust_actual_by_matching_player_baseline(self):
+        records = [
+            {
+                "actual": 12,
+                "player_l5_avg": 10,
+                "player_l10_avg": 9,
+                "l5": {"defense_allowed": 50, "league_average": 45, "difference_pct": 11.1, "games": 5, "league_games": 150},
+                "l10": {"defense_allowed": 48, "league_average": 45, "difference_pct": 6.7, "games": 10, "league_games": 300},
+            },
+            {
+                "actual": 7,
+                "player_l5_avg": 8,
+                "player_l10_avg": 8,
+                "l5": {"defense_allowed": 40, "league_average": 45, "difference_pct": -11.1, "games": 5, "league_games": 150},
+                "l10": {"defense_allowed": 42, "league_average": 45, "difference_pct": -6.7, "games": 10, "league_games": 300},
+            },
+        ]
+        l5 = build_gap_group_metrics(records, "l5")
+        l10 = build_gap_group_metrics(records, "l10")
+
+        self.assertEqual(l5["baseline_sample"], 2)
+        self.assertEqual(l5["player_baseline_average"], 9.0)
+        self.assertEqual(l5["actual_minus_player_baseline_average"], 0.5)
+        self.assertEqual(l10["player_baseline_average"], 8.5)
+        self.assertEqual(l10["actual_minus_player_baseline_average"], 1.0)
 
     def test_similarity_peers_must_be_other_players_from_prior_dates(self):
         target = make_row(5)
