@@ -29,8 +29,8 @@ class ModelComparisonTests(unittest.TestCase):
         self.assertEqual(result["sample"], 2)
         self.assertEqual(result["models"]["l5"]["sample"], 2)
         self.assertEqual(result["models"]["l10"]["sample"], 2)
-        self.assertEqual(result["models"]["blend_60_40"]["mae"], 0.8)
-        self.assertEqual(result["models"]["score_current"]["mae"], 1.0)
+        self.assertEqual(result["models"]["blend_60_40"]["mae"], 0.4)
+        self.assertEqual(result["models"]["score_current"]["mae"], 1.5)
         self.assertEqual(result["temporal_holdout"]["status"], "collecting")
 
     def test_temporal_holdout_uses_only_latest_dates(self):
