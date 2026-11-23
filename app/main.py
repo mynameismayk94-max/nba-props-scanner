@@ -7036,6 +7036,7 @@ def home():
 
 # ============================================================
 # CENTRAL DE CONTEXTO NBA (MÓDULO INDEPENDENTE)
+# Cache de summaries compartilhado com o Scanner para evitar requisições duplicadas.
 # ============================================================
 # A Central usa armazenamento próprio e não participa do fluxo de
 # candidatos, do triage_score ou das tabelas da Auditoria.
