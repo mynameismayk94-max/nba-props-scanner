@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer
 
 
-def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0):
+def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0, games_last5=5, games_last10=10):
     return (
         date(2026, 11, 1) + timedelta(days=day),
         "player-1",
@@ -18,6 +18,8 @@ def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0):
         30.0,
         actual,
         "completed",
+        games_last5,
+        games_last10,
     )
 
 
@@ -32,6 +34,21 @@ class ModelComparisonTests(unittest.TestCase):
         self.assertEqual(result["models"]["blend_60_40"]["mae"], 0.4)
         self.assertEqual(result["models"]["score_current"]["mae"], 1.5)
         self.assertEqual(result["temporal_holdout"]["status"], "collecting")
+
+    def test_partial_windows_are_reported_and_excluded_from_full_window_comparison(self):
+        rows = [
+            make_row(0),
+            make_row(1, games_last5=3, games_last10=3),
+        ]
+        result = build_model_comparison(rows)
+
+        self.assertEqual(result["sample"], 2)
+        self.assertEqual(result["full_window_sample"], 1)
+        self.assertEqual(result["full_window_models"]["l10"]["sample"], 1)
+        self.assertEqual(result["effective_sample_counts"]["l5"]["complete_window"], 1)
+        self.assertEqual(result["effective_sample_counts"]["l5"]["partial_window"], 1)
+        self.assertEqual(result["effective_sample_counts"]["l10"]["complete_window"], 1)
+        self.assertEqual(result["effective_sample_counts"]["l10"]["partial_window"], 1)
 
     def test_temporal_holdout_uses_only_latest_dates(self):
         rows = [make_row(day, actual=4.0) for day in range(14)]
