@@ -1444,6 +1444,66 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Total cedido por jogo</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Média da liga</td><td><b>' + numero(league5) + '</b></td><td><b>' + numero(league10) + '</b></td></tr><tr><td>Desvio vs liga</td><td><b>' + (deviation5 == null ? '—' : (deviation5 > 0 ? '+' : '') + deviation5.toFixed(1) + '%') + '</b></td><td><b>' + (deviation10 == null ? '—' : (deviation10 > 0 ? '+' : '') + deviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Classificação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos da defesa</td><td>' + participacoes(p.opponent_position_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_defense_games_l10) + '</td></tr><tr><td>Jogos da liga</td><td>' + participacoes(p.league_position_allowed_l5_games) + '</td><td>' + participacoes(p.league_position_allowed_l10_games) + '</td></tr></table><div class="analysis-note">Total cedido à posição por jogo, comparado à média da liga. Classificação: diferença acima de +10%, abaixo de -10% ou dentro de ±10%.</div></div>';
 
   html += '<div class="analysis-card"><h3>🎯 Minutagem semelhante · ±5 min</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Faixa</td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td></tr><tr><td>Defesa · média/jogador</td><td><b>' + numero(bandDefense5) + '</b></td><td><b>' + numero(bandDefense10) + '</b></td></tr><tr><td>Liga · média/jogador</td><td><b>' + numero(bandLeague5) + '</b></td><td><b>' + numero(bandLeague10) + '</b></td></tr><tr><td>Diferença vs liga</td><td><b>' + (bandDeviation5 == null ? '—' : (bandDeviation5 > 0 ? '+' : '') + bandDeviation5.toFixed(1) + '%') + '</b></td><td><b>' + (bandDeviation10 == null ? '—' : (bandDeviation10 > 0 ? '+' : '') + bandDeviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Amostra da defesa</td><td>' + participacoes(p.opponent_position_minute_band_defense_l5_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l5_games) + ' jg</td><td>' + participacoes(p.opponent_position_minute_band_defense_l10_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l10_games) + ' jg</td></tr><tr><td>Amostra liga</td><td>' + participacoes(p.league_position_minute_band_l5_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l5_games) + ' jg</td><td>' + participacoes(p.league_position_minute_band_l10_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l10_games) + ' jg</td></tr></table><div class="analysis-note">Média individual de atletas da posição na faixa de minutos indicada. Comparação contextual; não altera o Score.</div></div>';
+  const filteredAvg5 = p.opponent_position_minutes_filtered_defense_l5_avg;
+  const filteredAvg10 = p.opponent_position_minutes_filtered_defense_l10_avg;
+  const filteredProjected5 = p.opponent_position_minutes_filtered_defense_l5_projected;
+  const filteredProjected10 = p.opponent_position_minutes_filtered_defense_l10_projected;
+  const equalGame5 = p.opponent_position_equal_game_defense_l5_avg;
+  const equalGame10 = p.opponent_position_equal_game_defense_l10_avg;
+  const showContextValue = value => value == null ? '—' : numero(value, 2);
+  const showSignedValue = value => value == null ? '—' : (value > 0 ? '+' : '') + numero(value, 2);
+
+  let complementaryHtml = '<details class="analysis-card" style="grid-column:1/-1">' +
+    '<summary class="cursor-pointer font-semibold">🔎 Análises complementares · minutagem e companheiros</summary>' +
+    '<div class="mt-3 space-y-3">' +
+    '<div><h4 class="text-[10px] font-bold text-white mb-1">Minutagem filtrada</h4>' +
+    '<table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr>' +
+    '<tr><td>Defesa · média/jogador</td><td>' + showContextValue(filteredAvg5) + '</td><td>' + showContextValue(filteredAvg10) + '</td></tr>' +
+    '<tr><td>Projeção na minutagem do candidato</td><td>' + showContextValue(filteredProjected5) + '</td><td>' + showContextValue(filteredProjected10) + '</td></tr>' +
+    '<tr><td>Amostra · jogos</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_games_l10) + '</td></tr>' +
+    '<tr><td>Amostra · aparições</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_player_games_l5) + '</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_player_games_l10) + '</td></tr>' +
+    '<tr><td>Minutos somados</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_minutes_l5) + '</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_minutes_l10) + '</td></tr></table>' +
+    '<div class="analysis-note">Inclui jogadores da mesma posição que atuaram em minutos iguais ou superiores à média L5 do candidato. A projeção usa a taxa por minuto desse grupo multiplicada pelos minutos do candidato; não é uma projeção individual calibrada.</div></div>' +
+    '<div><h4 class="text-[10px] font-bold text-white mb-1">Referência por jogo equivalente</h4>' +
+    '<table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr>' +
+    '<tr><td>Média por jogador/aparição</td><td>' + showContextValue(equalGame5) + '</td><td>' + showContextValue(equalGame10) + '</td></tr>' +
+    '<tr><td>Jogos analisados</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_games) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_games) + '</td></tr>' +
+    '<tr><td>Aparições</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_appearances) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_appearances) + '</td></tr></table>' +
+    '<div class="analysis-note">Calcula a média individual dentro de cada partida e depois dá o mesmo peso a cada jogo. Reduz o efeito de partidas com mais jogadores da posição; continua sendo contexto descritivo.</div></div>';
+
+  const teammateContext = p.teammate_context || {};
+  const teammateStatKey = {
+    points: 'points', assists: 'assists', rebounds: 'rebounds',
+    threes: 'three_pa', two_pa: 'two_pa', fgm: 'fgm'
+  }[mercadoAtual];
+  const teammateShortlist = Array.isArray(teammateContext.shortlist) ? teammateContext.shortlist : [];
+  complementaryHtml += '<div><h4 class="text-[10px] font-bold text-white mb-1">Splits de companheiros · últimos 10 jogos da equipe</h4>';
+  if (!teammateStatKey) {
+    complementaryHtml += '<div class="analysis-note">Split não disponível para este mercado.</div>';
+  } else if (!teammateShortlist.length) {
+    complementaryHtml += '<div class="analysis-note">Nenhum companheiro atingiu os critérios mínimos da lista automática.</div>';
+  } else {
+    complementaryHtml += '<div class="space-y-2">';
+    teammateShortlist.forEach(teammate => {
+      const split = teammateContext.comparisons?.[String(teammate.player_id)]?.[teammateStatKey] || {};
+      const withTeammate = split.with_teammate || {};
+      const withoutTeammate = split.confirmed_absent || {};
+      const enoughSample = Number(withTeammate.games || 0) >= 3 && Number(withoutTeammate.games || 0) >= 3;
+      complementaryHtml += '<div class="rounded-lg border border-gray-800 bg-gray-900 p-2">' +
+        '<div class="flex items-center justify-between gap-2"><b class="text-[10px] text-white">' + escapeHtml(teammate.player || 'Companheiro') + '</b>' +
+        '<span class="text-[9px] text-gray-500">' + participacoes(teammate.games_in_window) + '/' + participacoes(teammate.window_games) + ' jogos · ' + numero(teammate.average_minutes, 1) + ' min</span></div>' +
+        '<table class="analysis-table"><tr><th></th><th>Com ele</th><th>Sem ele</th></tr>' +
+        '<tr><td>Média do candidato</td><td>' + showContextValue(withTeammate.average) + '</td><td>' + showContextValue(withoutTeammate.average) + '</td></tr>' +
+        '<tr><td>Jogos</td><td>' + participacoes(withTeammate.games) + '</td><td>' + participacoes(withoutTeammate.games) + '</td></tr>' +
+        '<tr><td>Minutos médios</td><td>' + showContextValue(withTeammate.minutes_average) + '</td><td>' + showContextValue(withoutTeammate.minutes_average) + '</td></tr></table>' +
+        '<div class="flex items-center justify-between gap-2 text-[9px] mt-1"><span class="text-gray-500">Diferença sem − com</span><b class="' + (enoughSample ? 'text-white' : 'text-amber-300') + '">' + showSignedValue(split.difference_absent_minus_played) + ' · ' + (enoughSample ? 'amostra exploratória' : 'amostra reduzida') + '</b></div>' +
+        '<div class="text-[9px] text-gray-600">Jogos com status desconhecido excluídos: ' + participacoes(split.unknown_games_excluded) + '</div></div>';
+    });
+    complementaryHtml += '</div>';
+  }
+  complementaryHtml += '<div class="analysis-note">A lista automática considera companheiros com pelo menos 5 aparições e média de 20+ minutos na janela. “Sem ele” só inclui ausência confirmada por minutos zerados ou status explícito de DNP; casos desconhecidos são excluídos. Diferença observacional, não causal. Score não é alterado.</div></div></div>';
+  html += complementaryHtml;
+
   html += '</div>';
 
   const modalBody = document.getElementById('modalBody');
