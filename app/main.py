@@ -28,7 +28,7 @@ from app.availability_context import (
     select_eligible_players,
 )
 from app.nba_injury_reports import get_official_nba_injury_status
-from app.audit_metrics import build_context_reference_metrics, build_teammate_split_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
+from app.audit_metrics import build_context_reference_metrics, build_market_score_bands, build_teammate_split_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
 
 
 logging.basicConfig(level=logging.INFO)
