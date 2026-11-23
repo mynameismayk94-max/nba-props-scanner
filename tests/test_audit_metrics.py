@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from app.audit_metrics import build_teammate_split_metrics, build_context_reference_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
+from app.audit_metrics import build_market_score_bands, build_teammate_split_metrics, build_context_reference_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
 
 
 def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0, games_last5=5, games_last10=10, audit_rank=1):
@@ -238,3 +238,26 @@ def test_teammate_split_metrics_groups_by_effect():
     assert metrics["groups"]["insufficient"]["records"] == 1
     assert metrics["groups"]["positive"]["bias_l10"] == 3.0
     assert metrics["groups"]["negative"]["bias_l10"] == -2.0
+
+
+def test_market_score_bands_are_relative_to_each_market_distribution():
+    rows = [
+        make_row(0, score=2.0, actual=2.0),
+        make_row(1, score=3.0, actual=3.0),
+        make_row(2, score=4.0, actual=4.0),
+        make_row(3, score=5.0, actual=5.0),
+        make_row(4, score=6.0, actual=6.0),
+        make_row(5, score=7.0, actual=7.0),
+        make_row(6, score=8.0, actual=8.0),
+        make_row(7, score=9.0, actual=9.0),
+        make_row(8, score=10.0, actual=10.0),
+        make_row(9, score=11.0, actual=11.0),
+    ]
+    result = build_market_score_bands(rows)
+    assert result["sample"] == 10
+    assert result["status"] == "collecting"
+    assert len(result["bands"]) == 5
+    assert sum(band["records"] for band in result["bands"]) == 10
+    assert result["bands"][0]["label"] == "Muito alto"
+    assert result["bands"][-1]["label"] == "Muito baixo"
+    assert result["bands"][0]["score_min_observed"] >= result["bands"][-1]["score_max_observed"]
