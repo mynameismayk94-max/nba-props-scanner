@@ -663,14 +663,14 @@
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Perfil defensivo</th><th>Registros</th><th>Total cedido/jogo</th><th>Média da liga</th><th>Média real jogador</th></tr></thead>
+          <thead><tr><th>Perfil defensivo</th><th>Registros</th><th>Total cedido/jogo</th><th>Média da liga</th><th>Média real jogador</th><th>Δ vs média pessoal</th></tr></thead>
           <tbody id="gap-summary-table" class="text-gray-300">
-            <tr><td colspan="5" class="text-gray-400">Carregando auditoria defensiva...</td></tr>
+            <tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>
           </tbody>
         </table>
       </div>
       <p id="gap-audit-note" class="text-[10px] text-gray-400">Aguardando dados concluídos...</p>
-      <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da média da liga para a mesma posição. A média real é a produção individual dos jogadores agrupados pelo perfil defensivo enfrentado; não representa taxa de acerto de apostas nem rentabilidade. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
+      <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da média da liga para a mesma posição. Δ vs média pessoal = resultado real menos a média pré-jogo L5/L10 do próprio jogador; valor positivo indica produção acima do histórico recente, negativo indica abaixo. É uma comparação descritiva, não uma previsão. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
     </div>
 
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
@@ -1796,7 +1796,7 @@ function renderGapAudit() {
   const note = document.getElementById('gap-audit-note');
   const periodSelect = document.getElementById('gap-period-select');
   if(!summaryTable || !periodSelect) return;
-  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
+  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="6" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
   const periodKey = periodSelect.value || 'l5';
   const groups = gapAuditData.periods?.[periodKey] || {};
   const rows = [
@@ -1811,12 +1811,13 @@ function renderGapAudit() {
       '<td class="font-bold text-white">' + Number(group.count || 0) + '</td>' +
       '<td>' + (group.defense_allowed_average == null ? '—' : numero(group.defense_allowed_average)) + '</td>' +
       '<td>' + (group.league_average == null ? '—' : numero(group.league_average)) + '</td>' +
-      '<td class="font-bold text-white">' + (group.actual_player_average == null ? '—' : numero(group.actual_player_average)) + '</td></tr>';
+      '<td class="font-bold text-white">' + (group.actual_player_average == null ? '—' : numero(group.actual_player_average)) + '</td>' +
+      '<td>' + (group.actual_minus_player_baseline_average == null ? '—' : ((group.actual_minus_player_baseline_average > 0 ? '+' : '') + numero(group.actual_minus_player_baseline_average) + ' · n=' + Number(group.baseline_sample || 0))) + '</td></tr>';
   }).join('');
   const scoreBand = gapAuditData.score_band || 'all';
   note.innerText = (gapAuditData.completed_records || 0) + ' resultados concluídos · População: ' +
     (gapAuditData.cohort_label || 'Todos os elegíveis') + ' · Score: ' + (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
-    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Média real individual agrupada pela classificação da defesa. ' +
+    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Δ = resultado real menos média pré-jogo do próprio jogador. ' +
     Number(gapAuditData.legacy_records_without_new_reference || 0) + ' registros antigos sem benchmark da liga.';
 }
 async function fetchGapValidation(market, dateFrom, dateTo) {
