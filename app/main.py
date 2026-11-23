@@ -4460,6 +4460,58 @@ def collect_candidates(
         limit=final_limit
     )
 
+    # Captura histórica: o contexto de companheiros precisa existir ANTES
+    # do snapshot imutável. Limitamos a captura histórica aos 10 primeiros
+    # candidatos do ranking para não transformar a auditoria em uma nova etapa
+    # cara para toda a população elegível. O restante continua sendo calculado
+    # apenas quando necessário para a resposta operacional.
+    audit_context_start = time.perf_counter()
+    if not persist_operational and league_baseline and league_baseline.get("player_status_by_game"):
+        player_logs_by_id = player_logs
+        roster_by_team = {}
+        for roster_player in players:
+            roster_by_team.setdefault(
+                str(roster_player.get("team") or "").upper(), []
+            ).append(roster_player)
+        candidate_lookup = {
+            str(player.get("id")): (player, logs)
+            for player, logs in eligible_players
+        }
+        status_index = league_baseline["player_status_by_game"]
+
+        for result in eligible_all_results[:10]:
+            candidate_id = str(result.get("player_id") or "")
+            candidate_entry = candidate_lookup.get(candidate_id)
+            if not candidate_entry:
+                continue
+            candidate_player, candidate_logs = candidate_entry
+            team = str(candidate_player.get("team") or "").upper()
+            team_games = [
+                game for game in get_team_regular_season_schedule(team, year)
+                if (game.get("date") or "")[:10] < target_date.isoformat()
+            ]
+            team_games.sort(
+                key=lambda game: game.get("date") or "", reverse=True
+            )
+            team_games = team_games[:10]
+            player_logs_by_id[candidate_id] = (candidate_player, candidate_logs)
+            result["teammate_context"] = build_candidate_teammate_context(
+                candidate_id=candidate_id,
+                team=team,
+                roster=roster_by_team.get(team, []),
+                player_logs_by_id=player_logs_by_id,
+                team_games=team_games,
+                teammate_status_by_game=status_index
+            )
+
+        logger.info(
+            "Auditoria timing: data=%s mercado=%s etapa=contexto_companheiros_snapshot candidatos=%s tempo=%.2fs",
+            selected_date,
+            market,
+            sum(1 for item in eligible_all_results[:10] if item.get("teammate_context")),
+            time.perf_counter() - audit_context_start
+        )
+
     # A auditoria independente só captura quando chamada explicitamente pelo
     # endpoint /capture-audit-snapshot. O uso normal do Scanner não pode criar
     # nem alterar a fotografia da auditoria.
@@ -4490,6 +4542,8 @@ def collect_candidates(
         status_index = league_baseline["player_status_by_game"]
 
         for result in displayed_results:
+            if result.get("teammate_context"):
+                continue
             candidate_id = str(result.get("player_id") or "")
             candidate_entry = candidate_lookup.get(candidate_id)
             if not candidate_entry:
