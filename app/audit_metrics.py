@@ -221,7 +221,10 @@ def build_top10_vs_rest_metrics(rows: Iterable[tuple], min_records: int = 30, mi
     rest_rows = [row for row in completed if int(row[14]) > 10]
 
     def summarize(group):
-        residual_rows = [row for row in group if row[8] is not None]
+        residual_rows = [
+            row for row in group
+            if row[8] is not None and (_window_game_count(row, 13) or 0) >= 10
+        ]
         residuals = [
             float(row[10]) - float(row[8])
             for row in residual_rows
