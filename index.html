@@ -753,7 +753,7 @@
         </div>
       </div>
       <p id="ranking-separation" class="text-[10px] text-gray-400">Diferença ajustada: —</p>
-      <p class="text-[9px] text-gray-500">Δ ajustada = resultado real menos média pré-jogo L10 completa (10/10). Exige ao menos 30 registros com L10 completo e 15 jogadores distintos em cada grupo; é análise descritiva, não taxa de acerto.</p>
+      <p class="text-[9px] text-gray-500">Δ ajustada = resultado real menos média pré-jogo L10 completa (10/10). Exige ao menos 30 registros com L10 completo, 15 jogadores distintos em cada grupo e 14 datas com ambos os grupos para validação temporal; é análise descritiva, não taxa de acerto.</p>
     </div>
 
     <!-- Comparação diária do intervalo -->
@@ -2140,11 +2140,15 @@ async function fetchHistoryValidation() {
     document.getElementById('ranking-rest-count').innerText =
       (rest.records ?? 0) + ' registros · ' + (rest.players ?? 0) + ' jogadores · L10 10/10: ' + (rest.l10_residual_sample ?? 0);
     document.getElementById('ranking-separation').innerText =
-      ranking.sample_status !== 'sufficient' || ranking.l10_residual_difference == null
+      ranking.sample_status === 'insufficient' || ranking.l10_residual_difference == null
         ? 'Diferença ajustada indisponível: amostra insuficiente em um dos grupos.'
         : 'Δ ajustada Top 10 − demais: ' +
           (ranking.l10_residual_difference > 0 ? '+' : '') +
-          numero(ranking.l10_residual_difference) + ' unidades (resultado real − L10).';
+          numero(ranking.l10_residual_difference) + ' unidades (resultado real − L10). ' +
+          (ranking.sample_status === 'collecting'
+            ? 'Provisório: ' + (ranking.distinct_dates ?? 0) + '/' +
+              (ranking.minimum_dates_for_validation ?? 14) + ' datas com ambos os grupos.'
+            : 'Validação temporal mínima atingida.');
 
     renderDailyBreakdown(res.daily || []);
     const breakdownPanel = document.getElementById('daily-breakdown-panel');
