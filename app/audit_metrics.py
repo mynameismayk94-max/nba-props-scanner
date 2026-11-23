@@ -128,3 +128,46 @@ def is_temporally_valid_peer(candidate_row: tuple, target_row: tuple) -> bool:
         _date_key(candidate_date) < _date_key(target_date)
         and str(candidate_row[1]) != str(target_row[1])
     )
+
+
+def build_gap_group_metrics(records: Iterable[dict], period_key: str) -> dict:
+    """Summarize defensive groups and player-baseline-adjusted outcomes."""
+    baseline_key = "player_l5_avg" if period_key == "l5" else "player_l10_avg"
+    group = list(records)
+    completed = [item for item in group if item.get("actual") is not None]
+    baseline_rows = [
+        item for item in completed
+        if item.get(baseline_key) is not None
+    ]
+
+    def average(values):
+        values = [float(value) for value in values if value is not None]
+        return round(sum(values) / len(values), 2) if values else None
+
+    def period_values(key, field):
+        return [
+            (item.get(key) or {}).get(field)
+            for item in group
+            if (item.get(key) or {}).get(field) is not None
+        ]
+
+    return {
+        "count": len(group),
+        "completed": len(completed),
+        "defense_allowed_average": average(period_values(period_key, "defense_allowed")),
+        "league_average": average(period_values(period_key, "league_average")),
+        "actual_player_average": average([item["actual"] for item in completed]),
+        "deviation_pct_average": average(period_values(period_key, "difference_pct")),
+        "defense_games_average": average([
+            value for value in period_values(period_key, "games") if float(value) > 0
+        ]),
+        "league_games_average": average([
+            value for value in period_values(period_key, "league_games") if float(value) > 0
+        ]),
+        "baseline_sample": len(baseline_rows),
+        "player_baseline_average": average([item[baseline_key] for item in baseline_rows]),
+        "actual_minus_player_baseline_average": average([
+            float(item["actual"]) - float(item[baseline_key])
+            for item in baseline_rows
+        ]),
+    }
