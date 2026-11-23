@@ -5,6 +5,7 @@ As consultas de ranking e equipe leem exclusivamente os snapshots desta tabela.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from typing import Callable
 
 from fastapi import APIRouter, HTTPException, Query
@@ -36,6 +37,7 @@ def create_context_router(
     team_abbreviations,
 ):
     router = APIRouter(tags=["Central de Contexto NBA"])
+    context_timezone = ZoneInfo("America/Sao_Paulo")
     teams = tuple(sorted(set(team_abbreviations)))
 
     def ensure_table():
@@ -154,7 +156,7 @@ def create_context_router(
     def defense_context_status(
         selected_date: str | None = Query(default=None, alias="date")
     ):
-        target_date = parse_date(selected_date) if selected_date else date.today()
+        target_date = parse_date(selected_date) if selected_date else datetime.now(context_timezone).date()
         ensure_table()
         with get_database_connection() as connection:
             with connection.cursor() as cursor:
