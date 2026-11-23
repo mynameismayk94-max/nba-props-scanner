@@ -422,8 +422,8 @@
         <details>
           <summary>Como o Score é formado?</summary>
           <div class="legend-detail">
-            <div><strong>L5 60% + L10 40% + ajuste de consistência</strong></div>
-            <div class="mt-1">A média L5 recebe peso de 60% e a média L10, 40%. Depois, o resultado é ajustado pela consistência dos últimos 5 jogos: quanto mais vezes o jogador atinge ou supera sua própria média L5, maior o ajuste.</div>
+            <div><strong>L5 60% + L10 40% + ajuste de frequência</strong></div>
+            <div class="mt-1">A média L5 recebe peso de 60% e a média L10, 40%. Depois, aplica-se um fator de 0,80 a 1,00 conforme a proporção de jogos L5 em que o jogador atingiu ou superou a própria média L5. Isso mede frequência acima da média, não estabilidade ou dispersão.</div>
             <div class="text-gray-500 mt-1">O Score é um indicador estatístico de prioridade, não uma recomendação ou garantia de resultado.</div>
           </div>
         </details>
@@ -432,7 +432,7 @@
           <div class="legend-detail">
             <div><strong>Menor valor = defesa mais forte · maior valor = mais vulnerável</strong></div>
             <div class="mt-1 space-y-1"><div><span class="text-emerald-400">Acima</span> — defesa permite mais de 10% que a média da liga para a posição.</div><div><span class="text-amber-300">Próximo</span> — dentro de ±10%.</div><div><span class="text-red-400">Abaixo</span> — permite menos de 10%.</div></div>
-            <div class="text-gray-500 mt-1">Referência geral: total cedido à posição por partida, sem corte mínimo de minutos. No modal, há análise complementar de jogadores da mesma posição com minutagem ±5 min.</div>
+            <div class="text-gray-500 mt-1">Referência geral: total cedido à posição por partida, sem corte mínimo de minutos. No modal, há análise complementar de jogadores da mesma posição com minutagem ±5 min. A classificação é descritiva; a média real dos grupos não comprova causalidade nem poder preditivo.</div>
           </div>
         </details>
       </div>
@@ -550,7 +550,7 @@
         <div><span class="font-semibold text-gray-200">Pendente</span> — ainda sem resultado nem DNP; toque no card para ver o motivo.</div>
         <div><span class="font-semibold text-emerald-300">MAE</span> — distância média entre previsão e resultado; <strong>menor é melhor</strong>.</div>
         <div><span class="font-semibold text-indigo-300">Pearson</span> — força da associação entre Score e resultado real; vai de -1 a +1.</div>
-        <div><span class="font-semibold text-gray-200">Calibração por Score</span> — mostra como diferentes faixas do Score se comportam na prática.</div>
+        <div><span class="font-semibold text-gray-200">Desempenho por faixa de Score</span> — mostra a produção observada em cada faixa; não é calibração probabilística.</div>
         <div><span class="font-semibold text-gray-200">Contexto defensivo</span> — compara o perfil defensivo enfrentado com a produção real dos candidatos.</div>
       </div>
       <p class="text-[9px] text-gray-500 border-t border-gray-800 pt-2">
@@ -596,7 +596,7 @@
 
     <!-- Tabela de Calibração e qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">📊 Calibração por faixa de Score</h3>
+      <h3 class="text-xs font-semibold text-white">📊 Desempenho observado por faixa de Score</h3>
       <div class="tablewrap">
         <table>
           <thead>
@@ -660,7 +660,7 @@
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
-      <p class="text-[10px] text-gray-400">Selecione uma faixa de score para comparar seus registros concluídos com até três registros de outros jogadores da mesma posição e com L5, L10 e minutos médios mais próximos.</p>
+      <p class="text-[10px] text-gray-400">Selecione uma faixa de Score para comparar registros concluídos com até três referências de outros jogadores da mesma posição, usando apenas datas anteriores ao registro analisado. É uma análise exploratória, não uma previsão.</p>
       <div class="flex flex-wrap items-center gap-2">
         <label for="similarity-band-select" class="text-[10px] text-gray-400">Faixa analisada</label>
         <select id="similarity-band-select" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white">
