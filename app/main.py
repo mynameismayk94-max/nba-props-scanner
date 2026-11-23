@@ -4531,13 +4531,20 @@ def capture_audit_snapshot(
 
 @app.get("/refresh-audit")
 def refresh_audit(
-    selected_date: str = Query(alias="date"),
+    selected_date: Optional[str] = Query(default=None, alias="date"),
+    history: bool = Query(default=False),
 ):
     """
-    Rotina híbrida da Auditoria:
+    Rotina híbrida da Auditoria.
+
+    Modo diário:
     1) garante a captura do dia informado para todos os mercados ativos;
-    2) em seguida, tenta apurar todas as pendências de resultados já capturadas
-       em datas anteriores, sem exigir seleção manual de cada data.
+    2) tenta apurar pendências de resultados de datas anteriores à data informada.
+
+    Modo histórico acumulado (?history=true):
+    1) usa automaticamente a data atual de São Paulo;
+    2) garante a captura de hoje para todos os mercados ativos;
+    3) tenta apurar todas as combinações históricas pendentes, incluindo hoje.
     """
     if not DATABASE_URL:
         raise HTTPException(
@@ -4545,16 +4552,25 @@ def refresh_audit(
             detail="Banco de dados não configurado."
         )
 
-    try:
-        target_date = datetime.strptime(
-            selected_date,
-            "%Y-%m-%d"
-        ).date()
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Data inválida. Utilize AAAA-MM-DD."
-        )
+    if history:
+        target_date = audit_history_cutoff_date()
+        selected_date = target_date.isoformat()
+    else:
+        if not selected_date:
+            raise HTTPException(
+                status_code=400,
+                detail="Data obrigatória para atualização diária."
+            )
+        try:
+            target_date = datetime.strptime(
+                selected_date,
+                "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Data inválida. Utilize AAAA-MM-DD."
+            )
 
     capture_results = []
     capture_failures = []
@@ -4603,12 +4619,13 @@ def refresh_audit(
                     ON nr.selected_date = s.selected_date
                     AND nr.market = s.market
                     AND nr.player_id = s.player_id
-                WHERE s.selected_date < %s
+                WHERE s.selected_date ${history ? "<=" : "<"} %s
+                  AND s.selected_date >= %s
                   AND r.id IS NULL
                   AND nr.id IS NULL
                 ORDER BY s.selected_date ASC, s.market ASC
                 """,
-                (target_date,)
+                (audit_history_start_date(), target_date)
             )
             pending_combinations = cursor.fetchall()
 
@@ -4648,6 +4665,7 @@ def refresh_audit(
             else "partial"
         ),
         "date": selected_date,
+        "history": history,
         "capture": {
             "markets": capture_results,
             "failures": capture_failures,
