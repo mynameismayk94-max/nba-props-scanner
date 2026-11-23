@@ -52,11 +52,20 @@ def _metrics(rows: list[tuple], model: str) -> dict:
     }
 
 
-def build_model_comparison(rows: Iterable[tuple]) -> dict:
-    """Compare L5, L10, raw 60/40 blend and current Score on identical rows.
+def _window_game_count(row: tuple, index: int) -> int | None:
+    try:
+        value = row[index]
+        return int(value) if value is not None else None
+    except (IndexError, TypeError, ValueError):
+        return None
 
-    Expected row positions follow /validation-history's SQL result:
-    0=date, 6=triage_score, 7=L5, 8=L10, 10=actual_value.
+
+def build_model_comparison(rows: Iterable[tuple]) -> dict:
+    """Compare available and full L5/L10 windows on identical records.
+
+    Expected row positions follow /validation-history SQL:
+    0=date, 6=triage_score, 7=L5, 8=L10, 10=actual_value,
+    12=games_last5, 13=games_last10.
     """
     eligible = [
         row for row in rows
@@ -69,11 +78,42 @@ def build_model_comparison(rows: Iterable[tuple]) -> dict:
     models = ("l5", "l10", "blend_60_40", "score_current")
     overall = {model: _metrics(eligible, model) for model in models}
 
-    dates = sorted({_date_key(row[0]) for row in eligible})
+    full_window_rows = [
+        row for row in eligible
+        if (_window_game_count(row, 12) or 0) >= 5
+        and (_window_game_count(row, 13) or 0) >= 10
+    ]
+    full_window_models = {
+        model: _metrics(full_window_rows, model)
+        for model in models
+    }
+
+    l5_counts = [_window_game_count(row, 12) for row in eligible]
+    l10_counts = [_window_game_count(row, 13) for row in eligible]
+    effective_samples = {
+        "l5": {
+            "records": len(eligible),
+            "complete_window": sum(value is not None and value >= 5 for value in l5_counts),
+            "partial_window": sum(value is not None and value < 5 for value in l5_counts),
+            "unknown_window": sum(value is None for value in l5_counts),
+        },
+        "l10": {
+            "records": len(eligible),
+            "complete_window": sum(value is not None and value >= 10 for value in l10_counts),
+            "partial_window": sum(value is not None and value < 10 for value in l10_counts),
+            "unknown_window": sum(value is None for value in l10_counts),
+        },
+    }
+
+    dates = sorted({_date_key(row[0]) for row in full_window_rows})
     result = {
         "sample": len(eligible),
-        "distinct_dates": len(dates),
+        "distinct_dates": len({_date_key(row[0]) for row in eligible}),
         "models": overall,
+        "effective_sample_counts": effective_samples,
+        "full_window_sample": len(full_window_rows),
+        "full_window_distinct_dates": len(dates),
+        "full_window_models": full_window_models,
         "temporal_holdout": {
             "status": "collecting",
             "minimum_dates": MINIMUM_TEMPORAL_DATES,
@@ -85,10 +125,10 @@ def build_model_comparison(rows: Iterable[tuple]) -> dict:
             "models": {},
         },
         "method_note": (
-            "Comparação na mesma amostra de registros concluídos: L5, L10, "
-            "média bruta 60/40 e Score atual. MAE e viés são descritivos. "
-            "A validação temporal usa somente datas posteriores como holdout; "
-            "não altera nem recalcula o Score salvo."
+            "A comparação geral inclui todos os registros com valores L5/L10 disponíveis, "
+            "inclusive janelas parciais. A comparação de janela completa exige 5/5 jogos "
+            "para L5 e 10/10 para L10. O holdout temporal usa somente janelas completas. "
+            "O Score é um índice de triagem; seu MAE é apenas diagnóstico numérico."
         ),
     }
 
@@ -100,7 +140,7 @@ def build_model_comparison(rows: Iterable[tuple]) -> dict:
     train_dates = dates[:split_index]
     test_dates = set(dates[split_index:])
     holdout_rows = [
-        row for row in eligible if _date_key(row[0]) in test_dates
+        row for row in full_window_rows if _date_key(row[0]) in test_dates
     ]
     result["temporal_holdout"] = {
         "status": "ready",
