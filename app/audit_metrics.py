@@ -366,6 +366,81 @@ def build_context_reference_metrics(records: Iterable[dict]) -> dict:
     }
 
 
+def build_teammate_split_metrics(records: Iterable[dict], stat_key: str) -> dict:
+    """Avalia se o split histórico de companheiros se associa ao erro do L10.
+
+    O split é um contexto pré-jogo, mas não é transformado em uma projeção nova.
+    A análise agrupa os snapshots pelo sinal do efeito histórico (ausente - presente)
+    e compara o erro absoluto e o residual do L10. É exploratória e requer holdout.
+    """
+    completed = [
+        item for item in records
+        if item.get("actual") is not None and item.get("player_l10_avg") is not None
+    ]
+
+    def num(value):
+        try:
+            value = float(value)
+            return value if value == value and abs(value) != float("inf") else None
+        except (TypeError, ValueError):
+            return None
+
+    groups = {"positive": [], "negative": [], "neutral": [], "insufficient": []}
+    for item in completed:
+        context = item.get("teammate_context") or {}
+        comparisons = context.get("comparisons") or {}
+        effects = []
+        for comparison in comparisons.values():
+            metric = (comparison or {}).get(stat_key) or {}
+            effect = num(metric.get("difference_absent_minus_played"))
+            if effect is not None:
+                effects.append(effect)
+        if not effects:
+            groups["insufficient"].append(item)
+            continue
+        # Um único sinal agregado por snapshot: média dos companheiros elegíveis.
+        effect = sum(effects) / len(effects)
+        enriched = dict(item)
+        enriched["_teammate_effect"] = effect
+        if effect > 0:
+            groups["positive"].append(enriched)
+        elif effect < 0:
+            groups["negative"].append(enriched)
+        else:
+            groups["neutral"].append(enriched)
+
+    def summarize(items):
+        residuals = [num(x.get("actual")) - num(x.get("player_l10_avg")) for x in items]
+        residuals = [x for x in residuals if x is not None]
+        return {
+            "records": len(items),
+            "mae_l10": round(sum(abs(x) for x in residuals) / len(residuals), 4) if residuals else None,
+            "bias_l10": round(sum(residuals) / len(residuals), 4) if residuals else None,
+            "actual_average": round(sum(num(x.get("actual")) for x in items if num(x.get("actual")) is not None) / len(items), 4) if items else None,
+            "effect_average": round(sum(x["_teammate_effect"] for x in items) / len(items), 4) if items else None,
+        }
+
+    return {
+        "stat_key": stat_key,
+        "completed_records": len(completed),
+        "groups": {name: summarize(items) for name, items in groups.items()},
+        "context_coverage_pct": round((len(completed) - len(groups["insufficient"])) / len(completed) * 100, 2) if completed else 0.0,
+        "distinct_dates": len({_date_key(item.get("date")) for item in completed if item.get("date")}),
+        "minimum_dates_for_temporal_validation": MINIMUM_TEMPORAL_DATES,
+        "temporal_status": (
+            "ready"
+            if len({_date_key(item.get("date")) for item in completed if item.get("date")}) >= MINIMUM_TEMPORAL_DATES
+            else "collecting"
+        ),
+        "method_note": (
+            "Efeito do companheiro = média histórica do candidato sem o companheiro menos com o companheiro, "
+            "calculada somente com jogos anteriores e status explicitamente confirmado. Agrupa snapshots pelo "
+            "sinal desse efeito e compara MAE/resíduo L10. Não é causalidade, projeção ajustada, probabilidade "
+            "de over/under nem EV. A conclusão deve ser confirmada por holdout temporal."
+        ),
+    }
+
+
 def build_gap_group_metrics(records: Iterable[dict], period_key: str) -> dict:
     """Summarize defensive groups and player-baseline-adjusted outcomes."""
     baseline_key = "player_l5_avg" if period_key == "l5" else "player_l10_avg"
