@@ -689,6 +689,37 @@
       <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da média da liga para a mesma posição. Δ vs média pessoal = resultado real menos a média pré-jogo L5/L10 do próprio jogador; valor positivo indica produção acima do histórico recente, negativo indica abaixo. É uma comparação descritiva, não uma previsão. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
     </div>
 
+    <!-- Validação dos contextos pré-jogo capturados no snapshot -->
+    <div class="glass-panel p-3 space-y-3">
+      <div>
+        <h3 class="text-xs font-semibold text-white">🔬 Validação dos contextos pré-jogo</h3>
+        <p class="text-[10px] text-gray-400 mt-1">Compara referências contextuais capturadas antes da partida com o resultado real. É diagnóstico exploratório e não altera o Score.</p>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Defesa filtrada por minutos</span>
+          <strong id="context-validation-filtered" class="text-sm text-white">—</strong>
+          <span id="context-validation-filtered-sample" class="block text-[9px] text-gray-500">Aguardando...</span>
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Faixa de minutos</span>
+          <strong id="context-validation-minute-band" class="text-sm text-white">—</strong>
+          <span id="context-validation-minute-band-sample" class="block text-[9px] text-gray-500">Aguardando...</span>
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Jogo equivalente</span>
+          <strong id="context-validation-equal-game" class="text-sm text-white">—</strong>
+          <span id="context-validation-equal-game-sample" class="block text-[9px] text-gray-500">Aguardando...</span>
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400 uppercase">Split de companheiros</span>
+          <strong id="teammate-validation-effect" class="text-sm text-white">—</strong>
+          <span id="teammate-validation-sample" class="block text-[9px] text-gray-500">Aguardando...</span>
+        </div>
+      </div>
+      <p id="context-validation-note" class="text-[9px] text-gray-500">Aguardando dados históricos suficientes.</p>
+    </div>
+
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
@@ -924,6 +955,8 @@ let gapAuditData = null;
 let auditCohort = 'all';
 let auditMode = 'daily';
 let auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
+let contextValidationRequestId = 0;
+let contextValidationData = null;
 
 function setAuditMode(mode) {
   if (!['daily', 'range', 'all'].includes(mode)) return;
@@ -1828,7 +1861,16 @@ function limparIndicadoresAuditoria() {
   if (fullComparisonNote) fullComparisonNote.innerText = 'Aguardando dados de janelas completas.';
 
   gapAuditData = null;
+  contextValidationData = null;
   auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
+  ['context-validation-filtered', 'context-validation-minute-band', 'context-validation-equal-game', 'teammate-validation-effect'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = '—';
+  });
+  ['context-validation-filtered-sample', 'context-validation-minute-band-sample', 'context-validation-equal-game-sample', 'teammate-validation-sample'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = 'Aguardando...';
+  });
   const metricDetails = document.getElementById('audit-metric-details');
   if (metricDetails) {
     metricDetails.classList.add('hidden');
@@ -1929,6 +1971,72 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
+function renderContextValidation() {
+  const data = contextValidationData || {};
+  const metrics = data.metrics || {};
+  const refs = [
+    ['filtered','opponent_position_minutes_filtered_defense_l10_avg','context-validation-filtered','context-validation-filtered-sample'],
+    ['minute_band','opponent_position_minute_band_defense_l10_avg','context-validation-minute-band','context-validation-minute-band-sample'],
+    ['equal_game','opponent_position_equal_game_defense_l10_avg','context-validation-equal-game','context-validation-equal-game-sample']
+  ];
+  refs.forEach(([key, field, valueId, sampleId]) => {
+    const metric = metrics[key] || {};
+    const value = metric.context_mae_delta_vs_l10;
+    const label = value == null ? '—' : ((value > 0 ? '+' : '') + numero(value, 3) + ' MAE');
+    const valueEl = document.getElementById(valueId);
+    const sampleEl = document.getElementById(sampleId);
+    if (valueEl) valueEl.innerText = label;
+    if (sampleEl) sampleEl.innerText =
+      (metric.sample || 0) + ' registros · cobertura ' + numero(metric.coverage_pct || 0, 1) + '%';
+  });
+
+  const teammate = data.teammate || {};
+  const teammateValue = teammate.effect_average;
+  const teammateEl = document.getElementById('teammate-validation-effect');
+  const teammateSampleEl = document.getElementById('teammate-validation-sample');
+  if (teammateEl) teammateEl.innerText =
+    teammateValue == null ? '—' : ((teammateValue > 0 ? '+' : '') + numero(teammateValue, 2));
+  if (teammateSampleEl) teammateSampleEl.innerText =
+    (teammate.usable_splits || 0) + ' splits utilizáveis · ' +
+    (teammate.coverage_pct == null ? '—' : numero(teammate.coverage_pct, 1) + '% cobertura');
+
+  const note = document.getElementById('context-validation-note');
+  if (note) {
+    const dates = data.distinct_dates || 0;
+    note.innerText = 'Mercado ' + (data.market_label || data.market || 'selecionado') +
+      ' · ' + dates + '/14 datas para validação temporal. ' +
+      (dates >= 14 ? 'Holdout temporal disponível.' : 'Ainda em coleta; nenhum efeito será incorporado ao Score.');
+  }
+}
+
+async function fetchContextValidation(market, dateFrom, dateTo) {
+  const requestId = ++contextValidationRequestId;
+  contextValidationData = null;
+  const note = document.getElementById('context-validation-note');
+  if (note) note.innerText = 'Consultando referências contextuais imutáveis...';
+  try {
+    const dateParams = (dateFrom ? '&date_from=' + encodeURIComponent(dateFrom) : '') +
+      (dateTo ? '&date_to=' + encodeURIComponent(dateTo) : '');
+    const [contextRes, teammateRes] = await Promise.all([
+      requisicao('/context-validation?market=' + encodeURIComponent(market) + '&cohort=' + encodeURIComponent(auditCohort) + dateParams),
+      requisicao('/teammate-split-validation?market=' + encodeURIComponent(market) + '&cohort=' + encodeURIComponent(auditCohort) + dateParams)
+    ]);
+    if (requestId !== contextValidationRequestId) return;
+    if (contextRes.status !== 'ok' || teammateRes.status !== 'ok') throw new Error('Resposta inválida');
+    contextValidationData = {
+      ...contextRes,
+      market_label: contextRes.market_label || market,
+      teammate: teammateRes.metrics || {}
+    };
+    renderContextValidation();
+  } catch (error) {
+    if (requestId !== contextValidationRequestId) return;
+    contextValidationData = null;
+    const note = document.getElementById('context-validation-note');
+    if (note) note.innerText = 'Não foi possível carregar a validação contextual neste momento.';
+  }
+}
+
 async function atualizarAuditoriaHibrida() {
   const btn = document.getElementById('audit-refresh-btn');
   const statusEl = document.getElementById('audit-refresh-status');
@@ -2011,6 +2119,7 @@ async function fetchHistoryValidation() {
   const requestId = ++historyValidationRequestId;
   limparIndicadoresAuditoria();
   fetchGapValidation(market, dateFrom || '', dateTo || '');
+  fetchContextValidation(market, dateFrom || '', dateTo || '');
 
   const sampleCount = document.getElementById('hist-sample-count');
   if (sampleCount) sampleCount.innerText = '...';
