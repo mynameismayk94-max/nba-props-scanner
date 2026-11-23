@@ -592,12 +592,12 @@
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. MAE / média prevista é uma razão agregada (não é MAPE). Pearson mede associação linear entre Score e resultado real (-1 a +1); não mede acerto nem causalidade.</p>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. As amostras distinguem janelas completas e parciais. MAE / média prevista não é MAPE. Pearson mede associação linear, não acerto nem causalidade.</p>
 
     <!-- Comparação de referências estatísticas na mesma amostra -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">⚖️ Comparação de referências pré-jogo</h3>
-      <p class="text-[10px] text-gray-400">Compara L5, L10, média bruta 60/40 e o Score atual apenas como referência numérica de ranking, usando os mesmos registros concluídos. É uma comparação exploratória, não uma taxa de acerto. O Score original permanece inalterado.</p>
+      <p class="text-[10px] text-gray-400">A primeira tabela usa todos os registros com L5/L10 disponíveis, inclusive janelas parciais. A segunda restringe a comparação a L5 5/5 e L10 10/10. O Score é índice de triagem; seu MAE é apenas diagnóstico numérico, não uma projeção. A fórmula original permanece inalterada.</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>Referência</th><th>Amostra</th><th>MAE</th><th>Viés</th></tr></thead>
@@ -606,7 +606,19 @@
           </tbody>
         </table>
       </div>
-      <p id="model-comparison-note" class="text-[9px] text-gray-500">MAE menor indica menor erro. Viés = previsão média menos resultado médio; valor negativo indica subestimação. A validação temporal exige pelo menos 14 datas distintas.</p>
+      <p id="model-comparison-note" class="text-[9px] text-gray-500">Amostras disponíveis: podem incluir janelas parciais. Viés = média da referência menos média real; negativo indica subestimação.</p>
+      <div class="pt-2 border-t border-gray-800 space-y-2">
+        <h4 class="text-[10px] font-semibold text-white">Janelas completas · L5 5/5 + L10 10/10</h4>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Referência</th><th>Amostra</th><th>MAE</th><th>Viés</th></tr></thead>
+            <tbody id="model-comparison-full-table" class="text-gray-300">
+              <tr><td colspan="4" class="text-gray-400">Aguardando dados de janelas completas.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p id="model-comparison-full-note" class="text-[9px] text-gray-500">O holdout temporal será calculado somente com janelas completas e exige pelo menos 14 datas distintas.</p>
+      </div>
     </div>
 
     <!-- Tabela de Calibração e qualidade do ranking -->
@@ -1966,10 +1978,16 @@ async function fetchHistoryValidation() {
       (summary.no_result_results ?? 0) + ' sem resultado + ' +
       (summary.pending_results ?? 0) + ' aguardando apuração. DNPs e pendências não entram nas métricas de precisão.';
     document.getElementById('audit-metric-sample-note').innerText =
-      'Amostras usadas: MAE L5 = ' + (summary.l5_sample ?? summary.completed_results ?? 0) +
-      ' registros; MAE L10 = ' + (summary.l10_sample ?? summary.completed_results ?? 0) +
-      ' registros; Pearson = ' + (summary.pearson_sample ?? summary.completed_results ?? 0) +
-      ' pares Score/resultado. MAE menor indica menor erro; MAE / média prevista não é MAPE; Pearson mede associação linear, não acerto.';
+      'L5: ' + (summary.l5_sample ?? summary.completed_results ?? 0) + ' registros (' +
+      (summary.l5_full_window_sample ?? 0) + ' completos 5/5, ' +
+      (summary.l5_partial_window_sample ?? 0) + ' parciais, ' +
+      (summary.l5_unknown_window_sample ?? 0) + ' sem contagem). L10: ' +
+      (summary.l10_sample ?? summary.completed_results ?? 0) + ' registros (' +
+      (summary.l10_full_window_sample ?? 0) + ' completos 10/10, ' +
+      (summary.l10_partial_window_sample ?? 0) + ' parciais, ' +
+      (summary.l10_unknown_window_sample ?? 0) + ' sem contagem). Pearson: ' +
+      (summary.pearson_sample ?? summary.completed_results ?? 0) +
+      ' pares Score/resultado. MAE menor indica menor erro; Pearson não mede acerto.';
     document.getElementById('kpi-l5-mae').innerText = summary.l5_mae ?? '--';
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
@@ -1983,7 +2001,7 @@ async function fetchHistoryValidation() {
       l5: 'L5',
       l10: 'L10',
       blend_60_40: 'Média 60/40 sem ajuste',
-      score_current: 'Score atual (diagnóstico numérico)'
+      score_current: 'Score atual (diagnóstico)'
     };
     if (comparison && comparison.models && comparisonBody) {
       comparisonBody.innerHTML = Object.entries(comparisonLabels).map(([key, label]) => {
@@ -1995,15 +2013,30 @@ async function fetchHistoryValidation() {
       }).join('');
       const holdout = comparison.temporal_holdout || {};
       document.getElementById('model-comparison-note').innerText =
-        'Comparação descritiva: ' + (comparison.sample ?? 0) + ' registros na mesma amostra. O Score é um índice de triagem, não uma projeção; seu MAE é apenas diagnóstico numérico.  +
+        'Comparação descritiva: ' + (comparison.sample ?? 0) +
+        ' registros com janelas disponíveis. O Score é índice de triagem, não projeção; seu MAE é apenas diagnóstico numérico.';
+      const fullBody = document.getElementById('model-comparison-full-table');
+      if (fullBody) {
+        fullBody.innerHTML = Object.entries(comparisonLabels).map(([key, label]) => {
+          const metric = comparison.full_window_models?.[key] || {};
+          return '<tr><td class="font-semibold">' + label + '</td>' +
+            '<td>' + (metric.sample ?? 0) + '</td>' +
+            '<td>' + (metric.mae == null ? '—' : numero(metric.mae, 3)) + '</td>' +
+            '<td>' + (metric.bias == null ? '—' : numero(metric.bias, 3)) + '</td></tr>';
+        }).join('');
+      }
+      document.getElementById('model-comparison-full-note').innerText =
+        'Janelas completas: ' + (comparison.full_window_sample ?? 0) +
+        ' registros · ' + (comparison.full_window_distinct_dates ?? 0) +
+        ' datas distintas. ' +
         (holdout.status === 'ready'
           ? 'Holdout temporal: ' + holdout.test_start_date + ' a ' + holdout.test_end_date +
-            ' (' + holdout.test_dates + ' datas). MAE no período: ' +
+            ' (' + holdout.test_dates + ' datas). MAE no holdout: ' +
             Object.entries(comparisonLabels).map(([key, label]) =>
               label + ' ' + (holdout.models?.[key]?.mae == null ? '—' : numero(holdout.models[key].mae, 3))
             ).join(' · ') + '.'
-          : 'Validação temporal ainda em coleta: ' + (holdout.dates_available ?? 0) +
-            '/' + (holdout.minimum_dates ?? 14) + ' datas distintas; ainda não há holdout suficiente.');
+          : 'Holdout temporal aguardando: ' + (holdout.dates_available ?? 0) +
+            '/' + (holdout.minimum_dates ?? 14) + ' datas distintas; ainda insuficiente.');
     } else if (comparisonBody) {
       comparisonBody.innerHTML = '<tr><td colspan="4" class="text-gray-400">Aguardando a versão da API com comparação de modelos.</td></tr>';
     }
