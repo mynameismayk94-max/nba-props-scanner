@@ -28,6 +28,7 @@ from app.availability_context import (
     select_eligible_players,
 )
 from app.nba_injury_reports import get_official_nba_injury_status
+from app.audit_metrics import build_model_comparison
 
 
 logging.basicConfig(level=logging.INFO)
@@ -6740,6 +6741,7 @@ def validation_history(
     # Mantém compatibilidade com consumidores da versão anterior da API.
     similarity_analysis = similarity_analyses.get("6-6.99", {})
     overall_metrics = build_metrics(completed_rows)
+    model_comparison = build_model_comparison(completed_rows)
 
     # Separação entre a faixa de maior score e a de menor score.
     high_band = next((b for b in bands_output if b["band"] == "7+"), None)
@@ -6836,6 +6838,7 @@ def validation_history(
             "pending": period_for_rows(pending_rows)
         },
         "score_bands": bands_output,
+        "model_comparison": model_comparison,
         "similarity_analysis": similarity_analysis,
         "similarity_analyses": similarity_analyses,
         "ranking_quality": high_low,
