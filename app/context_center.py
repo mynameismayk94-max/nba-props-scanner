@@ -31,6 +31,58 @@ STAT_LABELS = {
 }
 
 
+def build_venue_windows(history: dict, venue: str) -> dict:
+    """Recorta casa/fora dentro das últimas 5/10 partidas totais da equipe.
+
+    A janela é definida antes do filtro de mando. Assim, L5/L10 não são
+    incorretamente apresentados como 5/10 partidas em casa/fora quando
+    a fonte carregou apenas as últimas 10 partidas totais.
+    """
+    games = history.get("games", [])
+    output = {}
+    for window_size in (5, 10):
+        sample = [
+            game for game in games[:window_size]
+            if game.get("home_away") == venue
+        ]
+        positions = {}
+        for position in ("G", "F", "C"):
+            averages = {}
+            stat_games = {}
+            appearances = {}
+            position_games = [
+                game.get("positions", {}).get(position, {})
+                for game in sample
+                if game.get("positions", {}).get(position, {}).get("players_count", 0) > 0
+            ]
+            for stat in STAT_KEYS:
+                values = [
+                    item.get(stat) for item in position_games
+                    if item.get(stat) is not None
+                ]
+                averages[stat] = round(sum(values) / len(values), 1) if values else None
+                stat_games[stat] = len(values)
+                appearances[stat] = sum(
+                    item.get("stat_players_count", {}).get(stat, 0)
+                    for item in position_games
+                )
+            player_counts = [item.get("players_count", 0) for item in position_games]
+            positions[position] = {
+                "games_analyzed": len(position_games),
+                "players_per_game_avg": round(sum(player_counts) / len(player_counts), 1) if player_counts else 0,
+                "averages": averages,
+                "stat_games_analyzed": stat_games,
+                "stat_player_appearances": appearances
+            }
+        output[f"L{window_size}"] = {
+            "team_games_window": window_size,
+            "venue_games_in_window": len(sample),
+            "games_analyzed": len(sample),
+            "positions": positions
+        }
+    return output
+
+
 def create_context_router(
     get_database_connection: Callable,
     get_team_defense_history: Callable,
@@ -81,49 +133,6 @@ def create_context_router(
                 status_code=400,
                 detail="Data inválida. Utilize AAAA-MM-DD."
             )
-
-    def build_venue_windows(history, venue):
-        games = [
-            game for game in history.get("games", [])
-            if game.get("home_away") == venue
-        ]
-        output = {}
-        for window_size in (5, 10):
-            sample = games[:window_size]
-            positions = {}
-            for position in ("G", "F", "C"):
-                averages = {}
-                stat_games = {}
-                appearances = {}
-                position_games = [
-                    game.get("positions", {}).get(position, {})
-                    for game in sample
-                    if game.get("positions", {}).get(position, {}).get("players_count", 0) > 0
-                ]
-                for stat in STAT_KEYS:
-                    values = [
-                        item.get(stat) for item in position_games
-                        if item.get(stat) is not None
-                    ]
-                    averages[stat] = round(sum(values) / len(values), 1) if values else None
-                    stat_games[stat] = len(values)
-                    appearances[stat] = sum(
-                        item.get("stat_players_count", {}).get(stat, 0)
-                        for item in position_games
-                    )
-                player_counts = [item.get("players_count", 0) for item in position_games]
-                positions[position] = {
-                    "games_analyzed": len(position_games),
-                    "players_per_game_avg": round(sum(player_counts) / len(player_counts), 1) if player_counts else 0,
-                    "averages": averages,
-                    "stat_games_analyzed": stat_games,
-                    "stat_player_appearances": appearances
-                }
-            output[f"L{window_size}"] = {
-                "games_analyzed": len(sample),
-                "positions": positions
-            }
-        return output
 
     def load_snapshots(target_date):
         try:
