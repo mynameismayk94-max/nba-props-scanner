@@ -1840,7 +1840,7 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
   } catch(error) {
     if(requestId !== gapValidationRequestId) return;
     gapAuditData = null;
-    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
+    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
