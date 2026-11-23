@@ -41,6 +41,8 @@ jobs:
               "/context/defense/refresh",
               "/context/defense/rankings",
               "/context/defense/team/{team}",
+              "/context-validation",
+              "/teammate-split-validation",
           }
           missing = required - paths
           assert not missing, f"Missing Context routes: {sorted(missing)}"
