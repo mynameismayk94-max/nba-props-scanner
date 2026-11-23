@@ -6340,7 +6340,8 @@ def validation_history(
                         ELSE 'pending'
                     END AS result_status,
                     s.payload->>'games_last5' AS games_last5,
-                    s.payload->>'games_last10' AS games_last10
+                    s.payload->>'games_last10' AS games_last10,
+                    s.cohort_rank AS audit_cohort_rank
                 FROM ranked_snapshots s
                 LEFT JOIN audit_results ar
                     ON s.snapshot_source = 'audit'
@@ -6430,7 +6431,8 @@ def validation_history(
                 actual_value,
                 result_status,
                 games_last5_raw,
-                games_last10_raw
+                games_last10_raw,
+                audit_cohort_rank
             ) = row
 
             actual = float(actual_value)
@@ -6777,28 +6779,59 @@ def validation_history(
     overall_metrics = build_metrics(completed_rows)
     model_comparison = build_model_comparison(completed_rows)
 
-    # Separação entre a faixa de maior score e a de menor score.
-    high_band = next((b for b in bands_output if b["band"] == "7+"), None)
-    low_band = next((b for b in bands_output if b["band"] == "<4"), None)
-    high_low = {
-        "high_score_band": high_band,
-        "low_score_band": low_band,
+    # Avalia o ranking diário real: top 10 por data versus demais candidatos.
+    top10_ranked_rows = [
+        row for row in completed_rows
+        if row[14] is not None and int(row[14]) <= 10
+    ]
+    remaining_ranked_rows = [
+        row for row in completed_rows
+        if row[14] is not None and int(row[14]) > 10
+    ]
+
+    def summarize_rank_group(rows):
+        l10_rows = [row for row in rows if row[8] is not None]
+        residuals = [
+            float(row[10]) - float(row[8])
+            for row in l10_rows
+        ]
+        return {
+            "records": len(rows),
+            "players": len({str(row[1]) for row in rows}),
+            "actual_average": safe_average([float(row[10]) for row in rows]),
+            "l10_residual_sample": len(residuals),
+            "l10_residual_average": safe_average(residuals)
+        }
+
+    top10_quality = summarize_rank_group(top10_ranked_rows)
+    remaining_quality = summarize_rank_group(remaining_ranked_rows)
+    top10_vs_rest = {
+        "top10": top10_quality,
+        "rest": remaining_quality,
         "actual_average_difference": (
-            round(high_band["actual_average"] - low_band["actual_average"], 2)
-            if high_band and low_band
-            and high_band["actual_average"] is not None
-            and low_band["actual_average"] is not None
+            round(top10_quality["actual_average"] - remaining_quality["actual_average"], 2)
+            if top10_quality["actual_average"] is not None
+            and remaining_quality["actual_average"] is not None
             else None
         ),
-        "high_vs_low_pct": (
-            round(
-                (high_band["actual_average"] - low_band["actual_average"])
-                / low_band["actual_average"] * 100, 2
-            )
-            if high_band and low_band
-            and high_band["actual_average"] is not None
-            and low_band["actual_average"] not in (None, 0)
+        "l10_residual_difference": (
+            round(top10_quality["l10_residual_average"] - remaining_quality["l10_residual_average"], 2)
+            if top10_quality["l10_residual_average"] is not None
+            and remaining_quality["l10_residual_average"] is not None
             else None
+        ),
+        "minimum_records_each_group": 30,
+        "sample_status": (
+            "sufficient"
+            if top10_quality["l10_residual_sample"] >= 30
+            and remaining_quality["l10_residual_sample"] >= 30
+            else "insufficient"
+        ),
+        "method_note": (
+            "Compara os 10 primeiros candidatos de cada data, ordenados pelo ranking "
+            "imutável da captura, com os demais elegíveis. Além da média real, mostra "
+            "resultado menos média pré-jogo L10 para reduzir diferenças de nível entre "
+            "jogadores. Análise descritiva; não é taxa de acerto nem rentabilidade."
         )
     }
 
@@ -6875,7 +6908,7 @@ def validation_history(
         "model_comparison": model_comparison,
         "similarity_analysis": similarity_analysis,
         "similarity_analyses": similarity_analyses,
-        "ranking_quality": high_low,
+        "ranking_quality": top10_vs_rest,
         "daily": daily_output,
         "data_source_policy": "Base oficial independente: somente audit_snapshots, audit_results e audit_no_results. O histórico legado operacional permanece preservado, mas não compõe estes indicadores.",
         "method_note": (
