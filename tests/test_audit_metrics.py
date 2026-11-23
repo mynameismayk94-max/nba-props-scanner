@@ -206,3 +206,35 @@ def test_context_reference_metrics_excludes_missing_context_only():
     assert result["completed_records"] == 2
     assert result["references"]["opponent_position_minutes_filtered_defense_l10_avg"]["sample"] == 1
     assert result["references"]["opponent_position_minute_band_defense_l10_avg"]["sample"] == 1
+
+
+
+def test_teammate_split_metrics_groups_by_effect():
+    records = [
+        {
+            "date": "2026-11-20", "actual": 8, "player_l10_avg": 5,
+            "teammate_context": {
+                "comparisons": {
+                    "101": {"assists": {"difference_absent_minus_played": 2}}
+                }
+            }
+        },
+        {
+            "date": "2026-11-21", "actual": 3, "player_l10_avg": 5,
+            "teammate_context": {
+                "comparisons": {
+                    "102": {"assists": {"difference_absent_minus_played": -1}}
+                }
+            }
+        },
+        {
+            "date": "2026-11-22", "actual": 5, "player_l10_avg": 5,
+            "teammate_context": {}
+        },
+    ]
+    metrics = build_teammate_split_metrics(records, "assists")
+    assert metrics["groups"]["positive"]["records"] == 1
+    assert metrics["groups"]["negative"]["records"] == 1
+    assert metrics["groups"]["insufficient"]["records"] == 1
+    assert metrics["groups"]["positive"]["bias_l10"] == 3.0
+    assert metrics["groups"]["negative"]["bias_l10"] == -2.0
