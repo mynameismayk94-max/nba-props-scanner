@@ -6821,10 +6821,13 @@ def validation_history(
             else None
         ),
         "minimum_records_each_group": 30,
+        "minimum_players_each_group": 15,
         "sample_status": (
             "sufficient"
             if top10_quality["l10_residual_sample"] >= 30
             and remaining_quality["l10_residual_sample"] >= 30
+            and top10_quality["players"] >= 15
+            and remaining_quality["players"] >= 15
             else "insufficient"
         ),
         "method_note": (
