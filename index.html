@@ -739,9 +739,11 @@
 
     <div class="glass-panel p-3 space-y-3">
       <div class="context-secondary-grid">
-        <div class="filter-group date-field">
-          <label for="context-date">Data de referência</label>
-          <input type="date" id="context-date">
+        <div class="filter-group">
+          <label>Referência</label>
+          <div class="h-9 flex items-center rounded-md border border-gray-700 bg-gray-950 px-2 text-[11px] text-emerald-300">
+            Hoje · São Paulo
+          </div>
         </div>
         <div class="filter-group">
           <label for="context-venue">Local</label>
@@ -782,7 +784,7 @@
         <button type="button" onclick="carregarRankingContexto()" class="market-button flex-1">Consultar ranking</button>
         <button type="button" onclick="atualizarBaseContexto()" id="context-refresh-btn" class="secondary flex-1">Atualizar base contextual</button>
       </div>
-      <p class="text-[9px] text-gray-500">A atualização consulta a ESPN para as 30 equipes e pode demorar na primeira execução. Depois, as consultas desta data usam o banco Neon e não repetem a coleta. Atualizar novamente substitui somente o snapshot contextual da mesma data.</p>
+      <p class="text-[9px] text-gray-500">A base contextual usa automaticamente a data de hoje em São Paulo. Ao abrir esta área, se o snapshot de hoje ainda não existir, a atualização é iniciada automaticamente. Depois, o ranking lê o snapshot salvo no Neon.</p>
       <div id="context-status" class="text-[10px] text-gray-400" aria-live="polite">Selecione os filtros e consulte o ranking. Se ainda não houver dados, atualize a base contextual.</div>
     </div>
 
@@ -853,11 +855,9 @@ data.value = todayLocal;
 const auditSelectedDate = document.getElementById('audit-selected-date');
 const auditDateFrom = document.getElementById('audit-date-from');
 const auditDateTo = document.getElementById('audit-date-to');
-const contextDate = document.getElementById('context-date');
 if (auditSelectedDate) auditSelectedDate.value = todayLocal;
 if (auditDateFrom) auditDateFrom.value = '2026-11-16';
 if (auditDateTo) auditDateTo.value = todayLocal;
-if (contextDate) contextDate.value = todayLocal;
 
 let candidatosAtuais = [];
 let mercadoAtual = '';
@@ -2257,7 +2257,7 @@ function nomeEquipeContexto(team) {
 }
 
 function contextoParams() {
-  const date = document.getElementById('context-date').value || data.value;
+  const date = todayLocal;
   const venue = document.getElementById('context-venue').value;
   const position = document.getElementById('context-position').value;
   const stat = document.getElementById('context-stat').value;
@@ -2277,9 +2277,10 @@ async function carregarRankingContexto() {
       '&venue=' + p.venue;
     const result = await requisicao(query);
     if(result.status === 'not_ready') {
-      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">Ainda não há dados para esta data. Use “Atualizar base contextual”.</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">A base contextual de hoje ainda não está pronta. Atualização automática iniciada...</td></tr>';
       document.getElementById('context-ranking-count').innerText = '0 equipes';
-      status.innerText = result.message;
+      status.innerText = 'Atualizando automaticamente a base contextual de hoje...';
+      atualizarBaseContexto(true);
       return;
     }
     body.innerHTML = (result.ranking || []).map(item => {
@@ -2303,15 +2304,17 @@ async function carregarRankingContexto() {
   }
 }
 
-async function atualizarBaseContexto() {
+async function atualizarBaseContexto(autoRefresh = false) {
   const p = contextoParams();
   const button = document.getElementById('context-refresh-btn');
   const status = document.getElementById('context-status');
   button.disabled = true;
   button.classList.add('opacity-60', 'cursor-not-allowed');
-  status.innerText = 'Atualizando as 30 equipes pela ESPN. A primeira coleta pode demorar...';
+  status.innerText = autoRefresh
+    ? 'Atualizando automaticamente as 30 equipes pela ESPN. Isso acontece somente quando o snapshot de hoje ainda não existe...'
+    : 'Atualizando as 30 equipes pela ESPN. A coleta pode demorar...';
   try {
-    const response = await fetch(endereco() + '/context/defense/refresh?date=' + encodeURIComponent(p.date), { method: 'POST' });
+    const response = await fetch(endereco() + '/context/defense/refresh', { method: 'POST' });
     const result = await response.json();
     if(!response.ok) throw new Error(result.detail || 'Falha HTTP ' + response.status);
     const collected = result.teams_collected ?? result.teams_saved ?? 0;
@@ -2363,6 +2366,10 @@ async function carregarDetalheContexto(team) {
     });
     html += '</div><p class="text-[9px] text-gray-500">Valores representam totais cedidos aos jogadores da posição por partida; a amostra de jogos de cada estatística pode variar.</p>';
     box.innerHTML = html;
+
+    // Ao abrir o detalhamento, leva o usuário diretamente até ele,
+    // sem exigir rolagem manual pela tabela do ranking.
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(error) {
     box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
   }
