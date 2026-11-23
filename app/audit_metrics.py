@@ -210,6 +210,74 @@ def is_temporally_valid_peer(candidate_row: tuple, target_row: tuple) -> bool:
     )
 
 
+
+def build_top10_vs_rest_metrics(rows: Iterable[tuple], min_records: int = 30, min_players: int = 15) -> dict:
+    """Compare daily top-10 audit ranks with the remaining eligible candidates."""
+    completed = [
+        row for row in rows
+        if row[10] is not None and row[14] is not None
+    ]
+    top10_rows = [row for row in completed if int(row[14]) <= 10]
+    rest_rows = [row for row in completed if int(row[14]) > 10]
+
+    def summarize(group):
+        residual_rows = [row for row in group if row[8] is not None]
+        residuals = [
+            float(row[10]) - float(row[8])
+            for row in residual_rows
+        ]
+        return {
+            "records": len(group),
+            "players": len({str(row[1]) for row in group}),
+            "actual_average": (
+                round(sum(float(row[10]) for row in group) / len(group), 2)
+                if group else None
+            ),
+            "l10_residual_sample": len(residuals),
+            "l10_residual_average": (
+                round(sum(residuals) / len(residuals), 2)
+                if residuals else None
+            ),
+        }
+
+    top10 = summarize(top10_rows)
+    rest = summarize(rest_rows)
+    residual_difference = (
+        round(top10["l10_residual_average"] - rest["l10_residual_average"], 2)
+        if top10["l10_residual_average"] is not None
+        and rest["l10_residual_average"] is not None
+        else None
+    )
+    actual_difference = (
+        round(top10["actual_average"] - rest["actual_average"], 2)
+        if top10["actual_average"] is not None
+        and rest["actual_average"] is not None
+        else None
+    )
+    return {
+        "top10": top10,
+        "rest": rest,
+        "actual_average_difference": actual_difference,
+        "l10_residual_difference": residual_difference,
+        "minimum_records_each_group": min_records,
+        "minimum_players_each_group": min_players,
+        "sample_status": (
+            "sufficient"
+            if top10["l10_residual_sample"] >= min_records
+            and rest["l10_residual_sample"] >= min_records
+            and top10["players"] >= min_players
+            and rest["players"] >= min_players
+            else "insufficient"
+        ),
+        "method_note": (
+            "Compara os 10 primeiros candidatos de cada data, ordenados pelo ranking "
+            "imutável da captura, com os demais elegíveis. Além da média real, mostra "
+            "resultado menos média pré-jogo L10 para reduzir diferenças de nível entre "
+            "jogadores. Análise descritiva; não é taxa de acerto nem rentabilidade."
+        ),
+    }
+
+
 def build_gap_group_metrics(records: Iterable[dict], period_key: str) -> dict:
     """Summarize defensive groups and player-baseline-adjusted outcomes."""
     baseline_key = "player_l5_avg" if period_key == "l5" else "player_l10_avg"
