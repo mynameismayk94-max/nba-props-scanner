@@ -257,21 +257,38 @@ def build_top10_vs_rest_metrics(rows: Iterable[tuple], min_records: int = 30, mi
         and rest["actual_average"] is not None
         else None
     )
+    top10_dates = {
+        _date_key(row[0]) for row in top10_rows
+        if row[0] is not None and row[8] is not None
+        and (_window_game_count(row, 13) or 0) >= 10
+    }
+    rest_dates = {
+        _date_key(row[0]) for row in rest_rows
+        if row[0] is not None and row[8] is not None
+        and (_window_game_count(row, 13) or 0) >= 10
+    }
+    dates_count = len(top10_dates & rest_dates)
+    volume_sufficient = (
+        top10["l10_residual_sample"] >= min_records
+        and rest["l10_residual_sample"] >= min_records
+        and top10["players"] >= min_players
+        and rest["players"] >= min_players
+    )
+    sample_status = (
+        "insufficient" if not volume_sufficient
+        else "sufficient" if dates_count >= 14
+        else "collecting"
+    )
     return {
         "top10": top10,
         "rest": rest,
         "actual_average_difference": actual_difference,
         "l10_residual_difference": residual_difference,
+        "distinct_dates": dates_count,
+        "minimum_dates_for_validation": 14,
         "minimum_records_each_group": min_records,
         "minimum_players_each_group": min_players,
-        "sample_status": (
-            "sufficient"
-            if top10["l10_residual_sample"] >= min_records
-            and rest["l10_residual_sample"] >= min_records
-            and top10["players"] >= min_players
-            and rest["players"] >= min_players
-            else "insufficient"
-        ),
+        "sample_status": sample_status,
         "method_note": (
             "Compara os 10 primeiros candidatos de cada data, ordenados pelo ranking "
             "imutável da captura, com os demais elegíveis. Além da média real, mostra "
