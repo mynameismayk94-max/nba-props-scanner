@@ -33,6 +33,17 @@ jobs:
             --write-out "%{http_code}" \
             "${BASE_URL}/health" > staging-audit-diagnostic/health.http
 
+          ui_http_code=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 60 \
+            --output staging-audit-diagnostic/ui-index.html --write-out "%{http_code}" "${BASE_URL}/")
+          echo "UI_HTML_HTTP: ${ui_http_code}"
+          for marker in "Spearman" "Janelas completas" "Top 10 versus demais candidatos" "Análises complementares"; do
+            if grep -Fq "$marker" staging-audit-diagnostic/ui-index.html; then
+              echo "UI_MARKER_OK: $marker"
+            else
+              echo "::warning::UI marker missing from staging root: $marker"
+            fi
+          done
+
           for market in "${MARKETS[@]}"; do
             for endpoint in validation-history-summary validation-history gap-validation; do
               file="staging-audit-diagnostic/${market}-${endpoint}.json"
