@@ -4575,7 +4575,36 @@ def refresh_audit(
     capture_results = []
     capture_failures = []
 
+    # Não reconstruímos uma fotografia que já existe. A Auditoria é baseada
+    # em snapshots imutáveis; recapturar uma data/mercado já capturado só
+    # desperdiça CPU/memória e pode provocar picos no serviço.
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT market
+                FROM audit_snapshot_runs
+                WHERE selected_date = %s
+                """,
+                (target_date,)
+            )
+            captured_markets = {
+                str(row[0]).strip()
+                for row in cursor.fetchall()
+            }
+
     for market in ACTIVE_MARKETS:
+        if market in captured_markets:
+            capture_results.append({
+                "market": market,
+                "status": "already_captured",
+                "snapshots_saved": 0,
+                "eligible_players": None,
+                "players_consulted": 0,
+                "players_with_errors": 0,
+            })
+            continue
+
         try:
             result = collect_candidates(
                 selected_date,
@@ -4621,12 +4650,11 @@ def refresh_audit(
                     AND nr.player_id = s.player_id
                 WHERE s.selected_date >= %s
                   AND s.selected_date <= %s
-                  AND (%s OR s.selected_date < %s)
                   AND r.id IS NULL
                   AND nr.id IS NULL
                 ORDER BY s.selected_date ASC, s.market ASC
                 """,
-                (audit_history_start_date(), target_date, history, target_date)
+                (target_date if not history else audit_history_start_date(), target_date)
             )
             pending_combinations = cursor.fetchall()
 
