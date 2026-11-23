@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from app.audit_metrics import build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
+from app.audit_metrics import build_context_reference_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
 
 
 def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0, games_last5=5, games_last10=10, audit_rank=1):
