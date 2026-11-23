@@ -6228,8 +6228,8 @@ def validation_history(
     - comparação entre L5 e L10;
     - erro médio das referências (MAE);
     - evolução dos resultados por dia;
-    - calibração: quanto cada faixa de score realmente corresponde
-      à produção dos jogadores.
+    - desempenho observado da produção real por faixa de Score
+      (sem interpretação como calibração probabilística).
     """
 
     if market not in ACTIVE_MARKETS:
@@ -6514,7 +6514,7 @@ def validation_history(
             "score_actual_pearson": pearson
         }
 
-    # Faixas de score calibradas
+    # Faixas fixas de Score para análise descritiva
     score_bands = [
         {"label": "7+", "min": 7.0, "max": None},
         {"label": "6-6.99", "min": 6.0, "max": 7.0},
