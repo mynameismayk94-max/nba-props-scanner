@@ -4,6 +4,8 @@ import re
 import os
 import secrets
 import threading
+from collections import deque
+from time import monotonic
 
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
@@ -35,6 +37,48 @@ from app.audit_metrics import build_context_reference_metrics, build_market_scor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nba_props_scanner")
+
+
+# Rate limit simples e local para a camada HTTP.
+_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+_RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "60"))
+_RATE_LIMIT_EXEMPT_PATHS = {"/health"}
+_rate_limit_lock = threading.Lock()
+_rate_limit_buckets: dict[str, deque[float]] = {}
+
+def _rate_limit_key(request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    client = request.client
+    return client.host if client else "unknown"
+
+def _is_admin_request(request) -> bool:
+    configured_key = os.getenv("ADMIN_API_KEY")
+    supplied_key = request.headers.get("X-Admin-Key")
+    return bool(configured_key and supplied_key and secrets.compare_digest(supplied_key, configured_key))
+
+@app.middleware("http")
+async def rate_limit_requests(request, call_next):
+    if request.url.path in _RATE_LIMIT_EXEMPT_PATHS or _is_admin_request(request):
+        return await call_next(request)
+    now = monotonic()
+    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+    key = _rate_limit_key(request)
+    with _rate_limit_lock:
+        bucket = _rate_limit_buckets.setdefault(key, deque())
+        while bucket and bucket[0] <= cutoff:
+            bucket.popleft()
+        if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Limite de requisições excedido. Tente novamente em instantes."},
+                headers={"Retry-After": str(_RATE_LIMIT_WINDOW_SECONDS)},
+            )
+        bucket.append(now)
+    return await call_next(request)
+
 
 app = FastAPI(
     title="NBA Props Scanner",
