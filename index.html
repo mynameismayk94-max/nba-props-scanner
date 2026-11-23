@@ -1807,9 +1807,10 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
 async function atualizarAuditoriaHibrida() {
   const btn = document.getElementById('audit-refresh-btn');
   const statusEl = document.getElementById('audit-refresh-status');
+  const isHistoryMode = auditMode === 'all';
   const selectedDate = document.getElementById('audit-selected-date')?.value || todayLocal;
 
-  if (!selectedDate) {
+  if (!isHistoryMode && !selectedDate) {
     if (statusEl) statusEl.innerText = 'Selecione uma data para sincronizar.';
     return;
   }
@@ -1819,11 +1820,16 @@ async function atualizarAuditoriaHibrida() {
     btn.classList.add('opacity-60');
   }
   if (statusEl) {
-    statusEl.innerText = 'Sincronizando: capturando a data selecionada e apurando pendências anteriores...';
+    statusEl.innerText = isHistoryMode
+      ? 'Sincronizando: capturando hoje e apurando todas as pendências do histórico acumulado...'
+      : 'Sincronizando: capturando a data selecionada e apurando pendências anteriores...';
   }
 
   try {
-    const result = await requisicao('/refresh-audit?date=' + encodeURIComponent(selectedDate));
+    const endpoint = isHistoryMode
+      ? '/refresh-audit?history=true'
+      : '/refresh-audit?date=' + encodeURIComponent(selectedDate);
+    const result = await requisicao(endpoint);
     const captureFailures = result?.capture?.failures || [];
     const collectionFailures = result?.collection?.failures || [];
     const capturedMarkets = result?.capture?.markets || [];
@@ -1837,7 +1843,8 @@ async function atualizarAuditoriaHibrida() {
     if (captureFailures.length || collectionFailures.length) {
       if (statusEl) {
         statusEl.innerText =
-          '⚠️ Atualização parcial · hoje: ' + savedToday +
+          (isHistoryMode ? '⚠️ Atualização acumulada parcial' : '⚠️ Atualização parcial') +
+          ' · hoje: ' + savedToday +
           ' snapshots · resultados salvos: ' + savedResults +
           ' · DNP: ' + dnp +
           ' · pendentes: ' + pending +
@@ -1846,7 +1853,8 @@ async function atualizarAuditoriaHibrida() {
     } else {
       if (statusEl) {
         statusEl.innerText =
-          '✓ Auditoria atualizada · hoje: ' + savedToday +
+          (isHistoryMode ? '✓ Histórico acumulado atualizado' : '✓ Auditoria atualizada') +
+          ' · hoje: ' + savedToday +
           ' snapshots · resultados salvos: ' + savedResults +
           ' · DNP: ' + dnp +
           ' · pendentes: ' + pending + '.';
