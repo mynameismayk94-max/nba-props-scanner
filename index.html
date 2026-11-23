@@ -224,6 +224,11 @@
   .scanner-legend .legend-negative { color: #34d399; font-weight: 600; }
   .scanner-legend .legend-neutral { color: #9ca3af; font-weight: 600; }
 
+  /* Feedback imediato ao abrir o detalhamento contextual. */
+  .context-loading { display: flex; align-items: center; gap: 7px; padding: 8px 9px; margin-bottom: 8px; background: rgba(3, 7, 18, .45); border: 1px solid #1f2937; border-radius: 7px; color: #9ca3af; font-size: 10px; }
+  .context-loading-dot { width: 7px; height: 7px; border: 2px solid #374151; border-top-color: #34d399; border-radius: 999px; animation: context-spin .8s linear infinite; flex: 0 0 auto; }
+  @keyframes context-spin { to { transform: rotate(360deg); } }
+
   /* Scanner: Data segue exatamente o mesmo limite horizontal do campo de baixo. */
   .schedule-controls {
     display: block;
@@ -1502,7 +1507,16 @@ async function buscar(mercado){
     let html = '<div class="space-y-2 mt-2">';
     html += '<div class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">' + escapeHtml(r.market_label) + ' — ' + escapeHtml(r.date) + '</div>';
     html += renderizarResumoSelecao(r.selection_summary);
-    html += '<div class="glass-panel p-2.5">' + filtrosHtml() + '</div>';
+    html += '<div class="glass-panel p-2.5 space-y-2">' + filtrosHtml() +
+    '<div class="scanner-legend">' +
+      '<div class="flex items-center justify-between gap-2">' +
+        '<strong>Como o Score é formado?</strong>' +
+        '<span class="text-gray-500">Ordenação padrão: Score ↓</span>' +
+      '</div>' +
+      '<div>O Score combina a produção recente do jogador com a consistência desse desempenho. A média L5 recebe peso de <strong>60%</strong> e a média L10, <strong>40%</strong>. Em seguida, o resultado é ajustado pela consistência dos últimos 5 jogos: quanto mais vezes o jogador atinge ou supera sua própria média L5, maior o ajuste.</div>' +
+      '<div class="text-gray-500">O Score é um indicador estatístico de prioridade e não representa, sozinho, uma recomendação ou garantia de resultado.</div>' +
+    '</div>' +
+  '</div>';
     html += '<div id="resultadosLista"></div>';
     html += '</div>';
 
@@ -2345,7 +2359,13 @@ async function carregarDetalheContexto(team) {
   const p = contextoParams();
   const box = document.getElementById('context-team-detail');
   const teamLabel = nomeEquipeContexto(team);
-  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><p class="text-[10px] text-gray-400">Carregando histórico...</p>';
+
+  // O usuário recebe feedback e é levado imediatamente ao ponto onde o detalhe será exibido.
+  box.innerHTML = '<div class="context-loading" aria-live="polite"><span class="context-loading-dot"></span><span>Carregando análise da equipe ' + escapeHtml(teamLabel) + '...</span></div>' +
+    '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3>' +
+    '<p class="text-[10px] text-gray-400">Consultando histórico da equipe...</p>';
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
   try {
     const result = await requisicao('/context/defense/team/' + encodeURIComponent(team) + '?date=' + encodeURIComponent(p.date));
     const history = result.history || {};
@@ -2369,9 +2389,9 @@ async function carregarDetalheContexto(team) {
     html += '</div><p class="text-[9px] text-gray-500">Valores representam totais cedidos aos jogadores da posição por partida; a amostra de jogos de cada estatística pode variar.</p>';
     box.innerHTML = html;
 
-    // Ao abrir o detalhamento, leva o usuário diretamente até ele,
-    // sem exigir rolagem manual pela tabela do ranking.
-    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // O scroll já foi iniciado no clique; mantém o detalhe no ponto correto
+    // após a resposta, sem introduzir uma segunda animação.
+    box.scrollIntoView({ behavior: 'auto', block: 'start' });
   } catch(error) {
     box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
   }
