@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer
+from app.audit_metrics import build_gap_group_metrics, build_model_comparison, is_temporally_valid_peer, spearman_correlation
 
 
 def make_row(day, score=5.0, l5=4.0, l10=3.0, actual=4.0, games_last5=5, games_last10=10):
@@ -70,6 +70,21 @@ class ModelComparisonTests(unittest.TestCase):
             metric["sample"] == 1
             for metric in result["models"].values()
         ))
+
+    def test_spearman_measures_monotonic_ranking_and_handles_ties(self):
+        self.assertEqual(
+            spearman_correlation([(1, 10), (2, 20), (3, 30)]),
+            1.0
+        )
+        self.assertEqual(
+            spearman_correlation([(1, 30), (2, 20), (3, 10)]),
+            -1.0
+        )
+        self.assertEqual(
+            spearman_correlation([(1, 10), (1, 20), (2, 30)]),
+            0.866
+        )
+        self.assertIsNone(spearman_correlation([(1, 10), (1, 20)]))
 
     def test_gap_metrics_adjust_actual_by_matching_player_baseline(self):
         records = [
