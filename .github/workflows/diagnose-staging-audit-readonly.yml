@@ -1,0 +1,64 @@
+name: Diagnose staging audit (read only)
+
+on:
+  push:
+    branches:
+      - feature/central-contexto-nba
+    paths:
+      - ".github/workflows/diagnose-staging-audit-readonly.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Read staging audit summaries
+        shell: bash
+        run: |
+          set -uo pipefail
+          BASE_URL="https://nba-props-scanner-staging.onrender.com"
+          mkdir -p staging-audit-diagnostic
+          MARKETS=(points assists rebounds threes two_pa fgm)
+          failures=0
+
+          curl --silent --show-error --max-time 60 \
+            --output staging-audit-diagnostic/health.json \
+            --write-out "%{http_code}" \
+            "${BASE_URL}/health" > staging-audit-diagnostic/health.http
+
+          for market in "${MARKETS[@]}"; do
+            for endpoint in validation-history-summary gap-validation; do
+              file="staging-audit-diagnostic/${market}-${endpoint}.json"
+              url="${BASE_URL}/${endpoint}?market=${market}&cohort=all"
+              echo "::group::${market} / ${endpoint}"
+              http_code=$(curl --silent --show-error --max-time 180 \
+                --output "$file" --write-out "%{http_code}" "$url")
+              echo "HTTP: ${http_code}"
+              if [[ "$http_code" != "200" ]] || ! jq -e '.status == "ok"' "$file" >/dev/null 2>&1; then
+                echo "::warning::Falha ao consultar ${market} / ${endpoint}"
+                failures=$((failures + 1))
+                cat "$file" || true
+              else
+                jq '{market, cohort, snapshots_total, completed_results, no_result_results, pending_results, completion_rate_pct, actual_average, score_average, l5_mae, l10_mae, l5_relative_error_pct, l10_relative_error_pct, score_actual_pearson, completed_records, legacy_records_without_new_reference, periods, score_bands, ranking_quality, method_note, data_source_policy}' "$file" 2>/dev/null || true
+              fi
+              echo "::endgroup::"
+            done
+          done
+
+          echo "$failures" > staging-audit-diagnostic/failures.txt
+          if [[ "$failures" -gt 0 ]]; then
+            echo "::warning::${failures} consulta(s) não retornaram resposta válida. Os demais arquivos serão preservados."
+          fi
+
+      - name: Upload read-only diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-audit-diagnostic
+          path: staging-audit-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
