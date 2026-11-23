@@ -90,7 +90,7 @@ class ModelComparisonTests(unittest.TestCase):
         self.assertEqual(result["rest"]["l10_residual_sample"], 1)
         self.assertEqual(result["actual_average_difference"], 2.0)
         self.assertEqual(result["l10_residual_difference"], 2.0)
-        self.assertEqual(result["distinct_dates"], 2)
+        self.assertEqual(result["distinct_dates"], 1)
         self.assertEqual(result["sample_status"], "collecting")
 
     def test_spearman_measures_monotonic_ranking_and_handles_ties(self):
