@@ -116,3 +116,15 @@ def build_model_comparison(rows: Iterable[tuple]) -> dict:
         },
     }
     return result
+
+
+def is_temporally_valid_peer(candidate_row: tuple, target_row: tuple) -> bool:
+    """Only compare a target with a different player from a strictly earlier date."""
+    candidate_date = candidate_row[0]
+    target_date = target_row[0]
+    if candidate_date is None or target_date is None:
+        return False
+    return (
+        _date_key(candidate_date) < _date_key(target_date)
+        and str(candidate_row[1]) != str(target_row[1])
+    )
