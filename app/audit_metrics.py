@@ -298,6 +298,74 @@ def build_top10_vs_rest_metrics(rows: Iterable[tuple], min_records: int = 30, mi
     }
 
 
+def build_context_reference_metrics(records: Iterable[dict]) -> dict:
+    """Compare descriptive defensive references with the player's own L10 baseline."""
+    fields = (
+        "opponent_position_minutes_filtered_defense_l10_avg",
+        "opponent_position_minute_band_defense_l10_avg",
+        "opponent_position_equal_game_defense_l10_avg",
+    )
+    completed = [
+        item for item in records
+        if item.get("actual") is not None
+        and item.get("player_l10_avg") is not None
+    ]
+
+    def number(value):
+        try:
+            value = float(value)
+            return value if value == value and abs(value) != float("inf") else None
+        except (TypeError, ValueError):
+            return None
+
+    def summarize(field):
+        usable = [
+            item for item in completed
+            if number(item.get(field)) is not None
+        ]
+        baseline_errors = [
+            abs(number(item["actual"]) - number(item["player_l10_avg"]))
+            for item in usable
+        ]
+        context_errors = [
+            abs(number(item["actual"]) - number(item[field]))
+            for item in usable
+        ]
+        baseline_bias = [
+            number(item["actual"]) - number(item["player_l10_avg"])
+            for item in usable
+        ]
+        context_bias = [
+            number(item["actual"]) - number(item[field])
+            for item in usable
+        ]
+        context_values = [number(item[field]) for item in usable]
+        return {
+            "sample": len(usable),
+            "coverage_pct": round(len(usable) / len(completed) * 100, 2) if completed else 0.0,
+            "baseline_l10_mae": round(sum(baseline_errors) / len(baseline_errors), 4) if baseline_errors else None,
+            "context_mae": round(sum(context_errors) / len(context_errors), 4) if context_errors else None,
+            "context_mae_delta_vs_l10": (
+                round(sum(context_errors) / len(context_errors) - sum(baseline_errors) / len(baseline_errors), 4)
+                if context_errors and baseline_errors else None
+            ),
+            "baseline_bias": round(sum(baseline_bias) / len(baseline_bias), 4) if baseline_bias else None,
+            "context_bias": round(sum(context_bias) / len(context_bias), 4) if context_bias else None,
+            "context_average": round(sum(context_values) / len(context_values), 4) if context_values else None,
+        }
+
+    return {
+        "completed_records": len(completed),
+        "references": {field: summarize(field) for field in fields},
+        "method_note": (
+            "Comparação exploratória entre referências defensivas capturadas antes "
+            "do jogo e a média L10 do próprio jogador. Não mede causalidade, "
+            "probabilidade de over/under ou valor esperado. A utilidade incremental "
+            "deve ser confirmada em holdout temporal quando houver pelo menos 14 datas."
+        ),
+    }
+
+
 def build_gap_group_metrics(records: Iterable[dict], period_key: str) -> dict:
     """Summarize defensive groups and player-baseline-adjusted outcomes."""
     baseline_key = "player_l5_avg" if period_key == "l5" else "player_l10_avg"
