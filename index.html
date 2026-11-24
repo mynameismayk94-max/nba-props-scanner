@@ -2151,24 +2151,9 @@ async function fetchContextValidation(market, dateFrom, dateTo) {
         (error.name === 'AbortError' ? 'tempo limite excedido (45s).' : (error.message || 'erro de conexão.'));
     });
 
-  const teammateTask = requisicaoContextual('/teammate-split-validation?' + cohortParams)
-    .then(data => {
-      if (requestId !== contextValidationRequestId) return;
-      if (data.status !== 'ok') throw new Error('Resposta inválida da validação de companheiros');
-      teammateValidationData = data.metrics || {};
-      renderTeammateValidation(teammateValidationData);
-      updateEvidenceContextStatus(contextValidationData, teammateValidationData);
-    })
-    .catch(error => {
-      if (requestId !== contextValidationRequestId) return;
-      const valueEl = document.getElementById('teammate-validation-effect');
-      const sampleEl = document.getElementById('teammate-validation-sample');
-      if (valueEl) valueEl.innerText = '—';
-      if (sampleEl) sampleEl.innerText = error.name === 'AbortError'
-        ? 'Tempo limite excedido (45s)' : 'Falha ao consultar split';
-    });
-
-  await Promise.allSettled([contextTask, teammateTask]);
+  // A validação de Split de companheiros foi desativada: não consultar endpoint
+  // nem calcular métricas que não fazem parte da auditoria exibida.
+  await contextTask;
 }
 
 async function atualizarAuditoriaHibrida() {
