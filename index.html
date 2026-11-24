@@ -2086,6 +2086,22 @@ function updateEvidenceContextStatus(data) {
   }
 }
 
+function renderTeammateValidation(teammate) {
+  const data = teammate || {};
+  const positive = data.groups?.positive?.effect_average;
+  const negative = data.groups?.negative?.effect_average;
+  const valueEl = document.getElementById('teammate-validation-effect');
+  const sampleEl = document.getElementById('teammate-validation-sample');
+  if (valueEl) valueEl.innerText =
+    (positive == null && negative == null)
+      ? '—'
+      : 'Pos ' + (positive == null ? '—' : '+' + numero(positive, 2)) +
+        ' · Neg ' + (negative == null ? '—' : numero(negative, 2));
+  if (sampleEl) sampleEl.innerText =
+    (data.completed_records || 0) + ' snapshots · cobertura ' +
+    numero(data.context_coverage_pct || 0, 1) + '%';
+}
+
 function renderContextValidation() {
   const data = contextValidationData || {};
   const metrics = data.metrics || {};
@@ -2095,33 +2111,16 @@ function renderContextValidation() {
     ['opponent_position_equal_game_defense_l10_avg','context-validation-equal-game','context-validation-equal-game-sample']
   ];
   refs.forEach(([field, valueId, sampleId]) => {
-    // O backend agrupa as referências em metrics.references, indexadas pela chave completa.
     const metric = (metrics.references || {})[field] || {};
     const value = metric.context_mae_delta_vs_l10;
-    const label = value == null ? '—' : ((value > 0 ? '+' : '') + numero(value, 3) + ' MAE');
     const valueEl = document.getElementById(valueId);
     const sampleEl = document.getElementById(sampleId);
-    if (valueEl) valueEl.innerText = label;
+    if (valueEl) valueEl.innerText = value == null ? '—' : ((value > 0 ? '+' : '') + numero(value, 3) + ' MAE');
     if (sampleEl) sampleEl.innerText =
       (metric.sample || 0) + ' registros · cobertura ' + numero(metric.coverage_pct || 0, 1) + '%';
   });
 
-  const teammate = data.teammate || {};
-  const positive = teammate.groups?.positive?.effect_average;
-  const negative = teammate.groups?.negative?.effect_average;
-  const teammateEl = document.getElementById('teammate-validation-effect');
-  const teammateSampleEl = document.getElementById('teammate-validation-sample');
-  if (teammateEl) teammateEl.innerText =
-    (positive == null && negative == null)
-      ? '—'
-      : 'Pos ' + (positive == null ? '—' : '+' + numero(positive, 2)) +
-        ' · Neg ' + (negative == null ? '—' : numero(negative, 2));
-  if (teammateSampleEl) teammateSampleEl.innerText =
-    (teammate.completed_records || 0) + ' snapshots · cobertura ' +
-    numero(teammate.context_coverage_pct || 0, 1) + '%';
-
   updateEvidenceContextStatus(data);
-
   const note = document.getElementById('context-validation-note');
   if (note) {
     const dates = data.distinct_dates || 0;
@@ -2131,32 +2130,63 @@ function renderContextValidation() {
   }
 }
 
+async function requisicaoContextual(caminho, timeoutMs = 45000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(endereco() + caminho, { signal: controller.signal });
+    if (!response.ok) throw new Error('Erro HTTP ' + response.status);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchContextValidation(market, dateFrom, dateTo) {
   const requestId = ++contextValidationRequestId;
   contextValidationData = null;
   const note = document.getElementById('context-validation-note');
   if (note) note.innerText = 'Consultando referências contextuais imutáveis...';
-  try {
-    const dateParams = (dateFrom ? '&date_from=' + encodeURIComponent(dateFrom) : '') +
-      (dateTo ? '&date_to=' + encodeURIComponent(dateTo) : '');
-    const [contextRes, teammateRes] = await Promise.all([
-      requisicao('/context-validation?market=' + encodeURIComponent(market) + '&cohort=' + encodeURIComponent(auditCohort) + dateParams),
-      requisicao('/teammate-split-validation?market=' + encodeURIComponent(market) + '&cohort=' + encodeURIComponent(auditCohort) + dateParams)
-    ]);
-    if (requestId !== contextValidationRequestId) return;
-    if (contextRes.status !== 'ok' || teammateRes.status !== 'ok') throw new Error('Resposta inválida');
-    contextValidationData = {
-      ...contextRes,
-      market_label: contextRes.market_label || market,
-      teammate: teammateRes.metrics || {}
-    };
-    renderContextValidation();
-  } catch (error) {
-    if (requestId !== contextValidationRequestId) return;
-    contextValidationData = null;
-    const note = document.getElementById('context-validation-note');
-    if (note) note.innerText = 'Não foi possível carregar a validação contextual neste momento.';
-  }
+  const dateParams = (dateFrom ? '&date_from=' + encodeURIComponent(dateFrom) : '') +
+    (dateTo ? '&date_to=' + encodeURIComponent(dateTo) : '');
+  const cohortParams = '&market=' + encodeURIComponent(market) +
+    '&cohort=' + encodeURIComponent(auditCohort) + dateParams;
+
+  const contextTask = requisicaoContextual('/context-validation?' + cohortParams)
+    .then(data => {
+      if (requestId !== contextValidationRequestId) return;
+      if (data.status !== 'ok') throw new Error('Resposta inválida da validação defensiva');
+      contextValidationData = {
+        ...(contextValidationData || {}),
+        ...data,
+        market_label: data.market_label || market
+      };
+      renderContextValidation();
+    })
+    .catch(error => {
+      if (requestId !== contextValidationRequestId) return;
+      ['context-validation-filtered-sample','context-validation-minute-band-sample','context-validation-equal-game-sample']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.innerText = 'Falha ao consultar defesa/minutagem'; });
+      if (note) note.innerText = 'Falha na consulta de defesa/minutagem: ' +
+        (error.name === 'AbortError' ? 'tempo limite excedido (45s).' : (error.message || 'erro de conexão.'));
+    });
+
+  const teammateTask = requisicaoContextual('/teammate-split-validation?' + cohortParams)
+    .then(data => {
+      if (requestId !== contextValidationRequestId) return;
+      if (data.status !== 'ok') throw new Error('Resposta inválida da validação de companheiros');
+      renderTeammateValidation(data.metrics || {});
+    })
+    .catch(error => {
+      if (requestId !== contextValidationRequestId) return;
+      const valueEl = document.getElementById('teammate-validation-effect');
+      const sampleEl = document.getElementById('teammate-validation-sample');
+      if (valueEl) valueEl.innerText = '—';
+      if (sampleEl) sampleEl.innerText = error.name === 'AbortError'
+        ? 'Tempo limite excedido (45s)' : 'Falha ao consultar split';
+    });
+
+  await Promise.allSettled([contextTask, teammateTask]);
 }
 
 async function atualizarAuditoriaHibrida() {
