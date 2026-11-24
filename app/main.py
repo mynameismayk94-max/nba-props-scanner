@@ -65,7 +65,10 @@ def _is_admin_request(request) -> bool:
 
 @app.middleware("http")
 async def rate_limit_requests(request, call_next):
-    if request.url.path in _RATE_LIMIT_EXEMPT_PATHS or _is_admin_request(request):
+    # O limite público protege somente a rota de geração de candidatos.
+    # As telas fazem várias leituras independentes de auditoria/contexto; limitar
+    # todas as rotas por IP bloqueava consultas legítimas e causava falhas visíveis.
+    if request.url.path != "/candidates" or _is_admin_request(request):
         return await call_next(request)
     now = monotonic()
     cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
