@@ -2596,7 +2596,18 @@ function renderDailyBreakdown(dailyData) {
 }
 
 function renderDailyChart(dailyData) {
-  const ctx = document.getElementById('dailyErrorChart').getContext('2d');
+  const canvas = document.getElementById('dailyErrorChart');
+  // O gráfico é complementar: se a CDN do Chart.js falhar no navegador,
+  // isso não pode invalidar nem apagar os indicadores e tabelas da Auditoria.
+  if (!canvas || typeof Chart === 'undefined') {
+    console.warn('Gráfico da auditoria indisponível; mantendo os indicadores carregados.');
+    return;
+  }
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.warn('Canvas do gráfico da auditoria indisponível; mantendo os indicadores carregados.');
+    return;
+  }
   const labels = dailyData.map(d => d.date);
   const l5Data = dailyData.map(d => d.l5_mae);
   const l10Data = dailyData.map(d => d.l10_mae);
