@@ -2090,12 +2090,13 @@ function renderContextValidation() {
   const data = contextValidationData || {};
   const metrics = data.metrics || {};
   const refs = [
-    ['filtered','opponent_position_minutes_filtered_defense_l10_avg','context-validation-filtered','context-validation-filtered-sample'],
-    ['minute_band','opponent_position_minute_band_defense_l10_avg','context-validation-minute-band','context-validation-minute-band-sample'],
-    ['equal_game','opponent_position_equal_game_defense_l10_avg','context-validation-equal-game','context-validation-equal-game-sample']
+    ['opponent_position_minutes_filtered_defense_l10_avg','context-validation-filtered','context-validation-filtered-sample'],
+    ['opponent_position_minute_band_defense_l10_avg','context-validation-minute-band','context-validation-minute-band-sample'],
+    ['opponent_position_equal_game_defense_l10_avg','context-validation-equal-game','context-validation-equal-game-sample']
   ];
-  refs.forEach(([key, field, valueId, sampleId]) => {
-    const metric = metrics[key] || {};
+  refs.forEach(([field, valueId, sampleId]) => {
+    // O backend agrupa as referências em metrics.references, indexadas pela chave completa.
+    const metric = (metrics.references || {})[field] || {};
     const value = metric.context_mae_delta_vs_l10;
     const label = value == null ? '—' : ((value > 0 ? '+' : '') + numero(value, 3) + ' MAE');
     const valueEl = document.getElementById(valueId);
