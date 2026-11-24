@@ -566,19 +566,17 @@
         <span class="text-[9px] text-gray-500">Guia rápido</span>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] text-gray-400">
-        <div><span class="font-semibold text-gray-200">Snapshots</span> — jogadores capturados para a análise.</div>
-        <div><span class="font-semibold text-emerald-300">Resultado real</span> — jogadores já apurados e válidos para as métricas.</div>
-        <div><span class="font-semibold text-amber-300">DNP</span> — sem resultado estatístico válido; não entra na precisão.</div>
-        <div><span class="font-semibold text-gray-200">Pendente</span> — ainda sem resultado nem DNP; toque no card para ver o motivo.</div>
-        <div><span class="font-semibold text-emerald-300">MAE</span> — distância média entre previsão e resultado; <strong>menor é melhor</strong>.</div>
-        <div><span class="font-semibold text-indigo-300">Pearson</span> — mede associação linear entre previsão e resultado real; vai de -1 a +1. <strong>Não é % de acerto, probabilidade ou retorno.</strong></div>
-        <div><span class="font-semibold text-gray-200">Spearman</span> — mede se a ordem dos resultados acompanha a ordem das previsões. Também não é % de acerto.</div>
-        <div><span class="font-semibold text-gray-200">MAE</span> — erro médio em unidades da própria estatística; menor é melhor. L5 e L10 são referências separadas, não garantia de acerto.</div>
-        <div><span class="font-semibold text-gray-200">Faixas de Score</span> — quintis relativos ao mercado/recorte atual. Servem para comparar grupos; não representam probabilidade.</div>
-        <div><span class="font-semibold text-gray-200">Contextos pré-jogo</span> — defesa, minutos, jogo equivalente e companheiros são referências exploratórias capturadas antes da partida. Não têm efeito automático no Score.</div>
+        <div><strong class="text-gray-200">Snapshots</strong> — candidatos registrados antes dos jogos.</div>
+        <div><strong class="text-emerald-300">Concluídos</strong> — resultado real disponível e usado nas métricas.</div>
+        <div><strong class="text-amber-300">DNP</strong> — jogador sem participação válida; não mede precisão.</div>
+        <div><strong class="text-gray-200">Pendentes</strong> — sem resultado ou DNP; toque no indicador para ver o motivo.</div>
+        <div><strong class="text-emerald-300">MAE</strong> — erro médio da referência; quanto menor, melhor.</div>
+        <div><strong class="text-indigo-300">Pearson / Spearman</strong> — associação e ordenação entre referência e resultado; não são taxa de acerto.</div>
+        <div><strong class="text-gray-200">Faixas de Score</strong> — comparação entre grupos do mercado/recorte; não são probabilidades.</div>
+        <div><strong class="text-gray-200">Contexto pré-jogo</strong> — defesa, minutos e jogo equivalente são análises exploratórias; não alteram o Score.</div>
       </div>
       <p class="text-[9px] text-gray-500 border-t border-gray-800 pt-2">
-        <strong class="text-gray-300">Regra de leitura:</strong> “descritivo” mostra o que aconteceu; “exploratório” procura sinais para investigar; “validado” exige comparação temporal fora da amostra de ajuste. Enquanto houver menos de 14 datas compartilhadas, os blocos temporais permanecem em coleta.
+        <strong class="text-gray-300">Limites:</strong> a Auditoria descreve o histórico disponível. Não informa chance de acerto, lucro ou causalidade. Contexto e modelos só podem ser considerados validados após teste temporal fora da amostra (mínimo de 14 datas compartilhadas).
       </p>
     </div>
 
