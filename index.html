@@ -492,12 +492,12 @@
       </div>
       <div id="audit-daily-date" class="audit-date-centered date-field">
         <label for="audit-selected-date" class="block text-[10px] font-semibold text-gray-300 mb-1">3. Data analisada</label>
-        <input id="audit-selected-date" type="date" value="2026-11-16" onchange="fetchHistoryValidation()">
+        <input id="audit-selected-date" type="date" value="2026-11-19" onchange="fetchHistoryValidation()">
       </div>
       <div id="audit-range-dates" class="hidden audit-range-centered">
         <label class="block text-[10px] font-semibold text-gray-300 mb-1">3. Intervalo da comparação</label>
         <div class="grid grid-cols-2 gap-2">
-          <div class="date-field"><label for="audit-date-from" class="block text-[9px] text-gray-500 mb-1">De</label><input id="audit-date-from" type="date" value="2026-11-16" onchange="fetchHistoryValidation()"></div>
+          <div class="date-field"><label for="audit-date-from" class="block text-[9px] text-gray-500 mb-1">De</label><input id="audit-date-from" type="date" value="2026-11-19" onchange="fetchHistoryValidation()"></div>
           <div class="date-field"><label for="audit-date-to" class="block text-[9px] text-gray-500 mb-1">Até</label><input id="audit-date-to" type="date" value="2026-11-17" onchange="fetchHistoryValidation()"></div>
         </div>
       </div>
@@ -986,7 +986,7 @@ const auditSelectedDate = document.getElementById('audit-selected-date');
 const auditDateFrom = document.getElementById('audit-date-from');
 const auditDateTo = document.getElementById('audit-date-to');
 if (auditSelectedDate) auditSelectedDate.value = todayLocal;
-if (auditDateFrom) auditDateFrom.value = '2026-11-16';
+if (auditDateFrom) auditDateFrom.value = '2026-11-19';
 if (auditDateTo) auditDateTo.value = todayLocal;
 
 let candidatosAtuais = [];
@@ -2190,10 +2190,10 @@ async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
   let dateFrom = null, dateTo = null;
   if (auditMode === 'daily') {
-    const selected = document.getElementById('audit-selected-date')?.value || '2026-11-16';
+    const selected = document.getElementById('audit-selected-date')?.value || '2026-11-19';
     dateFrom = selected; dateTo = selected;
   } else if (auditMode === 'range') {
-    dateFrom = document.getElementById('audit-date-from')?.value || '2026-11-16';
+    dateFrom = document.getElementById('audit-date-from')?.value || '2026-11-19';
     dateTo = document.getElementById('audit-date-to')?.value || '';
   }
   const requestId = ++historyValidationRequestId;
