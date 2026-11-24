@@ -2423,14 +2423,9 @@ def fetch_espn_games(
         # A rotina é deduplicada por data e executada em background.
         schedule_defense_context_prewarm(selected_date)
 
-        # Também inicia, somente na tela de jogos, o histórico dos atletas.
-        # A pesquisa do mercado pode esperar esse prewarm se ele ainda estiver
-        # em andamento; assim evitamos duplicar chamadas à ESPN.
-        if prewarm_player_history and team_abbreviations:
-            schedule_player_history_prewarm(
-                selected_date,
-                team_abbreviations
-            )
+        # O histórico individual dos atletas é carregado sob demanda por
+        # /candidates. Não iniciar uma varredura paralela de todos os elencos
+        # evita saturar a ESPN e não cria uma espera sem limite na pesquisa.
 
     return {
         "date": selected_date,
@@ -4155,9 +4150,8 @@ def collect_candidates(
         roster_elapsed
     )
 
-    # Se a tela de jogos já iniciou o prewarm, aproveitamos o trabalho
-    # em andamento antes de abrir novas consultas individuais.
-    wait_player_history_prewarm(selected_date)
+    # O Scanner consulta o histórico dos atletas diretamente nesta
+    # requisição, com concorrência limitada, sem aguardar prewarm externo.
 
     # Primeiro buscamos os históricos dos jogadores. Isso permite
     # identificar quem realmente pode virar candidato antes de
@@ -4752,12 +4746,9 @@ def games(
         if team and team.get("abbr")
     }
 
+    # Aquece apenas o contexto defensivo compartilhado em segundo plano.
+    # O histórico individual é consultado sob demanda em /candidates.
     schedule_defense_context_prewarm(selected_date)
-    if team_abbreviations:
-        schedule_player_history_prewarm(
-            selected_date,
-            team_abbreviations
-        )
 
     return payload
 
