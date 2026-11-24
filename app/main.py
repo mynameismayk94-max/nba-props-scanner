@@ -5005,7 +5005,10 @@ def refresh_audit(
                   AND nr.id IS NULL
                 ORDER BY s.selected_date ASC, s.market ASC
                 """,
-                (target_date if not history else audit_history_start_date(), target_date)
+                (
+                    audit_history_start_date(),
+                    target_date if history else target_date - timedelta(days=1)
+                )
             )
             pending_combinations = cursor.fetchall()
 
