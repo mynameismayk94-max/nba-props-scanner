@@ -521,7 +521,7 @@
             <div class="text-[10px] font-semibold text-white">Sincronização da Auditoria</div>
             <div class="text-[9px] text-gray-500">Atualiza somente a data selecionada e apura suas pendências.</div>
           </div>
-          <button type="button" id="audit-refresh-btn" onclick="atualizarAuditoriaHibrida()" class="market-button whitespace-nowrap">↻ Recarregar indicadores</button>
+          <button type="button" id="audit-refresh-btn" onclick="atualizarAuditoriaHibrida()" class="market-button whitespace-nowrap inline-flex items-center justify-center gap-2"><span aria-hidden="true" class="text-xl leading-none font-normal">↻</span><span>Atualizar</span></button>
         </div>
         <div id="audit-refresh-status" class="text-[9px] text-gray-500" aria-live="polite">Pronto para sincronizar.</div>
       </div>
@@ -568,40 +568,18 @@
           <span class="text-[10px] text-gray-500 hidden group-open:inline">Recolher</span>
         </summary>
         <div class="mt-2 pt-2 border-t border-gray-800 space-y-2 text-[10px] leading-relaxed text-gray-400">
-          <p><strong class="text-gray-200">Base:</strong> snapshots são os registros pré-jogo da auditoria independente. <strong class="text-emerald-300">DNP</strong> significa que não houve participação estatística válida; conta como resolvido, mas não entra nas métricas de precisão. <strong class="text-amber-300">Pendente</strong> ainda não tem resultado confirmado.</p>
-          <p><strong class="text-gray-200">Amostras:</strong> L5 completa exige 5/5 jogos e L10 completa, 10/10. Quando a janela é parcial, a amostra é menor. “—” ou “insuficiente” pode indicar falta de dados para aquele cálculo, não necessariamente falha.</p>
-          <p><strong class="text-gray-200">Visões:</strong> diária considera a data selecionada; intervalo reúne as datas escolhidas; acumulado usa a coorte principal desde 19/11/2026. Os registros de 16 a 18/11 continuam preservados e disponíveis na visão diária.</p>
-          <p><strong class="text-gray-200">Faixas e ranking:</strong> quintis de Score descrevem a distribuição observada do mercado, não probabilidades. A comparação Top 10 versus demais exige pelo menos 30 registros e 15 jogadores em cada grupo, além de 14 datas compartilhadas.</p>
-          <p><strong class="text-gray-200">Validação temporal:</strong> 14 datas é o mínimo para executar o holdout; atingir esse número não significa que o teste foi aprovado ou que o modelo está validado.</p>
-          <p><strong class="text-gray-200">Contexto defensivo:</strong> as análises de Gap e das referências por minutos/jogo equivalente são descritivas ou exploratórias. Não demonstram causalidade, probabilidade de acerto ou lucro e não alteram a fórmula do Score.</p>
+          <p class="font-semibold text-gray-200">Legenda dos indicadores de desempenho</p>
+          <div class="space-y-1.5">
+            <p><span class="font-semibold text-emerald-400">Erro L5 (MAE):</span> erro absoluto médio das projeções com base nos últimos 5 jogos. Quanto menor, melhor.</p>
+            <p><span class="font-semibold text-teal-400">Erro L10 (MAE):</span> mesma medida considerando os últimos 10 jogos. Quanto menor, melhor.</p>
+            <p><span class="font-semibold text-indigo-400">Pearson:</span> mede a associação linear entre a referência analisada e o resultado real.</p>
+            <p><span class="font-semibold text-violet-400">Spearman:</span> mede se a ordenação das referências acompanha a ordenação dos resultados reais.</p>
+            <p><span class="font-semibold text-gray-200">Resolvido:</span> percentual de registros já apurados, incluindo resultados reais e DNP. Não é taxa de acerto.</p>
+            <p><span class="font-semibold text-emerald-300">MAE / média prevista L5:</span> erro L5 em relação à média prevista, para facilitar a leitura proporcional. Não é MAPE.</p>
+            <p><span class="font-semibold text-teal-300">MAE / média prevista L10:</span> mesma comparação proporcional usando a janela L10. Não é MAPE.</p>
+          </div>
         </div>
       </details>
-    </div>
-
-    <div class="glass-panel p-3 space-y-2">
-      <div class="flex items-center justify-between gap-2">
-        <h3 class="text-xs font-semibold text-white">📌 Status da evidência</h3>
-        <span class="text-[9px] text-gray-500">Leitura rápida</span>
-      </div>
-      <div class="evidence-status-grid">
-        <div class="evidence-status-card">
-          <div class="evidence-status-label"><span>Precisão L5/L10</span><span id="evidence-status-accuracy-badge" class="evidence-badge evidence-descriptive">DESCRITIVO</span></div>
-          <div id="evidence-status-accuracy" class="evidence-status-value text-gray-200">Desempenho observado</div>
-          <div id="evidence-status-accuracy-detail" class="evidence-status-detail">MAE e viés no histórico disponível.</div>
-        </div>
-        <div class="evidence-status-card">
-          <div class="evidence-status-label"><span>Modelos</span><span id="evidence-status-model-badge" class="evidence-badge evidence-collecting">COLETA</span></div>
-          <div id="evidence-status-model" class="evidence-status-value text-blue-200">Aguardando holdout</div>
-          <div id="evidence-status-model-detail" class="evidence-status-detail">Comparação temporal exige 14 datas compartilhadas.</div>
-        </div>
-        <div class="evidence-status-card">
-          <div class="evidence-status-label"><span>Contextos pré-jogo</span><span id="evidence-status-context-badge" class="evidence-badge evidence-exploratory">EXPLORATÓRIO</span></div>
-          <div id="evidence-status-context" class="evidence-status-value text-amber-200">Sem validação temporal</div>
-          <div id="evidence-status-context-detail" class="evidence-status-detail">Defesa, minutos e jogo equivalente não alteram o Score.</div>
-        </div>
-        
-      </div>
-      <p id="evidence-status-note" class="text-[9px] text-gray-500 border-t border-gray-800 pt-2">Nenhum bloco é marcado como validado apenas por ter amostra histórica. Validação exige comparação temporal fora da amostra.</p>
     </div>
 
     <div id="audit-independent-content">
@@ -643,6 +621,36 @@
       </div>
     </div>
     <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. As amostras distinguem janelas completas e parciais. MAE / média prevista não é MAPE. As métricas de associação e comparações complementares ficam disponíveis nas análises avançadas. Nenhuma representa taxa de acerto.</p>
+
+    <div class="glass-panel p-3 space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-xs font-semibold text-white">📌 Status da evidência</h3>
+        <span class="text-[9px] text-gray-500">Leitura rápida</span>
+      </div>
+      <div class="evidence-status-grid">
+        <div class="evidence-status-card">
+          <div class="evidence-status-label"><span>Precisão L5/L10</span><span id="evidence-status-accuracy-badge" class="evidence-badge evidence-descriptive">DESCRITIVO</span></div>
+          <div id="evidence-status-accuracy" class="evidence-status-value text-gray-200">Desempenho observado</div>
+          <div id="evidence-status-accuracy-detail" class="evidence-status-detail">MAE e viés no histórico disponível.</div>
+        </div>
+        <div class="evidence-status-card">
+          <div class="evidence-status-label"><span>Modelos</span><span id="evidence-status-model-badge" class="evidence-badge evidence-collecting">COLETA</span></div>
+          <div id="evidence-status-model" class="evidence-status-value text-blue-200">Aguardando holdout</div>
+          <div id="evidence-status-model-detail" class="evidence-status-detail">Comparação temporal exige 14 datas compartilhadas.</div>
+        </div>
+        <div class="evidence-status-card">
+          <div class="evidence-status-label"><span>Contextos pré-jogo</span><span id="evidence-status-context-badge" class="evidence-badge evidence-exploratory">EXPLORATÓRIO</span></div>
+          <div id="evidence-status-context" class="evidence-status-value text-amber-200">Sem validação temporal</div>
+          <div id="evidence-status-context-detail" class="evidence-status-detail">Defesa, minutos e jogo equivalente não alteram o Score.</div>
+        </div>
+        
+      </div>
+      <p id="evidence-status-note" class="text-[9px] text-gray-500 border-t border-gray-800 pt-2">Nenhum bloco é marcado como validado apenas por ter amostra histórica. Validação exige comparação temporal fora da amostra.</p>
+    </div>
+
+    <div id="audit-independent-content">
+
+
 
     <div class="space-y-3">
     <!-- Comparação de referências estatísticas na mesma amostra -->
