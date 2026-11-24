@@ -571,7 +571,7 @@
       </p>
     </div>
 
-    <div class="glass-panel p-3 space-y-2">
+    <div class="glass-panel p-3 space-y-2 hidden">
       <div class="flex items-center justify-between gap-2">
         <h3 class="text-xs font-semibold text-white">📌 Status da evidência</h3>
         <span class="text-[9px] text-gray-500">Leitura rápida</span>
@@ -618,11 +618,11 @@
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro L10 (MAE)</span>
         <div class="text-base font-bold text-teal-400 mt-0.5" id="kpi-l10-mae">--</div>
       </div>
-      <div class="glass-panel p-2.5">
+      <div class="glass-panel p-2.5 hidden">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Pearson · associação</span>
         <div class="text-base font-bold text-indigo-400 mt-0.5" id="kpi-pearson">--</div>
       </div>
-      <div class="glass-panel p-2.5">
+      <div class="glass-panel p-2.5 hidden">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Spearman</span>
         <div class="text-base font-bold text-violet-400 mt-0.5" id="kpi-spearman">--</div>
       </div>
@@ -630,17 +630,20 @@
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Resolvido (resultado + DNP)</span>
         <div class="text-base font-bold text-gray-200 mt-0.5" id="kpi-completion">--%</div>
       </div>
-      <div class="glass-panel p-2.5">
+      <div class="glass-panel p-2.5 hidden">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">MAE / média prevista L5</span>
         <div class="text-base font-bold text-emerald-300 mt-0.5" id="kpi-l5-relative">--%</div>
       </div>
-      <div class="glass-panel p-2.5">
+      <div class="glass-panel p-2.5 hidden">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">MAE / média prevista L10</span>
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. As amostras distinguem janelas completas e parciais. MAE / média prevista não é MAPE. Pearson mede associação linear; Spearman mede associação monotônica da ordem do ranking. Nenhum dos dois é taxa de acerto.</p>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. As amostras distinguem janelas completas e parciais. MAE / média prevista não é MAPE. As métricas de associação e comparações complementares ficam disponíveis nas análises avançadas. Nenhuma representa taxa de acerto.</p>
 
+    <details class="glass-panel p-3 space-y-3">
+      <summary class="cursor-pointer text-xs font-semibold text-white">Análises avançadas · comparações e contexto defensivo</summary>
+      <div class="space-y-3 pt-2">
     <!-- Comparação de referências estatísticas na mesma amostra -->
     <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">⚖️ Comparação de referências pré-jogo</h3>
@@ -732,8 +735,11 @@
       <p class="text-[9px] text-gray-500">No Gap, as faixas abaixo continuam absolutas (7+, 6–6,99 etc.) porque esta classificação é uma regra contextual separada. Margem de classificação: ±10% da média da liga para a mesma posição. Δ vs média pessoal = resultado real menos a média pré-jogo L5/L10 do próprio jogador; valor positivo indica produção acima do histórico recente, negativo indica abaixo. É uma comparação descritiva, não uma previsão. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
     </div>
 
+      </div>
+    </details>
+
     <!-- Validação dos contextos pré-jogo capturados no snapshot -->
-    <div class="glass-panel p-3 space-y-3">
+    <div class="glass-panel p-3 space-y-3 hidden">
       <div>
         <h3 class="text-xs font-semibold text-white">🔬 Validação dos contextos pré-jogo</h3>
         <p class="text-[10px] text-gray-400 mt-1">Compara referências contextuais capturadas antes da partida com o resultado real. <strong class="text-gray-300">É exploratório, não causal e não altera o Score.</strong> “Validado” só será usado após teste temporal fora da amostra.</p>
@@ -764,7 +770,7 @@
     </div>
 
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
-    <div class="glass-panel p-3 space-y-2">
+    <div class="glass-panel p-3 space-y-2 hidden">
       <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
       <p class="text-[10px] text-gray-400">Selecione uma faixa relativa ao próprio mercado para comparar registros concluídos com até três referências de outros jogadores da mesma posição, usando apenas datas anteriores ao registro analisado. As faixas seguem os quintis da distribuição observada. É uma análise exploratória, não uma previsão.</p>
       <div class="flex flex-wrap items-center gap-2">
