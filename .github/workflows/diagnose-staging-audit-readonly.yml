@@ -28,10 +28,11 @@ jobs:
           MARKETS=(points assists rebounds threes two_pa fgm)
           failures=0
 
-          curl --silent --show-error --max-time 60 \
+          health_http=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 60 \
             --output staging-audit-diagnostic/health.json \
-            --write-out "%{http_code}" \
-            "${BASE_URL}/health" > staging-audit-diagnostic/health.http
+            --write-out "%{http_code}" "${BASE_URL}/health")
+          echo "STAGING_HEALTH_HTTP: ${health_http}"
+          jq '{status, version, source}' staging-audit-diagnostic/health.json || true
 
           ui_http_code=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 60 \
             --output staging-audit-diagnostic/ui-index.html --write-out "%{http_code}" "${BASE_URL}/")
@@ -60,7 +61,7 @@ jobs:
           candidates_file="staging-audit-diagnostic/candidates-points-${SCANNER_DATE}.json"
           candidates_meta=$(curl --silent --show-error --retry 1 --retry-delay 5 --retry-all-errors --max-time 300 \
             --output "$candidates_file" --write-out "%{http_code} %{time_total} %{size_download}" \
-            "${BASE_URL}/candidates?date=${SCANNER_DATE}&market=points&limit=20")
+            "${BASE_URL}/candidates?date=${SCANNER_DATE}&market=points&limit=10")
           echo "SCANNER_CANDIDATES_POINTS: HTTP time_s bytes = ${candidates_meta}"
           if [[ "${candidates_meta%% *}" != "200" ]] || ! jq -e '.status == "ok" and (.candidates | type == "array")' "$candidates_file" >/dev/null 2>&1; then
             echo "::warning::A rota /candidates não retornou a estrutura esperada."
