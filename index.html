@@ -1000,7 +1000,7 @@ let auditCohort = 'all';
 let auditMode = 'daily';
 let auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
 let contextValidationRequestId = 0;
-let contextValidationData = null;
+let contextValidationData = null;\nlet teammateValidationData = null;
 
 function setAuditMode(mode) {
   if (!['daily', 'range', 'all'].includes(mode)) return;
@@ -2054,38 +2054,24 @@ function updateEvidenceStatusFromComparison(comparison) {
   }
 }
 
-function updateEvidenceContextStatus(data) {
-  const dates = Number(data?.distinct_dates || 0);
+function updateEvidenceContextStatus(data, teammateData) {
+  const contextDates = Number(data?.metrics?.distinct_dates ?? data?.coverage?.distinct_dates ?? 0);
+  const teammateDates = Number(teammateData?.distinct_dates ?? 0);
   const minimum = 14;
-  if (dates >= minimum) {
+  const setStatus = (id, dates, label) => {
+    const ready = dates >= minimum;
     setEvidenceStatus(
-      'evidence-status-context',
-      'ready',
-      'Holdout disponível',
-      dates + '/' + minimum + ' datas; resultado ainda é exploratório até a comparação temporal.'
+      id,
+      ready ? 'ready' : 'exploratory',
+      ready ? 'Holdout disponível' : 'Exploratório',
+      dates + '/' + minimum + ' datas; ' + label + (ready
+        ? ' Resultado ainda é exploratório até a comparação temporal.'
+        : ' Sem efeito automático no Score.')
     );
-    setEvidenceStatus(
-      'evidence-status-teammate',
-      'ready',
-      'Holdout disponível',
-      dates + '/' + minimum + ' datas; resultado ainda é exploratório até a comparação temporal.'
-    );
-  } else {
-    setEvidenceStatus(
-      'evidence-status-context',
-      'exploratory',
-      'Exploratório',
-      dates + '/' + minimum + ' datas; sem efeito automático no Score.'
-    );
-    setEvidenceStatus(
-      'evidence-status-teammate',
-      'exploratory',
-      'Exploratório',
-      dates + '/' + minimum + ' datas; sem efeito automático no Score.'
-    );
-  }
+  };
+  setStatus('evidence-status-context', contextDates, 'Defesa, minutagem e jogo equivalente.');
+  setStatus('evidence-status-teammate', teammateDates, 'Split de companheiros.');
 }
-
 function renderTeammateValidation(teammate) {
   const data = teammate || {};
   const positive = data.groups?.positive?.effect_average;
@@ -2120,10 +2106,10 @@ function renderContextValidation() {
       (metric.sample || 0) + ' registros · cobertura ' + numero(metric.coverage_pct || 0, 1) + '%';
   });
 
-  updateEvidenceContextStatus(data);
+  updateEvidenceContextStatus(data, teammateValidationData);
   const note = document.getElementById('context-validation-note');
   if (note) {
-    const dates = data.distinct_dates || 0;
+    const dates = data.metrics?.distinct_dates ?? data.coverage?.distinct_dates ?? 0;
     note.innerText = 'Mercado ' + (data.market_label || data.market || 'selecionado') +
       ' · ' + dates + '/14 datas para validação temporal. ' +
       (dates >= 14 ? 'Holdout temporal disponível.' : 'Ainda em coleta; nenhum efeito será incorporado ao Score.');
@@ -2175,7 +2161,9 @@ async function fetchContextValidation(market, dateFrom, dateTo) {
     .then(data => {
       if (requestId !== contextValidationRequestId) return;
       if (data.status !== 'ok') throw new Error('Resposta inválida da validação de companheiros');
-      renderTeammateValidation(data.metrics || {});
+      teammateValidationData = data.metrics || {};
+      renderTeammateValidation(teammateValidationData);
+      updateEvidenceContextStatus(contextValidationData, teammateValidationData);
     })
     .catch(error => {
       if (requestId !== contextValidationRequestId) return;
