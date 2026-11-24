@@ -613,7 +613,6 @@
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE e MAE / média prevista: quanto menor, melhor. Pearson e Spearman: quanto mais próximos de +1, melhor. A apuração mostra quanto da amostra já foi resolvido; não é taxa de acerto.</p>
 
     <div class="glass-panel p-3 space-y-2">
       <div class="flex items-center justify-between gap-2">
@@ -2422,7 +2421,7 @@ async function fetchHistoryValidation() {
       const el = document.getElementById(id);
       if (el) el.innerText = '—';
     });
-    document.getElementById('audit-sample-explanation').innerText = 'Falha ao carregar a amostra. Verifique a conexão e tente novamente.';
+    document.getElementById('audit-completion-legend').innerText = 'Não foi possível carregar o percentual de apuração. Verifique a conexão e tente novamente.';
     document.getElementById('score-bands-table').innerHTML =
       '<tr><td colspan="8" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
     document.getElementById('similar-profiles-table').innerHTML =
