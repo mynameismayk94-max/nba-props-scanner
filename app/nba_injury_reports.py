@@ -119,16 +119,28 @@ def get_official_nba_injury_status(
     start_time_brt,
     matchup,
     player_name,
+    start_date_et=None,
+    start_time_et=None,
 ):
     """Retorna status oficial pré-jogo; None significa evidência insuficiente."""
-    if not all((selected_date, start_time_brt, matchup, player_name)):
+    if not all((matchup, player_name)):
         return None
 
     try:
-        local_start = datetime.strptime(
-            f"{selected_date} {start_time_brt}", "%Y-%m-%d %H:%M"
-        ).replace(tzinfo=SAO_PAULO)
-        tipoff_et = local_start.astimezone(EASTERN)
+        if start_date_et and start_time_et:
+            # Preferir a data/hora real do evento em Eastern Time. A data
+            # selecionada pelo Scanner pode diferir da data civil em Brasília
+            # para jogos noturnos da Costa Oeste.
+            tipoff_et = datetime.strptime(
+                f"{start_date_et} {start_time_et}", "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=EASTERN)
+        else:
+            if not all((selected_date, start_time_brt)):
+                return None
+            local_start = datetime.strptime(
+                f"{selected_date} {start_time_brt}", "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=SAO_PAULO)
+            tipoff_et = local_start.astimezone(EASTERN)
     except (TypeError, ValueError):
         return None
 
