@@ -347,12 +347,10 @@
     .evidence-status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .evidence-status-card:last-child { grid-column: auto; }
     #audit-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    #audit-kpi-grid > :last-child { grid-column: 2; }
     #context-validation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     #context-validation-grid > :last-child { grid-column: auto; }
   }
   #audit-kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #audit-kpi-grid > :last-child { grid-column: 1 / -1; }
   #context-validation-grid > :last-child { grid-column: 1 / -1; }
 
   /* Diagnóstico de auditoria: nunca deixar JSON/IDs longos estourarem o viewport. */
@@ -556,8 +554,7 @@
         </button>
       </div>
       <div id="audit-metric-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
-      <p id="audit-sample-explanation" class="text-[9px] text-gray-500">Aguardando os dados do mercado selecionado.</p>
-      <p id="audit-completion-legend" class="text-[9px] text-gray-500">Apuração: <span class="text-gray-300">resolvido</span> = resultado real ou DNP já conferido; pendente = ainda aguardando apuração. Essa informação mede o andamento da coleta, não a qualidade das projeções.</p>
+      <p id="audit-completion-legend" class="text-[9px] text-gray-500">Apuração: <span class="text-gray-300">resolvido = —%</span> · resultado real ou DNP já conferido; <span class="text-gray-300">pendente</span> = ainda aguardando apuração. Essa informação mede o andamento da coleta, não a qualidade das projeções.</p>
       <div id="audit-pending-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
     </div>
 
@@ -1885,7 +1882,7 @@ function limparIndicadoresAuditoria() {
     'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson', 'kpi-spearman',
     'kpi-l5-relative', 'kpi-l10-relative',
     'audit-total-count', 'audit-completed-count', 'audit-noresult-count', 'audit-pending-count',
-    'audit-sample-explanation', 'audit-metric-sample-note',
+    'audit-completion-legend',
     'ranking-top10-average', 'ranking-top10-count',
     'ranking-rest-average', 'ranking-rest-count',
     'similar-target-average', 'similar-target-count',
@@ -2242,23 +2239,9 @@ async function fetchHistoryValidation() {
       : auditMode === 'range'
         ? 'Comparação do intervalo selecionado.'
         : 'Consolidação de todo o histórico independente disponível até hoje.';
-    document.getElementById('audit-sample-explanation').innerText =
-      modeLabel + dateCoverage + ' ' +
-      (summary.snapshots_total ?? 0) + ' snapshots = ' +
-      (summary.completed_results ?? 0) + ' resultados reais + ' +
-      (summary.no_result_results ?? 0) + ' sem resultado + ' +
-      (summary.pending_results ?? 0) + ' aguardando apuração. DNPs e pendências não entram nas métricas de precisão.';
-    document.getElementById('audit-metric-sample-note').innerText =
-      'L5: ' + (summary.l5_sample ?? summary.completed_results ?? 0) + ' registros (' +
-      (summary.l5_full_window_sample ?? 0) + ' completos 5/5, ' +
-      (summary.l5_partial_window_sample ?? 0) + ' parciais, ' +
-      (summary.l5_unknown_window_sample ?? 0) + ' sem contagem). L10: ' +
-      (summary.l10_sample ?? summary.completed_results ?? 0) + ' registros (' +
-      (summary.l10_full_window_sample ?? 0) + ' completos 10/10, ' +
-      (summary.l10_partial_window_sample ?? 0) + ' parciais, ' +
-      (summary.l10_unknown_window_sample ?? 0) + ' sem contagem). Pearson: ' +
-      (summary.pearson_sample ?? summary.completed_results ?? 0) +
-      ' pares Score/resultado. Spearman usa os mesmos pares e mede a ordem do ranking; nenhum dos dois mede taxa de acerto.';
+    const completionPct = summary.completion_rate_pct == null ? '—' : numero(summary.completion_rate_pct, 1);
+    document.getElementById('audit-completion-legend').innerHTML =
+      'Apuração: <span class="text-gray-300">resolvido = ' + completionPct + '%</span> · resultado real ou DNP já conferido; <span class="text-gray-300">pendente</span> = ainda aguardando apuração. Essa informação mede o andamento da coleta, não a qualidade das projeções.';
     document.getElementById('kpi-l5-mae').innerText = summary.l5_mae ?? '--';
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
