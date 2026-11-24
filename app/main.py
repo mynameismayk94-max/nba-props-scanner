@@ -2342,6 +2342,8 @@ def fetch_espn_games(
             # A ESPN fornece o início em UTC; a interface exibe horário de Brasília.
             event_date = event.get("date")
             start_time_brt = None
+            start_date_et = None
+            start_time_et = None
 
             if event_date:
                 try:
@@ -2351,6 +2353,11 @@ def fetch_espn_games(
                     start_time_brt = start_utc.astimezone(
                         ZoneInfo("America/Sao_Paulo")
                     ).strftime("%H:%M")
+                    start_et = start_utc.astimezone(
+                        ZoneInfo("America/New_York")
+                    )
+                    start_date_et = start_et.strftime("%Y-%m-%d")
+                    start_time_et = start_et.strftime("%H:%M")
                 except (ValueError, TypeError):
                     logger.warning(
                         "Horário inválido recebido da ESPN para jogo %s: %s",
@@ -2363,6 +2370,8 @@ def fetch_espn_games(
                 "home": home,
                 "away": away,
                 "start_time_brt": start_time_brt,
+                "start_date_et": start_date_et,
+                "start_time_et": start_time_et,
                 "status": (
                     event.get("status", {})
                     .get("type", {})
@@ -5131,6 +5140,8 @@ def collect_results(
             completed_game_context[game_id] = {
                 "matchup": f"{away.upper()}@{home.upper()}",
                 "start_time_brt": game.get("start_time_brt"),
+                "start_date_et": game.get("start_date_et"),
+                "start_time_et": game.get("start_time_et"),
             }
 
     with get_database_connection() as connection:
@@ -5355,6 +5366,8 @@ def collect_results(
                     start_time_brt=game_context.get("start_time_brt"),
                     matchup=game_context.get("matchup"),
                     player_name=player_name,
+                    start_date_et=game_context.get("start_date_et"),
+                    start_time_et=game_context.get("start_time_et"),
                 )
             except Exception as error:
                 logger.warning(
