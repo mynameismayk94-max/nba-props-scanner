@@ -72,6 +72,25 @@ jobs:
           fi
 
           for market in "${MARKETS[@]}"; do
+            for endpoint in context-validation teammate-split-validation; do
+              file="staging-audit-diagnostic/${market}-${endpoint}.json"
+              url="${BASE_URL}/${endpoint}?market=${market}&cohort=all"
+              echo "::group::${market} / ${endpoint}"
+              http_code=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 300 \
+                --output "$file" --write-out "%{http_code}" "$url")
+              echo "HTTP: ${http_code}"
+              if [[ "${http_code}" != "200" ]] || ! jq -e '.status == "ok"' "$file" >/dev/null 2>&1; then
+                echo "::warning::Falha ao consultar ${market} / ${endpoint}"
+                failures=$((failures + 1))
+                cat "$file" || true
+              elif [[ "$endpoint" == "context-validation" ]]; then
+                jq '{market, cohort, date_from, date_to, distinct_dates: .metrics.distinct_dates, minimum_dates: .metrics.minimum_dates_for_temporal_validation, coverage, references: .metrics.references}' "$file" 2>/dev/null || true
+              else
+                jq '{market, cohort, date_from, date_to, coverage, metrics: {completed_records: .metrics.completed_records, context_coverage_pct: .metrics.context_coverage_pct, distinct_dates: .metrics.distinct_dates, groups: .metrics.groups}}' "$file" 2>/dev/null || true
+              fi
+              echo "::endgroup::"
+            done
+
             for endpoint in validation-history-summary validation-history gap-validation; do
               file="staging-audit-diagnostic/${market}-${endpoint}.json"
               url="${BASE_URL}/${endpoint}?market=${market}&cohort=all"
