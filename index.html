@@ -557,6 +557,7 @@
       </div>
       <div id="audit-metric-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
       <p id="audit-sample-explanation" class="text-[9px] text-gray-500">Aguardando os dados do mercado selecionado.</p>
+      <p id="audit-completion-legend" class="text-[9px] text-gray-500">Apuração: <span class="text-gray-300">resolvido</span> = resultado real ou DNP já conferido; pendente = ainda aguardando apuração. Essa informação mede o andamento da coleta, não a qualidade das projeções.</p>
       <div id="audit-pending-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
     </div>
 
@@ -570,13 +571,12 @@
         <div class="mt-2 pt-2 border-t border-gray-800 space-y-2 text-[10px] leading-relaxed text-gray-400">
           <p class="font-semibold text-gray-200">Legenda dos indicadores de desempenho</p>
           <div class="space-y-1.5">
-            <p><span class="font-semibold text-emerald-400">Erro L5 (MAE):</span> erro absoluto médio das projeções com base nos últimos 5 jogos. Quanto menor, melhor.</p>
-            <p><span class="font-semibold text-teal-400">Erro L10 (MAE):</span> mesma medida considerando os últimos 10 jogos. Quanto menor, melhor.</p>
-            <p><span class="font-semibold text-indigo-400">Pearson:</span> mede a associação linear entre a referência analisada e o resultado real.</p>
-            <p><span class="font-semibold text-violet-400">Spearman:</span> mede se a ordenação das referências acompanha a ordenação dos resultados reais.</p>
-            <p><span class="font-semibold text-gray-200">Resolvido:</span> percentual de registros já apurados, incluindo resultados reais e DNP. Não é taxa de acerto.</p>
-            <p><span class="font-semibold text-emerald-300">MAE / média prevista L5:</span> erro L5 em relação à média prevista, para facilitar a leitura proporcional. Não é MAPE.</p>
-            <p><span class="font-semibold text-teal-300">MAE / média prevista L10:</span> mesma comparação proporcional usando a janela L10. Não é MAPE.</p>
+            <p><span class="font-semibold text-emerald-400">Erro L5 (MAE):</span> erro médio entre a projeção e o resultado real, usando os últimos 5 jogos. <span class="text-gray-300">Quanto menor, melhor; 0 é o ideal.</span></p>
+            <p><span class="font-semibold text-teal-400">Erro L10 (MAE):</span> mesma medida usando os últimos 10 jogos, dando uma referência mais ampla do desempenho. <span class="text-gray-300">Quanto menor, melhor; 0 é o ideal.</span></p>
+            <p><span class="font-semibold text-indigo-400">Pearson:</span> indica a força da relação linear entre a referência e o resultado real. <span class="text-gray-300">Quanto mais próximo de +1, melhor; perto de 0 indica pouca associação.</span></p>
+            <p><span class="font-semibold text-violet-400">Spearman:</span> indica o quanto a ordem das referências acompanha a ordem dos resultados reais. <span class="text-gray-300">Quanto mais próximo de +1, melhor; perto de 0 indica pouca associação de ordem.</span></p>
+            <p><span class="font-semibold text-emerald-300">MAE / média prevista L5:</span> mostra o erro L5 proporcional à média prevista. <span class="text-gray-300">Quanto menor, melhor; 0% significa erro médio nulo.</span></p>
+            <p><span class="font-semibold text-teal-300">MAE / média prevista L10:</span> mesma proporção usando a janela L10. <span class="text-gray-300">Quanto menor, melhor; 0% significa erro médio nulo.</span></p>
           </div>
         </div>
       </details>
@@ -608,10 +608,6 @@
         <div class="text-base font-bold text-violet-400 mt-0.5" id="kpi-spearman">--</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">Resolvido (resultado + DNP)</span>
-        <div class="text-base font-bold text-gray-200 mt-0.5" id="kpi-completion">--%</div>
-      </div>
-      <div class="glass-panel p-2.5">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">MAE / média prevista L5</span>
         <div class="text-base font-bold text-emerald-300 mt-0.5" id="kpi-l5-relative">--%</div>
       </div>
@@ -620,7 +616,7 @@
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro absoluto médio em unidades da estatística; menor é melhor. As amostras distinguem janelas completas e parciais. MAE / média prevista não é MAPE. As métricas de associação e comparações complementares ficam disponíveis nas análises avançadas. Nenhuma representa taxa de acerto.</p>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE e MAE / média prevista: quanto menor, melhor. Pearson e Spearman: quanto mais próximos de +1, melhor. A apuração mostra quanto da amostra já foi resolvido; não é taxa de acerto.</p>
 
     <div class="glass-panel p-3 space-y-2">
       <div class="flex items-center justify-between gap-2">
