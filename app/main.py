@@ -144,6 +144,8 @@ def require_admin_api_key(api_key: Optional[str] = Depends(admin_api_key_header)
 
 AUDIT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 AUDIT_START_DATE = date(2026, 11, 16)
+# Coorte limpa para métricas acumuladas; preserva coleta e snapshots brutos.
+AUDIT_METRICS_START_DATE = date(2026, 11, 19)
 
 
 def audit_history_cutoff_date():
@@ -152,8 +154,13 @@ def audit_history_cutoff_date():
 
 
 def audit_history_start_date():
-    """Primeiro dia oficial da auditoria independente."""
+    """Primeiro dia oficial da auditoria independente e da coleta histórica."""
     return AUDIT_START_DATE
+
+
+def audit_metrics_start_date():
+    """Primeiro dia da coorte usada nos indicadores acumulados."""
+    return AUDIT_METRICS_START_DATE
 
 
 
@@ -6230,10 +6237,9 @@ def validation_history_summary(
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
-    # Sem datas significa "Histórico acumulado": inclui toda a auditoria
-    # independente desde 16/11 até o último snapshot disponível hoje.
+    # Sem datas: histórico acumulado da coorte validada, desde 19/11.
     if not date_from and not date_to:
-        parsed_from = audit_history_start_date()
+        parsed_from = audit_metrics_start_date()
         parsed_to = audit_history_cutoff_date()
 
 
@@ -6421,11 +6427,9 @@ def validation_history(
             date_to,
             "%Y-%m-%d"
         ).date()
-    # Histórico acumulado: começa no primeiro dia oficial da auditoria (16/11)
-    # e soma tudo que já estiver disponível até hoje, inclusive snapshots
-    # futuros em relação ao primeiro dia e pendências ainda não apuradas.
+    # Histórico acumulado da coorte validada: 19/11 até hoje.
     if not date_from and not date_to:
-        parsed_from = audit_history_start_date()
+        parsed_from = audit_metrics_start_date()
         parsed_to = audit_history_cutoff_date()
 
 
@@ -7064,7 +7068,7 @@ def context_validation(
         raise HTTPException(status_code=400, detail="População de auditoria inválida.")
 
     try:
-        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_history_start_date()
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_metrics_start_date()
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else audit_history_cutoff_date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
@@ -7192,7 +7196,7 @@ def teammate_split_validation(
     if cohort not in {"all", "top10"}:
         raise HTTPException(status_code=400, detail="População de auditoria inválida.")
     try:
-        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_history_start_date()
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_metrics_start_date()
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else audit_history_cutoff_date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
@@ -7288,10 +7292,9 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
-    # Sem datas significa "Histórico acumulado": começa em 16/11 e encerra
-    # hoje, incluindo snapshots já capturados mesmo que ainda estejam pendentes.
+    # Sem datas: métricas acumuladas da coorte validada desde 19/11.
     if not date_from and not date_to:
-        parsed_from = audit_history_start_date()
+        parsed_from = audit_metrics_start_date()
         parsed_to = audit_history_cutoff_date()
 
     if not DATABASE_URL:
