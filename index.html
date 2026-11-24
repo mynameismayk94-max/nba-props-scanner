@@ -478,11 +478,11 @@
         <div>
           <label for="audit-mode-select" class="block text-[10px] font-semibold text-gray-300 mb-1">2. Visão da auditoria</label>
           <select id="audit-mode-select" onchange="setAuditMode(this.value)" class="bg-darkbg border border-gray-700 rounded-lg px-3 py-2 text-xs text-white w-full h-9">
+            <option value="all">Histórico acumulado</option>
             <option value="daily">Visão diária</option>
             <option value="range">Comparar períodos</option>
-            <option value="all">Histórico acumulado</option>
           </select>
-          <p id="audit-mode-description" class="text-[9px] text-gray-400 mt-1">Mostra somente os registros do mercado e da data escolhidos. Métricas que dependem de vários jogos, comparações entre cenários ou datas distintas podem aparecer como “—” ou amostra insuficiente. Isso não significa, por si só, falha na coleta.</p>
+          <p id="audit-mode-description" class="text-[9px] text-gray-400 mt-1">Mostra o acumulado da coorte principal da auditoria independente a partir de 19/11/2026 até hoje. Os registros de 16, 17 e 18/11 permanecem preservados e disponíveis na visão diária, mas ficam fora deste acumulado. Snapshots pendentes continuam visíveis; resultados reais entram nas métricas de precisão quando a apuração é concluída.</p>
         </div>
       </div>
       <div id="audit-daily-date" class="audit-date-centered date-field">
@@ -992,7 +992,7 @@ let historyValidationRequestId = 0;
 let gapValidationRequestId = 0;
 let gapAuditData = null;
 let auditCohort = 'all';
-let auditMode = 'daily';
+let auditMode = 'all';
 let auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
 let contextValidationRequestId = 0;
 let contextValidationData = null;
