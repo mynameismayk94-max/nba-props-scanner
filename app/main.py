@@ -4736,13 +4736,30 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    # O endpoint /games precisa responder rápido: o histórico recente e o
-    # prewarm de jogadores não devem bloquear a resposta inicial da tela.
-    # O contexto completo continua sendo carregado pelo fluxo de candidatos.
-    return fetch_espn_games(
+    # Mantém a resposta inicial rápida, mas inicia em background os caches
+    # caros que o Scanner usará logo após o usuário escolher um mercado.
+    # Sem estes prewarms, a primeira chamada fria de /candidates precisa
+    # carregar centenas de históricos e todo o benchmark defensivo no request.
+    payload = fetch_espn_games(
         selected_date,
         enrich_context=False
     )
+
+    team_abbreviations = {
+        team.get("abbr")
+        for game in payload.get("games", [])
+        for team in (game.get("home"), game.get("away"))
+        if team and team.get("abbr")
+    }
+
+    schedule_defense_context_prewarm(selected_date)
+    if team_abbreviations:
+        schedule_player_history_prewarm(
+            selected_date,
+            team_abbreviations
+        )
+
+    return payload
 
 
 @app.get("/candidates")
