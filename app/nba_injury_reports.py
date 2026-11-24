@@ -65,7 +65,14 @@ def _player_name_patterns(player_name):
 
 def _normalize_matchup(matchup):
     """Converte siglas ESPN para as siglas oficiais usadas no PDF da NBA."""
-    aliases = {"GS": "GSW", "SA": "SAS", "NO": "NOP", "NY": "NYK", "WSH": "WAS"}
+    aliases = {
+        "GS": "GSW",
+        "SA": "SAS",
+        "NO": "NOP",
+        "NY": "NYK",
+        "WSH": "WAS",
+        "UTAH": "UTA",
+    }
     teams = [part.strip().upper() for part in (matchup or "").split("@")]
     if len(teams) != 2 or not all(teams):
         return ""
@@ -76,8 +83,25 @@ def _status_for_player(report_text, matchup, player_name):
     normalized = re.sub(r"\s+", " ", report_text or "")
     normalized_matchup = _normalize_matchup(matchup)
     compact_report = re.sub(r"\s+", "", normalized).upper()
-    if not normalized or (normalized_matchup and normalized_matchup not in compact_report):
+
+    if not normalized:
         return None
+
+    # A ESPN e o relatório oficial podem apresentar mandante/visitante em
+    # ordens diferentes. A validação exige as duas equipes, mas não a ordem.
+    if normalized_matchup:
+        teams = normalized_matchup.split("@")
+        if len(teams) != 2:
+            return None
+        matchup_variants = {
+            normalized_matchup,
+            "@".join(reversed(teams)),
+        }
+        if not any(
+            variant in compact_report
+            for variant in matchup_variants
+        ):
+            return None
 
     for player_pattern in _player_name_patterns(player_name):
         for match in re.finditer(player_pattern, normalized, re.IGNORECASE):
