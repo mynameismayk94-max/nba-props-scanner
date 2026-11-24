@@ -3290,7 +3290,7 @@ NBA_TEAM_ABBREVIATIONS = (
 )
 
 
-@lru_cache(maxsize=12)
+@lru_cache(maxsize=2)
 def get_league_position_defense_baseline(year, target_date_iso):
     """Média da liga de totais cedidos por jogo a cada posição, usando os últimos 5/10 jogos de cada equipe."""
     started = time.perf_counter()
