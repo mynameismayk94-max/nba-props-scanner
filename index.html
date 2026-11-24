@@ -1000,14 +1000,15 @@ let auditCohort = 'all';
 let auditMode = 'daily';
 let auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
 let contextValidationRequestId = 0;
-let contextValidationData = null;\nlet teammateValidationData = null;
+let contextValidationData = null;
+let teammateValidationData = null;
 
 function setAuditMode(mode) {
   if (!['daily', 'range', 'all'].includes(mode)) return;
   auditMode = mode;
   const descriptions = {
-    daily: 'Mostra somente os registros do mercado e da data escolhidos. Nenhum outro dia é somado.',
-    range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária dentro desse intervalo.',
+    daily: 'Mostra somente os registros do mercado e da data escolhidos. Métricas que dependem de vários jogos, comparações entre cenários ou datas distintas podem aparecer como “—” ou amostra insuficiente. Isso não significa, por si só, falha na coleta.',
+    range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária. Ainda assim, métricas contextuais e temporais podem exigir mais jogos, comparações válidas ou datas distintas do que o intervalo oferece.',
     all: 'Mostra o acumulado da auditoria independente desde 16/11 até hoje. Soma os snapshots já capturados em cada data, mesmo quando ainda estão pendentes; resultados reais entram assim que a apuração é concluída. Não inclui o histórico antigo.'
   };
   const modeSelect = document.getElementById('audit-mode-select');
@@ -2078,14 +2079,15 @@ function renderTeammateValidation(teammate) {
   const negative = data.groups?.negative?.effect_average;
   const valueEl = document.getElementById('teammate-validation-effect');
   const sampleEl = document.getElementById('teammate-validation-sample');
+  const insufficient = Number(data.groups?.insufficient?.records || 0);
   if (valueEl) valueEl.innerText =
     (positive == null && negative == null)
-      ? '—'
+      ? (insufficient > 0 ? 'Sem amostra pareada' : 'Sem amostra válida')
       : 'Pos ' + (positive == null ? '—' : '+' + numero(positive, 2)) +
         ' · Neg ' + (negative == null ? '—' : numero(negative, 2));
   if (sampleEl) sampleEl.innerText =
     (data.completed_records || 0) + ' snapshots · cobertura ' +
-    numero(data.context_coverage_pct || 0, 1) + '%';
+    numero(data.context_coverage_pct || 0, 1) + '% · ' + insufficient + ' sem comparação';
 }
 
 function renderContextValidation() {
@@ -2101,7 +2103,9 @@ function renderContextValidation() {
     const value = metric.context_mae_delta_vs_l10;
     const valueEl = document.getElementById(valueId);
     const sampleEl = document.getElementById(sampleId);
-    if (valueEl) valueEl.innerText = value == null ? '—' : ((value > 0 ? '+' : '') + numero(value, 3) + ' MAE');
+    if (valueEl) valueEl.innerText = value == null
+      ? ((metric.sample || 0) > 0 ? 'Sem diferença calculável' : 'Sem amostra válida')
+      : ((value > 0 ? '+' : '') + numero(value, 3) + ' MAE');
     if (sampleEl) sampleEl.innerText =
       (metric.sample || 0) + ' registros · cobertura ' + numero(metric.coverage_pct || 0, 1) + '%';
   });
