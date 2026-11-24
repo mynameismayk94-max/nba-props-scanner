@@ -2034,7 +2034,7 @@ function setEvidenceStatus(id, kind, title, detail) {
 function updateEvidenceStatusFromComparison(comparison) {
   const holdout = comparison?.temporal_holdout || {};
   const dates = Number(holdout.dates_available ?? comparison?.full_window_distinct_dates ?? 0);
-  const minimum = Number(holdout.minimum_dates ?? 14);
+  const minimum = 7;
   if (holdout.status === 'ready' || dates >= minimum) {
     setEvidenceStatus(
       'evidence-status-model',
@@ -2055,7 +2055,7 @@ function updateEvidenceStatusFromComparison(comparison) {
 function updateEvidenceContextStatus(data, teammateData) {
   const contextDates = Number(data?.metrics?.distinct_dates ?? data?.coverage?.distinct_dates ?? 0);
   const teammateDates = Number(teammateData?.distinct_dates ?? 0);
-  const minimum = 14;
+  const minimum = 7;
   const setStatus = (id, dates, label) => {
     const ready = dates >= minimum;
     setEvidenceStatus(
@@ -2112,8 +2112,8 @@ function renderContextValidation() {
   if (note) {
     const dates = data.metrics?.distinct_dates ?? data.coverage?.distinct_dates ?? 0;
     note.innerText = 'Mercado ' + (data.market_label || data.market || 'selecionado') +
-      ' · ' + dates + '/14 datas para validação temporal. ' +
-      (dates >= 14 ? 'Holdout temporal disponível.' : 'Ainda em coleta; nenhum efeito será incorporado ao Score.');
+      ' · ' + dates + '/7 datas para validação temporal. ' +
+      (dates >= 7 ? 'Holdout temporal disponível.' : 'Ainda em coleta; nenhum efeito será incorporado ao Score.');
   }
 }
 
