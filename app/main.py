@@ -4177,6 +4177,27 @@ def collect_candidates(
     player_logs = {}
     successful_logs = 0
     errors = 0
+    # Registra se o prewarm iniciado pela busca de jogos terminou antes
+    # da primeira consulta de mercado. Não espera nem altera o fluxo do Scanner.
+    with _PLAYER_HISTORY_PREWARM_LOCK:
+        player_prewarm_state = dict(
+            _PLAYER_HISTORY_PREWARM_STATE.get(selected_date, {})
+        )
+    logger.info(
+        "Player history prewarm at candidates start: data=%s status=%s "
+        "elapsed=%.2fs players=%s successful=%s errors=%s",
+        selected_date,
+        player_prewarm_state.get("status", "not_started"),
+        (
+            time.perf_counter() - player_prewarm_state["started"]
+            if player_prewarm_state.get("started") is not None
+            else 0.0
+        ),
+        player_prewarm_state.get("players", 0),
+        player_prewarm_state.get("successful", 0),
+        player_prewarm_state.get("errors", 0),
+    )
+
     player_cache_before = _cache_metrics(get_athlete_logs)
 
     player_fetch_durations = []
