@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Any, Iterable
 
 
-MINIMUM_TEMPORAL_DATES = 14
+MINIMUM_TEMPORAL_DATES = 7
 
 
 def _date_key(value: Any) -> str:
@@ -446,7 +446,7 @@ def build_context_reference_metrics(records: Iterable[dict]) -> dict:
             "Comparação exploratória entre referências defensivas capturadas antes "
             "do jogo e a média L10 do próprio jogador. Não mede causalidade, "
             "probabilidade de over/under ou valor esperado. A utilidade incremental "
-            "deve ser confirmada em holdout temporal quando houver pelo menos 14 datas."
+            "deve ser confirmada em holdout temporal quando houver pelo menos 7 datas."
         ),
     }
 
