@@ -1883,7 +1883,7 @@ function limparIndicadoresAuditoria() {
 
   [
     'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson', 'kpi-spearman',
-    'kpi-completion', 'kpi-l5-relative', 'kpi-l10-relative',
+    'kpi-l5-relative', 'kpi-l10-relative',
     'audit-total-count', 'audit-completed-count', 'audit-noresult-count', 'audit-pending-count',
     'audit-sample-explanation', 'audit-metric-sample-note',
     'ranking-top10-average', 'ranking-top10-count',
@@ -2263,7 +2263,7 @@ async function fetchHistoryValidation() {
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
     document.getElementById('kpi-spearman').innerText = summary.score_actual_spearman ?? '--';
-    document.getElementById('kpi-completion').innerText = (summary.completion_rate_pct || 0) + '%';
+    // A taxa de apuração permanece na Conferência da amostra; não é indicador de desempenho.
     document.getElementById('kpi-l5-relative').innerText = summary.l5_relative_error_pct == null ? '--%' : numero(summary.l5_relative_error_pct, 1) + '%';
     document.getElementById('kpi-l10-relative').innerText = summary.l10_relative_error_pct == null ? '--%' : numero(summary.l10_relative_error_pct, 1) + '%';
     setEvidenceStatus(
