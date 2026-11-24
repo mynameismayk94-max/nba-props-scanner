@@ -44,6 +44,32 @@ jobs:
             fi
           done
 
+          # Diagnóstico do caminho do Scanner, com o mesmo endpoint usado pela tela.
+          # Limitamos a uma combinação representativa para não sobrecarregar a staging.
+          SCANNER_DATE="2026-11-23"
+          games_file="staging-audit-diagnostic/games-${SCANNER_DATE}.json"
+          games_meta=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 90 \
+            --output "$games_file" --write-out "%{http_code} %{time_total} %{size_download}" \
+            "${BASE_URL}/games?date=${SCANNER_DATE}")
+          echo "SCANNER_GAMES: HTTP time_s bytes = ${games_meta}"
+          if [[ "${games_meta%% *}" != "200" ]] || ! jq -e '.games | type == "array"' "$games_file" >/dev/null 2>&1; then
+            echo "::warning::A rota /games não retornou a estrutura esperada."
+            failures=$((failures + 1))
+          fi
+
+          candidates_file="staging-audit-diagnostic/candidates-points-${SCANNER_DATE}.json"
+          candidates_meta=$(curl --silent --show-error --retry 1 --retry-delay 5 --retry-all-errors --max-time 300 \
+            --output "$candidates_file" --write-out "%{http_code} %{time_total} %{size_download}" \
+            "${BASE_URL}/candidates?date=${SCANNER_DATE}&market=points&limit=20")
+          echo "SCANNER_CANDIDATES_POINTS: HTTP time_s bytes = ${candidates_meta}"
+          if [[ "${candidates_meta%% *}" != "200" ]] || ! jq -e '.status == "ok" and (.candidates | type == "array")' "$candidates_file" >/dev/null 2>&1; then
+            echo "::warning::A rota /candidates não retornou a estrutura esperada."
+            failures=$((failures + 1))
+            cat "$candidates_file" || true
+          else
+            jq '{status, date, market, candidates_count: (.candidates | length), selection_summary, availability}' "$candidates_file" 2>/dev/null || true
+          fi
+
           for market in "${MARKETS[@]}"; do
             for endpoint in validation-history-summary validation-history gap-validation; do
               file="staging-audit-diagnostic/${market}-${endpoint}.json"
