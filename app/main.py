@@ -2441,13 +2441,8 @@ def fetch_espn_games(
                         "last5_games": 0, "last5_status": "unavailable"
                     }))
 
-        # Aquece o benchmark compartilhado enquanto o usuário escolhe o mercado.
-        # A rotina é deduplicada por data e executada em background.
-        schedule_defense_context_prewarm(selected_date)
-
-        # O histórico individual dos atletas é carregado sob demanda por
-        # /candidates. Não iniciar uma varredura paralela de todos os elencos
-        # evita saturar a ESPN e não cria uma espera sem limite na pesquisa.
+        # O benchmark defensivo é carregado sob demanda pelo fluxo de
+        # candidatos. Não iniciar um prewarm paralelo durante a consulta da agenda.
 
     return {
         "date": selected_date,
@@ -4777,32 +4772,12 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    # Mantém a resposta inicial rápida, mas inicia em background os caches
-    # caros que o Scanner usará logo após o usuário escolher um mercado.
-    # Sem estes prewarms, a primeira chamada fria de /candidates precisa
-    # carregar centenas de históricos e todo o benchmark defensivo no request.
-    payload = fetch_espn_games(
+    # A agenda responde sem iniciar prewarms concorrentes.
+    # Histórico e contexto defensivo são carregados sob demanda pelo Scanner.
+    return fetch_espn_games(
         selected_date,
         enrich_context=False
     )
-
-    team_abbreviations = {
-        team.get("abbr")
-        for game in payload.get("games", [])
-        for team in (game.get("home"), game.get("away"))
-        if team and team.get("abbr")
-    }
-
-    # Aquece os caches usados pela primeira pesquisa sem atrasar a resposta
-    # da agenda. O Scanner aguarda esse prewarm por no máximo 45s.
-    schedule_defense_context_prewarm(selected_date)
-    if team_abbreviations:
-        schedule_player_history_prewarm(
-            selected_date,
-            team_abbreviations
-        )
-
-    return payload
 
 
 @app.get("/candidates")
