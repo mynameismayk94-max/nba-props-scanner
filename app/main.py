@@ -1830,14 +1830,20 @@ def wait_player_history_prewarm(selected_date):
         return
 
     wait_started = time.perf_counter()
-    event.wait()
+    completed = event.wait(timeout=45)
     waited = time.perf_counter() - wait_started
     if waited > 0.01:
         logger.info(
-            "Player history prewarm wait: data=%s wait=%.2fs status=%s",
+            "Player history prewarm wait: data=%s wait=%.2fs status=%s completed=%s",
             selected_date,
             waited,
-            state.get("status", "unknown") if state else "unknown"
+            state.get("status", "unknown") if state else "unknown",
+            completed
+        )
+    if not completed:
+        logger.warning(
+            "Player history prewarm excedeu 45s; Scanner seguirá sem espera ilimitada: data=%s",
+            selected_date
         )
 
 
@@ -2504,8 +2510,12 @@ def get_players_for_date(
     selected_date: str
 ) -> dict:
 
+    # A coleta de candidatos precisa apenas da agenda para identificar
+    # equipes e elencos. O retrospecto recente é exibido na tela de jogos
+    # e não deve ser consultado novamente dentro da pesquisa.
     schedule = fetch_espn_games(
-        selected_date
+        selected_date,
+        enrich_context=False
     )
 
     teams = set()
@@ -4746,9 +4756,14 @@ def games(
         if team and team.get("abbr")
     }
 
-    # Aquece apenas o contexto defensivo compartilhado em segundo plano.
-    # O histórico individual é consultado sob demanda em /candidates.
+    # Aquece os caches usados pela primeira pesquisa sem atrasar a resposta
+    # da agenda. O Scanner aguarda esse prewarm por no máximo 45s.
     schedule_defense_context_prewarm(selected_date)
+    if team_abbreviations:
+        schedule_player_history_prewarm(
+            selected_date,
+            team_abbreviations
+        )
 
     return payload
 
