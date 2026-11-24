@@ -515,7 +515,7 @@
             <div class="text-[10px] font-semibold text-white">Sincronização da Auditoria</div>
             <div class="text-[9px] text-gray-500">Atualiza somente a data selecionada e apura suas pendências.</div>
           </div>
-          <button type="button" id="audit-refresh-btn" onclick="atualizarAuditoriaHibrida()" class="market-button whitespace-nowrap">↻ Atualizar auditoria</button>
+          <button type="button" id="audit-refresh-btn" onclick="atualizarAuditoriaHibrida()" class="market-button whitespace-nowrap">↻ Recarregar indicadores</button>
         </div>
         <div id="audit-refresh-status" class="text-[9px] text-gray-500" aria-live="polite">Pronto para sincronizar.</div>
       </div>
@@ -2161,64 +2161,23 @@ async function fetchContextValidation(market, dateFrom, dateTo) {
 async function atualizarAuditoriaHibrida() {
   const btn = document.getElementById('audit-refresh-btn');
   const statusEl = document.getElementById('audit-refresh-status');
-  const isHistoryMode = auditMode === 'all';
-  const selectedDate = document.getElementById('audit-selected-date')?.value || todayLocal;
-
-  if (!isHistoryMode && !selectedDate) {
-    if (statusEl) statusEl.innerText = 'Selecione uma data para sincronizar.';
-    return;
-  }
 
   if (btn) {
     btn.disabled = true;
     btn.classList.add('opacity-60');
   }
-  if (statusEl) {
-    statusEl.innerText = isHistoryMode
-      ? 'Sincronizando: capturando hoje e apurando todas as pendências do histórico acumulado...'
-      : 'Sincronizando: atualizando somente a data selecionada e apurando suas pendências...';
-  }
+  if (statusEl) statusEl.innerText = 'Recarregando indicadores e métricas...';
 
   try {
-    const endpoint = isHistoryMode
-      ? '/refresh-audit?history=true'
-      : '/refresh-audit?date=' + encodeURIComponent(selectedDate);
-    const result = await requisicao(endpoint);
-    const captureFailures = result?.capture?.failures || [];
-    const collectionFailures = result?.collection?.failures || [];
-    const capturedMarkets = result?.capture?.markets || [];
-    const processed = result?.collection?.processed || [];
-
-    const savedToday = capturedMarkets.reduce((sum, item) => sum + Number(item.snapshots_saved || 0), 0);
-    const savedResults = processed.reduce((sum, item) => sum + Number(item.results_saved || 0), 0);
-    const dnp = processed.reduce((sum, item) => sum + Number(item.dnp || 0), 0);
-    const pending = processed.reduce((sum, item) => sum + Number(item.pending || 0), 0);
-
-    if (captureFailures.length || collectionFailures.length) {
-      if (statusEl) {
-        statusEl.innerText =
-          (isHistoryMode ? '⚠️ Atualização acumulada parcial' : '⚠️ Atualização parcial') +
-          ' · hoje: ' + savedToday +
-          ' snapshots · resultados salvos: ' + savedResults +
-          ' · DNP: ' + dnp +
-          ' · pendentes: ' + pending +
-          ' · falhas: ' + (captureFailures.length + collectionFailures.length) + '.';
-      }
-    } else {
-      if (statusEl) {
-        statusEl.innerText =
-          (isHistoryMode ? '✓ Histórico acumulado atualizado' : '✓ Auditoria atualizada') +
-          ' · hoje: ' + savedToday +
-          ' snapshots · resultados salvos: ' + savedResults +
-          ' · DNP: ' + dnp +
-          ' · pendentes: ' + pending + '.';
-      }
+    const loaded = await fetchHistoryValidation();
+    await fetchMarketComparison();
+    if (loaded === false) throw new Error('Falha ao consultar os indicadores principais.');
+    if (statusEl) {
+      statusEl.innerText = '✓ Indicadores recarregados. A captura de snapshots e a apuração dos resultados continuam nas rotinas internas protegidas.';
     }
-
-    await fetchHistoryValidation();
   } catch (error) {
-    console.error('Erro ao atualizar auditoria:', error);
-    if (statusEl) statusEl.innerText = '❌ Não foi possível executar a atualização híbrida.';
+    console.error('Erro ao recarregar auditoria:', error);
+    if (statusEl) statusEl.innerText = '❌ Não foi possível recarregar os indicadores. Tente novamente em instantes.';
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -2462,6 +2421,7 @@ async function fetchHistoryValidation() {
     if (breakdownPanel) breakdownPanel.classList.toggle('hidden', auditMode !== 'range');
     if (evolutionPanel) evolutionPanel.classList.toggle('hidden', auditMode === 'daily' || (res.daily || []).length < 2);
     renderDailyChart(res.daily || []);
+    return true;
   } catch (e) {
     if (requestId !== historyValidationRequestId) return;
     console.error('Erro na auditoria:', e);
@@ -2475,6 +2435,7 @@ async function fetchHistoryValidation() {
       '<tr><td colspan="8" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
     document.getElementById('similar-profiles-table').innerHTML =
       '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
+    return false;
   }
 }
 
