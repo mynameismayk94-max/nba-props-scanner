@@ -464,7 +464,7 @@
 
     <div class="glass-panel p-3 border-l-4 border-l-emerald-500 space-y-1">
       <h2 class="text-xs font-bold text-white uppercase tracking-wide">Auditoria independente</h2>
-      <p class="text-[10px] text-gray-400">Acompanhe a qualidade dos dados e das métricas usando somente os registros da auditoria independente, a partir de 16/11/2026. O histórico operacional anterior permanece preservado, mas não compõe estes indicadores.</p>
+      <p class="text-[10px] text-gray-400">Os indicadores do histórico acumulado consideram a coorte principal a partir de 19/11/2026. Os registros de 16, 17 e 18/11 permanecem preservados e podem ser consultados individualmente na visão diária; não compõem o acumulado principal.</p>
     </div>
 
     <div class="glass-panel p-3 space-y-3">
@@ -487,7 +487,7 @@
             <option value="range">Comparar períodos</option>
             <option value="all">Histórico acumulado</option>
           </select>
-          <p id="audit-mode-description" class="text-[9px] text-gray-400 mt-1">Analisa somente a data escolhida, sem somar outros dias.</p>
+          <p id="audit-mode-description" class="text-[9px] text-gray-400 mt-1">Mostra somente os registros do mercado e da data escolhidos. Métricas que dependem de vários jogos, comparações entre cenários ou datas distintas podem aparecer como “—” ou amostra insuficiente. Isso não significa, por si só, falha na coleta.</p>
         </div>
       </div>
       <div id="audit-daily-date" class="audit-date-centered date-field">
@@ -1009,7 +1009,7 @@ function setAuditMode(mode) {
   const descriptions = {
     daily: 'Mostra somente os registros do mercado e da data escolhidos. Métricas que dependem de vários jogos, comparações entre cenários ou datas distintas podem aparecer como “—” ou amostra insuficiente. Isso não significa, por si só, falha na coleta.',
     range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária. Ainda assim, métricas contextuais e temporais podem exigir mais jogos, comparações válidas ou datas distintas do que o intervalo oferece.',
-    all: 'Mostra o acumulado da auditoria independente desde 16/11 até hoje. Soma os snapshots já capturados em cada data, mesmo quando ainda estão pendentes; resultados reais entram assim que a apuração é concluída. Não inclui o histórico antigo.'
+    all: 'Mostra o acumulado da coorte principal da auditoria independente a partir de 19/11/2026 até hoje. Os registros de 16, 17 e 18/11 permanecem preservados e disponíveis na visão diária, mas ficam fora deste acumulado. Snapshots pendentes continuam visíveis; resultados reais entram nas métricas de precisão quando a apuração é concluída.'
   };
   const modeSelect = document.getElementById('audit-mode-select');
   if (modeSelect) modeSelect.value = mode;
