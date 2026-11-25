@@ -3486,13 +3486,15 @@ def schedule_defense_context_prewarm(selected_date):
         }
 
     def warm():
-        started = time.perf_counter()        try:
+        started = time.perf_counter()
+        try:
             target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
             baseline = get_league_position_defense_baseline_singleflight(
                 season_year(target_date),
                 selected_date
             )
-            elapsed = time.perf_counter() - started            with _DEFENSE_PREWARM_LOCK:
+            elapsed = time.perf_counter() - started
+            with _DEFENSE_PREWARM_LOCK:
                 _DEFENSE_PREWARM_STATE[selected_date] = {
                     "status": "ready",
                     "started_at": started,
