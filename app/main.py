@@ -3322,8 +3322,13 @@ NBA_TEAM_ABBREVIATIONS = (
 
 
 @lru_cache(maxsize=2)
-def get_league_position_defense_baseline(year, target_date_iso):
-    """Média da liga por posição, processando boxscores sem reter a liga inteira em memória."""
+def get_league_position_defense_baseline(year, target_date_iso, include_player_status=False):
+    """Média da liga por posição, processando boxscores sem reter a liga inteira em memória.
+
+    O índice detalhado de status dos jogadores só é mantido quando uma rotina de
+    auditoria realmente precisa dele. O Scanner operacional não precisa desse
+    objeto pesado para calcular a defesa e o Score.
+    """
     started = time.perf_counter()
     team_samples = {}
 
@@ -3391,10 +3396,11 @@ def get_league_position_defense_baseline(year, target_date_iso):
             for block in player_blocks
             if (block.get("team") or {}).get("abbreviation")
         }
-        status_index = {}
-        for team_abbr in team_abbreviations:
-            status_index.update(extract_team_player_status(summary, team_abbr))
-        player_status_by_game[str(game_id)] = status_index
+        if include_player_status:
+            status_index = {}
+            for team_abbr in team_abbreviations:
+                status_index.update(extract_team_player_status(summary, team_abbr))
+            player_status_by_game[str(game_id)] = status_index
 
         for team, index in game_team_indexes.get(str(game_id), []):
             try:
@@ -3451,9 +3457,10 @@ def get_league_position_defense_baseline(year, target_date_iso):
         "positions": {},
         "minute_player_samples": minute_player_samples,
         "teams_analyzed": len(team_samples),
-        "unique_games": processed_games,
-        "player_status_by_game": player_status_by_game
+        "unique_games": processed_games
     }
+    if include_player_status:
+        result["player_status_by_game"] = player_status_by_game
     for position in ("G", "F", "C"):
         result["positions"][position] = {}
         for stat_key in stat_keys:
@@ -3486,9 +3493,13 @@ def get_league_position_defense_baseline(year, target_date_iso):
 _LEAGUE_BASELINE_SINGLEFLIGHT_LOCK = threading.Lock()
 
 
-def get_league_position_defense_baseline_singleflight(year, target_date_iso):
+def get_league_position_defense_baseline_singleflight(year, target_date_iso, include_player_status=False):
     with _LEAGUE_BASELINE_SINGLEFLIGHT_LOCK:
-        return get_league_position_defense_baseline(year, target_date_iso)
+        return get_league_position_defense_baseline(
+            year,
+            target_date_iso,
+            include_player_status=include_player_status
+        )
 
 
 def get_player_team_game_counts(
@@ -4214,7 +4225,10 @@ def collect_candidates(
     # Mantém a concorrência do histórico individual no nível comprovadamente
     # mais rápido medido em staging. O próximo ganho vem do prewarm em segundo
     # plano, não de aumentar o número de chamadas simultâneas.
-    player_history_workers = 16
+    # Retorna ao nível de concorrência do Scanner que estava estável antes
+    # das últimas otimizações. Em uma instância de 512 MB, o ganho de latência
+    # de 16 chamadas simultâneas não compensa o pico de memória.
+    player_history_workers = 12
     with ThreadPoolExecutor(
         max_workers=player_history_workers
     ) as executor:
@@ -4407,7 +4421,8 @@ def collect_candidates(
             executor.submit(
                 get_league_position_defense_baseline_singleflight,
                 year,
-                target_date.isoformat()
+                target_date.isoformat(),
+                not persist_operational
             )
             if eligible_players else None
         )
@@ -4625,6 +4640,14 @@ def collect_candidates(
             eligible_all_results,
             availability_report_status
         )
+
+    # O contexto operacional de companheiros dependia do índice completo de
+    # status de todos os jogadores da liga, que é pesado para a instância de
+    # 512 MB. A auditoria mantém esse índice quando executada separadamente;
+    # o Scanner operacional prioriza a resposta estável e preserva defesa,
+    # elegibilidade e triage_score.
+    if persist_operational:
+        player_logs.clear()
 
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
