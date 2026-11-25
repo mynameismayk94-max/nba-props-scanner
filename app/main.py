@@ -3408,7 +3408,7 @@ def get_league_position_defense_baseline(year, target_date_iso):
     for team, games in team_samples.items():
         team_positions = position_samples_by_team.get(team, {})
         for index, _game in enumerate(games[:10]):
-            positions = team_positions.get(index, {})
+            positions = team_positions.pop(index, {})
             for position in ("G", "F", "C"):
                 position_data = positions.get(position, {})
                 players = position_data.get("players", [])
