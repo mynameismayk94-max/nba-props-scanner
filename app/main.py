@@ -3403,6 +3403,21 @@ def get_league_position_defense_baseline(year, target_date_iso):
             except Exception as error:
                 logger.warning("Falha ao agregar benchmark %s/%s: %s", team, game_id, error)
 
+    def fetch_summary(game_id):
+        return game_id, get_game_summary(game_id)
+
+    # A defesa dos adversários usa até 12 consultas simultâneas. O benchmark
+    # fica limitado a 4, evitando o pico combinado de até 24 boxscores.
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(fetch_summary, game_id) for game_id in game_ids]
+        for future in as_completed(futures):
+            try:
+                game_id, summary = future.result()
+                process_summary(game_id, summary)
+            except Exception as error:
+                logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
+
+
     # Reaplica a ordem original por equipe/data para manter as mesmas amostras
     # e a mesma ordem numérica do cálculo anterior, independentemente da rede.
     for team, games in team_samples.items():
@@ -3431,20 +3446,6 @@ def get_league_position_defense_baseline(year, target_date_iso):
                     samples[10][position][stat_key].append(value)
                     if index < 5:
                         samples[5][position][stat_key].append(value)
-
-    def fetch_summary(game_id):
-        return game_id, get_game_summary(game_id)
-
-    # A defesa dos adversários usa até 12 consultas simultâneas. O benchmark
-    # fica limitado a 4, evitando o pico combinado de até 24 boxscores.
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [executor.submit(fetch_summary, game_id) for game_id in game_ids]
-        for future in as_completed(futures):
-            try:
-                game_id, summary = future.result()
-                process_summary(game_id, summary)
-            except Exception as error:
-                logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
 
     result = {
         "positions": {},
