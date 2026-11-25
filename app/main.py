@@ -2524,12 +2524,10 @@ def get_players_for_date(
     selected_date: str
 ) -> dict:
 
-    # A coleta de candidatos precisa apenas da agenda para identificar
-    # equipes e elencos. O retrospecto recente é exibido na tela de jogos
-    # e não deve ser consultado novamente dentro da pesquisa.
+    # Mantém o retrospecto L5/L10 das equipes visível na agenda.
     schedule = fetch_espn_games(
         selected_date,
-        enrich_context=False
+        enrich_context=True
     )
 
     teams = set()
@@ -4640,14 +4638,6 @@ def collect_candidates(
             eligible_all_results,
             availability_report_status
         )
-
-    # O contexto operacional de companheiros dependia do índice completo de
-    # status de todos os jogadores da liga, que é pesado para a instância de
-    # 512 MB. A auditoria mantém esse índice quando executada separadamente;
-    # o Scanner operacional prioriza a resposta estável e preserva defesa,
-    # elegibilidade e triage_score.
-    if persist_operational:
-        player_logs.clear()
 
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
