@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Capture all six markets in staging
+      - name: Capture and reconcile independent audit in staging
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_API_BASE: ${{ inputs.api_base }}
@@ -54,124 +54,19 @@ jobs:
           API_BASE="${API_BASE%/}"
           TARGET_DATE="${INPUT_TARGET_DATE:-$(TZ=America/Sao_Paulo date +%F)}"
 
-          echo "Audit result collection"
+          echo "Auditoria independente — captura + apuração"
           echo "API: $API_BASE"
           echo "Date: $TARGET_DATE"
 
-          CAPTURE_FAILURES=0
-
-          capture_market() {
-            local RUN_DATE="$1"
-            local MARKET="$2"
-
-            echo "::group::${RUN_DATE} / ${MARKET} (captura)"
-            if curl --fail --show-error --silent \
-              --retry 3 \
-              --retry-delay 5 \
-              --retry-all-errors \
-              --max-time 900 \
-              --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
-              "${API_BASE}/capture-audit-snapshot?date=${RUN_DATE}&market=${MARKET}"
-            then
-              echo
-              echo "Captura concluída: ${RUN_DATE} / ${MARKET}"
-            else
-              echo
-              echo "::warning::Falha na captura: ${RUN_DATE} / ${MARKET}. As demais capturas/coletas continuarão."
-              CAPTURE_FAILURES=$((CAPTURE_FAILURES + 1))
-            fi
-            echo "::endgroup::"
-          }
-
-          echo "::group::Captura da auditoria"
-          for MARKET in points assists rebounds threes two_pa fgm; do
-            capture_market "$TARGET_DATE" "$MARKET"
-          done
+          echo "::group::Rotina diária híbrida"
+          RESPONSE="$(curl --fail --show-error --silent             --retry 3             --retry-delay 5             --retry-all-errors             --max-time 1800             --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}"             "${API_BASE}/refresh-audit?date=${TARGET_DATE}")"
+          echo "$RESPONSE"
           echo "::endgroup::"
 
-          echo "::group::Collect pending audit results"
-          START_DATE="2026-11-16"
-          END_DATE="$TARGET_DATE"
-          CURRENT_DATE="$START_DATE"
-          COLLECTION_FAILURES=0
-
-          collect_market() {
-            local RUN_DATE="$1"
-            local MARKET="$2"
-
-            echo "::group::${RUN_DATE} / ${MARKET}"
-            if curl --fail --show-error --silent \
-              --retry 3 \
-              --retry-delay 5 \
-              --retry-all-errors \
-              --max-time 180 \
-              --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
-              "${API_BASE}/collect-results?date=${RUN_DATE}&market=${MARKET}"
-            then
-              echo
-              echo "Coleta concluída: ${RUN_DATE} / ${MARKET}"
-            else
-              echo
-              echo "::warning::Falha na coleta: ${RUN_DATE} / ${MARKET}. Os demais mercados continuarão."
-              COLLECTION_FAILURES=$((COLLECTION_FAILURES + 1))
-            fi
-            echo "::endgroup::"
-          }
-
-          while [ "$CURRENT_DATE" != "$END_DATE" ]; do
-            for MARKET in points assists rebounds threes two_pa fgm; do
-              collect_market "$CURRENT_DATE" "$MARKET"
-            done
-            CURRENT_DATE="$(date -d "$CURRENT_DATE + 1 day" +%F)"
-          done
-
-          for MARKET in points assists rebounds threes two_pa fgm; do
-            collect_market "$END_DATE" "$MARKET"
-          done
-
-          if [ "$CAPTURE_FAILURES" -gt 0 ]; then
-            echo "::error::${CAPTURE_FAILURES} captura(s) automática(s) falharam."
-          fi
-
-          if [ "$COLLECTION_FAILURES" -gt 0 ]; then
-            echo "::error::${COLLECTION_FAILURES} combinação(ões) de data/mercado falharam na coleta. As demais foram processadas."
-          fi
-
-          echo "::group::Recovery pass — dia anterior"
-          YESTERDAY_DATE="$(date -d "$TARGET_DATE - 1 day" +%F)"
-          echo "Nova tentativa de apuração: ${YESTERDAY_DATE}"
-          echo "Aguardando 10 minutos para permitir a disponibilização tardia dos boxscores..."
-          sleep 600
-
-          RECOVERY_FAILURES=0
-          for MARKET in points assists rebounds threes two_pa fgm; do
-            echo "::group::${YESTERDAY_DATE} / ${MARKET} (recovery)"
-            if curl --fail --show-error --silent \
-              --retry 5 \
-              --retry-delay 15 \
-              --retry-all-errors \
-              --max-time 300 \
-              --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
-              "${API_BASE}/collect-results?date=${YESTERDAY_DATE}&market=${MARKET}"
-            then
-              echo
-              echo "Recovery concluído: ${YESTERDAY_DATE} / ${MARKET}"
-            else
-              echo
-              echo "::warning::Falha no recovery: ${YESTERDAY_DATE} / ${MARKET}."
-              RECOVERY_FAILURES=$((RECOVERY_FAILURES + 1))
-            fi
-            echo "::endgroup::"
-          done
+          echo "::group::Recovery — dia anterior"
+          echo "Executando segunda tentativa da mesma rotina para capturar resultados tardios."
+          RECOVERY_RESPONSE="$(curl --fail --show-error --silent             --retry 5             --retry-delay 15             --retry-all-errors             --max-time 1800             --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}"             "${API_BASE}/refresh-audit?date=${TARGET_DATE}")"
+          echo "$RECOVERY_RESPONSE"
           echo "::endgroup::"
 
-          if [ "$RECOVERY_FAILURES" -gt 0 ]; then
-            echo "::warning::${RECOVERY_FAILURES} combinação(ões) falharam no recovery. A coleta principal já foi concluída."
-          fi
-
-          if [ "$CAPTURE_FAILURES" -gt 0 ] || [ "$COLLECTION_FAILURES" -gt 0 ]; then
-            echo "::error::A coleta principal teve falhas; o recovery foi executado mesmo assim."
-            exit 1
-          fi
-
-          echo "Captura automática e coleta de resultados concluídas com sucesso."
+          echo "Auditoria independente concluída."
