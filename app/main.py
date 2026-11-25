@@ -497,8 +497,7 @@ def save_candidate_snapshots(
                         %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (
-                        selected_date,                        market,
-                        player_id
+                        selected_date,                        market,                        player_id
                     ) DO NOTHING
                     """,
                     rows
@@ -997,7 +996,6 @@ def extract_team_defense_stats(
     }
 
     fga_allowed = parse_attempts(stats.get("fieldGoalsMade-fieldGoalsAttempted"))    three_pa_allowed = parse_attempts(stats.get("threePointFieldGoalsMade-threePointFieldGoalsAttempted"))
-
     return {
         "fga_allowed": fga_allowed,
         "three_pa_allowed": three_pa_allowed,
@@ -1497,8 +1495,7 @@ def calculate_minutes_filtered_position_defense(
     )
     per_minute = (
         round(
-            total_stat / total_minutes,
-            4
+            total_stat / total_minutes,            4
         )
         if total_minutes > 0
         else None
@@ -1997,7 +1994,6 @@ def get_team_defense_history(
         "fgm"    ]
 
     def calculate_averages(sample):
-
         averages = {}
 
         for key in stat_keys:
@@ -2496,7 +2492,6 @@ def collect_roster_players(
             collect_roster_players(                value,
                 players
             )
-
 
 @lru_cache(maxsize=40)
 def get_team_roster(
@@ -2997,8 +2992,7 @@ def get_game_team_player_status(
             athlete.get("id")
             or entry.get("playerId")
             or entry.get("athleteId")
-            or entry.get("id")
-            or ""
+            or entry.get("id")            or ""
         ).strip()
 
         # Algumas respostas guardam a referência do atleta em um objeto
@@ -3497,8 +3491,7 @@ def schedule_defense_context_prewarm(selected_date):
                 season_year(target_date),
                 selected_date
             )
-            elapsed = time.perf_counter() - started
-            with _DEFENSE_PREWARM_LOCK:
+            elapsed = time.perf_counter() - started            with _DEFENSE_PREWARM_LOCK:
                 _DEFENSE_PREWARM_STATE[selected_date] = {
                     "status": "ready",
                     "started_at": started,
@@ -3997,8 +3990,7 @@ def build_player_result(
         "opponent_position_minute_band_center": round(minutes_avg, 1),
         "opponent_position_minute_band_lower": (
             position_minute_band_l5.get("minutes_lower")
-            if position_minute_band_l5 else None
-        ),
+            if position_minute_band_l5 else None        ),
         "opponent_position_minute_band_upper": (
             position_minute_band_l5.get("minutes_upper")
             if position_minute_band_l5 else None
@@ -4194,8 +4186,11 @@ def collect_candidates(
         roster_elapsed
     )
 
-    # O Scanner consulta o histórico dos atletas diretamente nesta
-    # requisição, com concorrência limitada, sem aguardar prewarm externo.
+    # O histórico individual pode ter sido aquecido em segundo plano pelo
+    # endpoint /games. Se ainda estiver em andamento, esperamos o trabalho
+    # existente em vez de disparar uma segunda bateria de 317 chamadas.
+
+    wait_player_history_prewarm(selected_date)
 
     # Primeiro buscamos os históricos dos jogadores. Isso permite
     # identificar quem realmente pode virar candidato antes de
@@ -4497,8 +4492,7 @@ def collect_candidates(
 
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=get_team_defense_history hits_delta=%s misses_delta=%s size=%s",
-        selected_date,
-        market,
+        selected_date,        market,
         defense_cache_after["hits"] - defense_cache_before["hits"],
         defense_cache_after["misses"] - defense_cache_before["misses"],
         defense_cache_after["currsize"]
@@ -4800,13 +4794,27 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    # Mantém o retrospecto L5/L10 das equipes visível na agenda, mas sem
-    # iniciar prewarms pesados. O histórico individual e o contexto defensivo
-    # continuam sendo carregados sob demanda pelo Scanner.
-    return fetch_espn_games(
+    # Mantém o retrospecto L5/L10 das equipes visível na agenda.
+    # O histórico individual é aquecido em segundo plano enquanto o usuário
+    # escolhe o mercado. Se a consulta começar antes do prewarm terminar,
+    # /candidates espera o mesmo trabalho em vez de duplicar as 317 chamadas.
+    schedule = fetch_espn_games(
         selected_date,
         enrich_context=True
     )
+
+    teams = set()
+    for game in schedule.get("games", []):
+        teams.add(game["home"]["abbr"])
+        teams.add(game["away"]["abbr"])
+
+    if teams:
+        schedule_player_history_prewarm(
+            selected_date,
+            teams
+        )
+
+    return schedule
 
 
 @app.get("/candidates")
