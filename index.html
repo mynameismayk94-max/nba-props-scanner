@@ -319,7 +319,7 @@
   .analysis-table th, .analysis-table td { padding: 6px 4px; border-bottom: 1px solid #1f2937; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
   .analysis-table th:first-child, .analysis-table td:first-child { width: 42%; color: #9ca3af; }
   .analysis-table th:not(:first-child), .analysis-table td:not(:first-child) { width: 29%; }
-  .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; }
+  .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; position: static; top: auto; z-index: auto; }
   .analysis-table td b { color: #f9fafb; font-variant-numeric: tabular-nums; }
   .analysis-note { margin-top: 6px; padding: 6px 7px; background: #0b1220; border-left: 2px solid #10b981; border-radius: 4px; font-size: 9px; line-height: 1.35; color: #9ca3af; }
   .availability-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 2px 5px; border-radius: 4px; font-size: 8px; font-weight: 700; line-height: 1.1; vertical-align: middle; }
@@ -1585,11 +1585,20 @@ function abrirAnalise(indice){
   modalBody.innerHTML = html;
 
   // Cada nova análise deve começar no topo, sem herdar a posição
-  // de rolagem da análise do jogador anterior.
+  // de rolagem da análise do jogador anterior. O elemento rolável externo
+  // é o overlay; o modal em si usa overflow hidden.
+  const modalOverlay = document.getElementById('analysisModal');
   modalBody.scrollTop = 0;
-  modal.scrollTop = 0;
+  modalOverlay.scrollTop = 0;
 
   modal.classList.add('active');
+
+  // Garante o reset também após a abertura, quando o navegador recalcula
+  // o layout e a altura do conteúdo do modal.
+  requestAnimationFrame(() => {
+    modalBody.scrollTop = 0;
+    modalOverlay.scrollTop = 0;
+  });
   document.body.style.overflow = 'hidden';
 }
 
