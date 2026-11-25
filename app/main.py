@@ -1941,8 +1941,11 @@ def get_team_defense_history(
             "positions": position_data["positions"]
         }
 
+    # Cada histórico de equipe consulta até 10 boxscores. Mantemos
+    # o mesmo teto de 12 consultas simultâneas à ESPN, mas distribuímos
+    # melhor a carga entre equipes para reduzir a latência do primeiro scan.
     with ThreadPoolExecutor(
-        max_workers=3
+        max_workers=2
     ) as executor:
 
         futures = {
@@ -4444,8 +4447,11 @@ def collect_candidates(
 
     league_baseline = None
 
+    # Mantém no máximo 12 consultas de boxscore simultâneas:
+    # 6 equipes x 2 boxscores internos. O objetivo é reduzir o tempo total
+    # sem repetir o pico de concorrência que poderia pressionar a memória.
     with ThreadPoolExecutor(
-        max_workers=4
+        max_workers=6
     ) as executor:
 
         futures = [
