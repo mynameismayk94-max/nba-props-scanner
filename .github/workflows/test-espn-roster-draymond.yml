@@ -1,0 +1,31 @@
+name: Testa roster ESPN do Draymond Green
+
+on:
+  push:
+
+jobs:
+  roster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspecionar roster oficial da partida 19/11
+        run: |
+          set -euo pipefail
+          GAME_ID="401910019"
+          PLAYER_ID="6589"
+          SUMMARY="$(curl --fail --show-error --silent --max-time 60 "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${GAME_ID}")"
+          echo "::group::Resumo da partida"
+          echo "$SUMMARY" | jq '{event: .header.id, competitors: [.header.competitions[].competitors[] | {id, team_id: .team.id, abbreviation: .team.abbreviation, name: .team.displayName}]}'
+          TEAM_ID="$(echo "$SUMMARY" | jq -r '[.header.competitions[].competitors[] | select((.team.abbreviation // "" | ascii_upcase) == "GS" or (.team.abbreviation // "" | ascii_upcase) == "GSW") | (.id // .team.id)][0] // empty')"
+          echo "Resolved team id: $TEAM_ID"
+          echo "::endgroup::"
+          test -n "$TEAM_ID"
+          ROSTER_URL="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/${GAME_ID}/competitions/${GAME_ID}/competitors/${TEAM_ID}/roster"
+          ROSTER="$(curl --fail --show-error --silent --max-time 60 "$ROSTER_URL")"
+          echo "::group::Estrutura do roster ESPN"
+          echo "$ROSTER" | jq '{top_level_keys: keys, count, pageIndex, pageSize, pageCount, athletes_type: (.athletes|type), items_type: (.items|type), entries_type: (.entries|type), entries_count: (.entries|length), athletes_count: (.athletes|length), items_count: (.items|length)}'
+          echo "Player match by playerId or athlete.id:"
+          echo "$ROSTER" | jq --arg pid "$PLAYER_ID" '[.entries[]?, .athletes[]?, .items[]? | select(((.playerId // .athlete.id // .id // "")|tostring) == $pid)]'
+          echo "Entries containing Draymond / player ID:"
+          echo "$ROSTER" | jq '[.entries[]? | select((tostring|ascii_downcase|contains("draymond")) or ((.playerId // "")|tostring) == "6589")]'
+          echo "::endgroup::"

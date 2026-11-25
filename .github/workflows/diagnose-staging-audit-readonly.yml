@@ -1,0 +1,124 @@
+name: Diagnose staging audit (read only)
+
+on:
+  push:
+    branches:
+      - feature/central-contexto-nba
+    paths:
+      - ".github/workflows/diagnose-staging-audit-readonly.yml"
+      - "app/main.py"
+      - "app/audit_metrics.py"
+      - "index.html"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Read staging audit summaries
+        shell: bash
+        run: |
+          set -uo pipefail
+          BASE_URL="https://nba-props-scanner-staging.onrender.com"
+          mkdir -p staging-audit-diagnostic
+          MARKETS=(points assists rebounds threes two_pa fgm)
+          failures=0
+
+          health_http=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 60 \
+            --output staging-audit-diagnostic/health.json \
+            --write-out "%{http_code}" "${BASE_URL}/health")
+          echo "STAGING_HEALTH_HTTP: ${health_http}"
+          jq '{status, version, source}' staging-audit-diagnostic/health.json || true
+
+          ui_http_code=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 60 \
+            --output staging-audit-diagnostic/ui-index.html --write-out "%{http_code}" "${BASE_URL}/")
+          echo "UI_HTML_HTTP: ${ui_http_code}"
+          for marker in "Spearman" "Janelas completas" "Top 10 versus demais candidatos" "Análises complementares"; do
+            if grep -Fq "$marker" staging-audit-diagnostic/ui-index.html; then
+              echo "UI_MARKER_OK: $marker"
+            else
+              echo "::warning::UI marker missing from staging root: $marker"
+            fi
+          done
+
+          # Diagnóstico do caminho do Scanner, com o mesmo endpoint usado pela tela.
+          # Limitamos a uma combinação representativa para não sobrecarregar a staging.
+          SCANNER_DATE="2026-11-23"
+          games_file="staging-audit-diagnostic/games-${SCANNER_DATE}.json"
+          games_meta=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 90 \
+            --output "$games_file" --write-out "%{http_code} %{time_total} %{size_download}" \
+            "${BASE_URL}/games?date=${SCANNER_DATE}")
+          echo "SCANNER_GAMES: HTTP time_s bytes = ${games_meta}"
+          if [[ "${games_meta%% *}" != "200" ]] || ! jq -e '.games | type == "array"' "$games_file" >/dev/null 2>&1; then
+            echo "::warning::A rota /games não retornou a estrutura esperada."
+            failures=$((failures + 1))
+          fi
+
+          candidates_file="staging-audit-diagnostic/candidates-points-${SCANNER_DATE}.json"
+          candidates_meta=$(curl --silent --show-error --retry 1 --retry-delay 5 --retry-all-errors --max-time 300 \
+            --output "$candidates_file" --write-out "%{http_code} %{time_total} %{size_download}" \
+            "${BASE_URL}/candidates?date=${SCANNER_DATE}&market=points&limit=10")
+          echo "SCANNER_CANDIDATES_POINTS: HTTP time_s bytes = ${candidates_meta}"
+          if [[ "${candidates_meta%% *}" != "200" ]] || ! jq -e '.status == "ok" and (.candidates | type == "array")' "$candidates_file" >/dev/null 2>&1; then
+            echo "::warning::A rota /candidates não retornou a estrutura esperada."
+            failures=$((failures + 1))
+            cat "$candidates_file" || true
+          else
+            jq '{status, date, market, candidates_count: (.candidates | length), selection_summary, availability}' "$candidates_file" 2>/dev/null || true
+          fi
+
+          for market in "${MARKETS[@]}"; do
+            for endpoint in context-validation teammate-split-validation; do
+              file="staging-audit-diagnostic/${market}-${endpoint}.json"
+              url="${BASE_URL}/${endpoint}?market=${market}&cohort=all"
+              echo "::group::${market} / ${endpoint}"
+              http_code=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 300 \
+                --output "$file" --write-out "%{http_code}" "$url")
+              echo "HTTP: ${http_code}"
+              if [[ "${http_code}" != "200" ]] || ! jq -e '.status == "ok"' "$file" >/dev/null 2>&1; then
+                echo "::warning::Falha ao consultar ${market} / ${endpoint}"
+                failures=$((failures + 1))
+                cat "$file" || true
+              elif [[ "$endpoint" == "context-validation" ]]; then
+                jq '{market, cohort, date_from, date_to, distinct_dates: .metrics.distinct_dates, minimum_dates: .metrics.minimum_dates_for_temporal_validation, coverage, references: .metrics.references}' "$file" 2>/dev/null || true
+              else
+                jq '{market, cohort, date_from, date_to, coverage, metrics: {completed_records: .metrics.completed_records, context_coverage_pct: .metrics.context_coverage_pct, distinct_dates: .metrics.distinct_dates, groups: .metrics.groups}}' "$file" 2>/dev/null || true
+              fi
+              echo "::endgroup::"
+            done
+
+            for endpoint in validation-history-summary validation-history gap-validation; do
+              file="staging-audit-diagnostic/${market}-${endpoint}.json"
+              url="${BASE_URL}/${endpoint}?market=${market}&cohort=all"
+              echo "::group::${market} / ${endpoint}"
+              http_code=$(curl --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors --max-time 300 \
+                --output "$file" --write-out "%{http_code}" "$url")
+              echo "HTTP: ${http_code}"
+              if [[ "$http_code" != "200" ]] || ! jq -e '.status == "ok"' "$file" >/dev/null 2>&1; then
+                echo "::warning::Falha ao consultar ${market} / ${endpoint}"
+                failures=$((failures + 1))
+                cat "$file" || true
+              else
+                jq '{market, cohort, summary, periods, score_bands, ranking_quality, model_comparison, similarity_analysis, similarity_analyses, completed_records, legacy_records_without_new_reference, classification_margin_pct, method_note, data_source_policy}' "$file" 2>/dev/null || true
+              fi
+              echo "::endgroup::"
+            done
+          done
+
+          echo "$failures" > staging-audit-diagnostic/failures.txt
+          if [[ "$failures" -gt 0 ]]; then
+            echo "::warning::${failures} consulta(s) não retornaram resposta válida. Os demais arquivos serão preservados."
+          fi
+
+      - name: Upload read-only diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-audit-diagnostic
+          path: staging-audit-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7

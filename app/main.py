@@ -2,9 +2,12 @@ import logging
 import time
 import re
 import os
+import secrets
 import threading
+from collections import deque
+from time import monotonic
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,9 +18,21 @@ import requests
 import psycopg
 from psycopg.types.json import Jsonb
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.security import APIKeyHeader
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.teammate_context import (
+    build_candidate_teammate_context,
+    extract_team_player_status,
+)
+from app.availability_context import (
+    parse_espn_injuries,
+    select_eligible_players,
+)
+from app.nba_injury_reports import get_official_nba_injury_status
+from app.audit_metrics import build_context_reference_metrics, build_market_score_bands, build_teammate_split_metrics, build_gap_group_metrics, build_model_comparison, build_top10_vs_rest_metrics, is_temporally_valid_peer, spearman_correlation
 
 
 logging.basicConfig(level=logging.INFO)
@@ -26,15 +41,70 @@ logger = logging.getLogger("nba_props_scanner")
 app = FastAPI(
     title="NBA Props Scanner",
     description="API de triagem estatística NBA via ESPN.",
-    version="3.16.0"
+    version="3.17.0"
 )
+
+# Rate limit simples e local para a camada HTTP.
+_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+_RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "60"))
+_RATE_LIMIT_EXEMPT_PATHS = {"/health"}
+_rate_limit_lock = threading.Lock()
+_rate_limit_buckets: dict[str, deque[float]] = {}
+
+def _rate_limit_key(request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    client = request.client
+    return client.host if client else "unknown"
+
+def _is_admin_request(request) -> bool:
+    configured_key = os.getenv("ADMIN_API_KEY")
+    supplied_key = request.headers.get("X-Admin-Key")
+    return bool(configured_key and supplied_key and secrets.compare_digest(supplied_key, configured_key))
+
+@app.middleware("http")
+async def rate_limit_requests(request, call_next):
+    # O limite público protege somente a rota de geração de candidatos.
+    # As telas fazem várias leituras independentes de auditoria/contexto; limitar
+    # todas as rotas por IP bloqueava consultas legítimas e causava falhas visíveis.
+    if request.url.path != "/candidates" or _is_admin_request(request):
+        return await call_next(request)
+    now = monotonic()
+    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+    key = _rate_limit_key(request)
+    with _rate_limit_lock:
+        bucket = _rate_limit_buckets.setdefault(key, deque())
+        while bucket and bucket[0] <= cutoff:
+            bucket.popleft()
+        if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Limite de requisições excedido. Tente novamente em instantes."},
+                headers={"Retry-After": str(_RATE_LIMIT_WINDOW_SECONDS)},
+            )
+        bucket.append(now)
+    return await call_next(request)
+
+# CORS restrito por ambiente. O frontend atual é servido pela própria aplicação;
+# origens adicionais só entram mediante variável explícita.
+_DEFAULT_CORS_ORIGINS = (
+    "https://nba-props-scanner.onrender.com,"
+    "https://nba-props-scanner-staging.onrender.com"
+)
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Admin-Key"],
 )
 
 
@@ -43,6 +113,56 @@ app.add_middleware(
 # ============================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Chave administrativa para rotinas que alteram o histórico persistido.
+# A chave nunca fica no código nem é registrada em logs.
+admin_api_key_header = APIKeyHeader(
+    name="X-Admin-Key",
+    auto_error=False,
+    description="Chave administrativa para rotinas internas de captura/coleta."
+)
+
+
+def require_admin_api_key(api_key: Optional[str] = Depends(admin_api_key_header)):
+    """Protege rotinas internas de escrita/atualização com uma chave de serviço.
+
+    Falha fechado quando a variável não existe: uma rota protegida não pode
+    permanecer publicamente gravável por configuração incompleta.
+    """
+    configured_key = os.getenv("ADMIN_API_KEY")
+    if not configured_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Autenticação administrativa não configurada."
+        )
+    if not api_key or not secrets.compare_digest(api_key, configured_key):
+        raise HTTPException(
+            status_code=401,
+            detail="Chave administrativa inválida ou ausente."
+        )
+    return True
+
+AUDIT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+AUDIT_START_DATE = date(2026, 11, 16)
+# Coorte limpa para métricas acumuladas; preserva coleta e snapshots brutos.
+AUDIT_METRICS_START_DATE = date(2026, 11, 19)
+
+
+def audit_history_cutoff_date():
+    """Data final da visão acumulada: sempre inclui o que já foi capturado até hoje."""
+    return datetime.now(AUDIT_TIMEZONE).date()
+
+
+def audit_history_start_date():
+    """Primeiro dia oficial da auditoria independente e da coleta histórica."""
+    return AUDIT_START_DATE
+
+
+def audit_metrics_start_date():
+    """Primeiro dia da coorte usada nos indicadores acumulados."""
+    return AUDIT_METRICS_START_DATE
+
+
 
 
 def get_database_connection():
@@ -108,6 +228,70 @@ def initialize_database():
                     """
                 )
 
+                # População independente para auditoria: não representa uso do Scanner.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_snapshots (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        position TEXT,
+                        triage_score DOUBLE PRECISION,
+                        last5_avg DOUBLE PRECISION,
+                        last10_avg DOUBLE PRECISION,
+                        minutes_last5_avg DOUBLE PRECISION,
+                        audit_rank INTEGER NOT NULL,
+                        availability_status TEXT NOT NULL,
+                        payload JSONB NOT NULL,
+                        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_snapshot
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_snapshots_date_market
+                    ON audit_snapshots (selected_date, market)
+                    """
+                )
+
+                # Manifesto também registra capturas válidas com zero elegíveis.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_snapshot_runs (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        eligible_count INTEGER NOT NULL,
+                        availability_report_status TEXT NOT NULL,
+                        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_snapshot_run
+                            UNIQUE (selected_date, market)
+                    )
+                    """
+                )
+
+                # Compatibilidade para snapshots independentes criados antes do manifesto.
+                cursor.execute(
+                    """
+                    INSERT INTO audit_snapshot_runs (
+                        selected_date, market, eligible_count,
+                        availability_report_status
+                    )
+                    SELECT
+                        selected_date, market, COUNT(*), 'legacy_existing'
+                    FROM audit_snapshots
+                    GROUP BY selected_date, market
+                    ON CONFLICT (selected_date, market) DO NOTHING
+                    """
+                )
+
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS candidate_results (
@@ -132,6 +316,89 @@ def initialize_database():
                     """
                     CREATE INDEX IF NOT EXISTS idx_candidate_results_date_market
                     ON candidate_results (selected_date, market)
+                    """
+                )
+
+                # Resultados da população independente de auditoria.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_results (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        actual_value DOUBLE PRECISION NOT NULL,
+                        game_id TEXT,
+                        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        payload JSONB,
+                        CONSTRAINT uq_audit_result
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_results_date_market
+                    ON audit_results (selected_date, market)
+                    """
+                )
+
+                # Casos encerrados sem resultado estatístico, por exemplo DNP.
+                # Ficam separados de audit_results para não contaminar métricas.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_no_results (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        player_name TEXT NOT NULL,
+                        team TEXT,
+                        opponent TEXT,
+                        reason TEXT NOT NULL,
+                        game_id TEXT,
+                        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        payload JSONB,
+                        CONSTRAINT uq_audit_no_result
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_no_results_date_market
+                    ON audit_no_results (selected_date, market)
+                    """
+                )
+
+                # Motivos persistidos para pendências técnicas da auditoria.
+                # Não encerra a pendência; apenas registra por que ainda não foi resolvida.
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_pending_reasons (
+                        id BIGSERIAL PRIMARY KEY,
+                        selected_date DATE NOT NULL,
+                        market TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        reason_code TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        detail TEXT,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_audit_pending_reason
+                            UNIQUE (selected_date, market, player_id)
+                    )
+                    """
+                )
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_audit_pending_reasons_date_market
+                    ON audit_pending_reasons (selected_date, market)
                     """
                 )
 
@@ -257,6 +524,139 @@ def save_candidate_snapshots(
         return 0
 
 
+def save_audit_snapshots(
+    selected_date,
+    market,
+    candidates,
+    availability_report_status="unknown"
+):
+    """
+    Persiste a população completa elegível para auditoria, separada do
+    histórico operacional do Scanner. A primeira fotografia é imutável.
+    """
+    if not DATABASE_URL:
+        logger.warning(
+            "População de auditoria não salva: DATABASE_URL não configurada."
+        )
+        return 0
+
+    rows = []
+    for audit_rank, candidate in enumerate(candidates, start=1):
+        player_id = candidate.get("player_id")
+        if not player_id:
+            logger.warning(
+                "Jogador sem player_id ignorado no snapshot de auditoria: %s",
+                candidate.get("player")
+            )
+            continue
+
+        availability = candidate.get("availability") or {}
+        availability_status = str(
+            availability.get("availability") or "unknown"
+        )
+        rows.append((
+            selected_date,
+            market,
+            str(player_id),
+            candidate.get("player", ""),
+            candidate.get("team"),
+            candidate.get("opponent"),
+            candidate.get("position"),
+            candidate.get("triage_score"),
+            candidate.get("last5_avg"),
+            candidate.get("last10_avg"),
+            candidate.get("minutes_last5_avg"),
+            audit_rank,
+            availability_status,
+            Jsonb(candidate)
+        ))
+
+    try:
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_snapshot_runs (
+                        selected_date,
+                        market,
+                        eligible_count,
+                        availability_report_status
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market) DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        selected_date,
+                        market,
+                        len(rows),
+                        availability_report_status
+                    )
+                )
+                if not cursor.fetchone():
+                    logger.info(
+                        "Captura de auditoria já registrada; mantendo primeira versão: %s/%s",
+                        selected_date,
+                        market
+                    )
+                    return 0
+
+                if not rows:
+                    logger.info(
+                        "Captura de auditoria registrada sem elegíveis: %s/%s status=%s",
+                        selected_date,
+                        market,
+                        availability_report_status
+                    )
+                    return 0
+
+                cursor.executemany(
+                    """
+                    INSERT INTO audit_snapshots (
+                        selected_date,
+                        market,
+                        player_id,
+                        player_name,
+                        team,
+                        opponent,
+                        position,
+                        triage_score,
+                        last5_avg,
+                        last10_avg,
+                        minutes_last5_avg,
+                        audit_rank,
+                        availability_status,
+                        payload
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (
+                        selected_date,
+                        market,
+                        player_id
+                    ) DO NOTHING
+                    """,
+                    rows
+                )
+
+        logger.info(
+            "Snapshot de auditoria processado: %s elegíveis enviados para %s/%s.",
+            len(rows),
+            selected_date,
+            market
+        )
+        return len(rows)
+
+    except Exception as error:
+        logger.exception(
+            "Falha ao salvar snapshot independente de auditoria: %s",
+            error
+        )
+        return 0
+
+
 @app.on_event("startup")
 def startup_database():
     initialize_database()
@@ -276,6 +676,11 @@ SCOREBOARD_URL = (
 ROSTER_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/"
     "basketball/nba/teams/{team}/roster"
+)
+
+TEAM_SCHEDULE_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/"
+    "basketball/nba/teams/{team}/schedule"
 )
 
 
@@ -358,6 +763,12 @@ def season_year(selected_date: date) -> int:
 # Cada thread mantém sua própria sessão HTTP para reutilizar conexões
 # sem compartilhar requests.Session entre threads.
 _http_local = threading.local()
+
+
+def _cache_metrics(cache):
+    """Retorna métricas simples do cache para observabilidade de performance."""
+    info = cache.cache_info()
+    return {"hits": info.hits, "misses": info.misses, "currsize": info.currsize}
 
 
 def get_http_session():
@@ -1245,6 +1656,7 @@ def get_completed_team_games(
             continue
 
         opponent = None
+        home_away = None
 
         for competitor in competition.get(
             "competitors",
@@ -1256,19 +1668,19 @@ def get_completed_team_games(
                 .get("abbreviation")
             )
 
-            if competitor_team != team_abbr:
+            if competitor_team == team_abbr:
+                home_away = competitor.get("homeAway")
+            else:
                 opponent = competitor_team
-                break
 
-        if not opponent:
+        if not opponent or home_away not in {"home", "away"}:
             continue
 
         games.append({
-            "game_id": str(
-                event.get("id")
-            ),
+            "game_id": str(event.get("id")),
             "date": event.get("date"),
-            "opponent": opponent
+            "opponent": opponent,
+            "home_away": home_away
         })
 
     games.sort(
@@ -1298,6 +1710,151 @@ _GAME_SUMMARY_LOCKS = tuple(
     for _ in range(64)
 )
 
+# Prewarm opcional do histórico de atletas. É disparado pela tela de jogos
+# antes da seleção do mercado, para que a primeira pesquisa possa aproveitar
+# o cache sem tornar o endpoint /games lento.
+_PLAYER_HISTORY_PREWARM_LOCK = threading.Lock()
+_PLAYER_HISTORY_PREWARM_STATE = {}
+
+
+def _player_history_prewarm_worker(selected_date, team_abbreviations, year, event):
+    try:
+        started = time.perf_counter()
+        players_by_id = {}
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {
+                executor.submit(get_team_roster, team): team
+                for team in team_abbreviations
+            }
+            for future in as_completed(futures):
+                try:
+                    roster = future.result()
+                    for player in roster:
+                        players_by_id[str(player["id"])] = player
+                except Exception as error:
+                    logger.warning(
+                        "Prewarm roster falhou em %s/%s: %s",
+                        selected_date,
+                        futures[future],
+                        error
+                    )
+
+        players = list(players_by_id.values())
+        successful = 0
+        errors = 0
+
+        def fetch_player(player):
+            try:
+                get_athlete_logs(player["id"], year)
+                return True
+            except Exception as error:
+                logger.warning(
+                    "Prewarm histórico falhou para %s/%s: %s",
+                    selected_date,
+                    player.get("player"),
+                    error
+                )
+                return False
+
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            futures = [
+                executor.submit(fetch_player, player)
+                for player in players
+            ]
+            for future in as_completed(futures):
+                if future.result():
+                    successful += 1
+                else:
+                    errors += 1
+
+        elapsed = time.perf_counter() - started
+        with _PLAYER_HISTORY_PREWARM_LOCK:
+            state = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+            if state:
+                state["status"] = "ok"
+                state["elapsed"] = elapsed
+                state["players"] = len(players)
+                state["successful"] = successful
+                state["errors"] = errors
+        logger.info(
+            "Player history prewarm: data=%s status=ok jogadores=%s sucesso=%s erros=%s tempo=%.2fs",
+            selected_date,
+            len(players),
+            successful,
+            errors,
+            elapsed
+        )
+    except Exception as error:
+        with _PLAYER_HISTORY_PREWARM_LOCK:
+            state = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+            if state:
+                state["status"] = "error"
+                state["elapsed"] = time.perf_counter() - state["started"]
+                state["error"] = str(error)
+        logger.warning(
+            "Player history prewarm falhou para %s: %s",
+            selected_date,
+            error
+        )
+    finally:
+        event.set()
+
+
+def schedule_player_history_prewarm(selected_date, team_abbreviations):
+    year = season_year(
+        datetime.strptime(selected_date, "%Y-%m-%d").date()
+    )
+    with _PLAYER_HISTORY_PREWARM_LOCK:
+        current = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+        if current and current.get("status") in {"running", "ok"}:
+            return current
+
+        event = threading.Event()
+        state = {
+            "status": "running",
+            "started": time.perf_counter(),
+            "event": event,
+        }
+        _PLAYER_HISTORY_PREWARM_STATE[selected_date] = state
+
+    thread = threading.Thread(
+        target=_player_history_prewarm_worker,
+        args=(selected_date, tuple(sorted(team_abbreviations)), year, event),
+        daemon=True,
+        name=f"player-history-prewarm-{selected_date}"
+    )
+    thread.start()
+    return state
+
+
+def wait_player_history_prewarm(selected_date):
+    with _PLAYER_HISTORY_PREWARM_LOCK:
+        state = _PLAYER_HISTORY_PREWARM_STATE.get(selected_date)
+        event = state.get("event") if state else None
+
+    if event is None:
+        return
+
+    wait_started = time.perf_counter()
+    completed = event.wait(timeout=45)
+    waited = time.perf_counter() - wait_started
+    if waited > 0.01:
+        logger.info(
+            "Player history prewarm wait: data=%s wait=%.2fs status=%s completed=%s",
+            selected_date,
+            waited,
+            state.get("status", "unknown") if state else "unknown",
+            completed
+        )
+    if not completed:
+        logger.warning(
+            "Player history prewarm excedeu 45s; Scanner seguirá sem espera ilimitada: data=%s",
+            selected_date
+        )
+
+
+
 
 def get_game_summary(
     event_id: str
@@ -1316,18 +1873,33 @@ def get_game_summary(
 def get_team_defense_history(
     team_abbr,
     limit=10,
-    target_date=None
+    target_date=None,
+    force_refresh=False
 ):
 
     if target_date is None:
         target_date = date.today()
 
-    games = [
-        game
-        for game in get_team_regular_season_schedule(
+    if force_refresh:
+        schedule = request_json(
+            f"https://site.api.espn.com/apis/site/v2/sports/"
+            f"basketball/nba/teams/{team_abbr.lower()}/schedule",
+            {"season": season_year(target_date)}
+        )
+        schedule_games = get_completed_team_games(
+            schedule,
+            team_abbr.upper(),
+            1000
+        )
+    else:
+        schedule_games = get_team_regular_season_schedule(
             team_abbr.upper(),
             season_year(target_date)
         )
+
+    games = [
+        game
+        for game in schedule_games
         if (
             game.get("date") or ""
         )[:10] < target_date.isoformat()
@@ -1343,6 +1915,9 @@ def get_team_defense_history(
 
     def fetch_game_defense(game):
 
+        # Mesmo em refresh, o boxscore concluído é imutável para a data.
+        # Usa o cache compartilhado para que o contexto pré-aqueça os
+        # mesmos summaries aproveitados pela primeira consulta do Scanner.
         summary = get_game_summary(
             str(game["game_id"])
         )
@@ -1582,8 +2157,114 @@ def get_team_defense_history(
     return history
 
 
+def get_team_defense_history_fresh(
+    team_abbr,
+    limit=10,
+    target_date=None
+):
+    """Atualiza a Central sem ler/escrever nos caches compartilhados do Scanner."""
+    return get_team_defense_history.__wrapped__(
+        team_abbr,
+        limit,
+        target_date,
+        True
+    )
+
+
+@lru_cache(maxsize=120)
+def fetch_team_schedule_cached(
+    team_abbr: str,
+    season: int,
+    cache_window: int
+) -> tuple:
+    """Consulta a agenda da equipe e mantém cache curto para reduzir chamadas à ESPN."""
+    data = request_json(
+        TEAM_SCHEDULE_URL.format(team=team_abbr.lower()),
+        {"season": season}
+    )
+    completed_games = []
+    for event in data.get("events", []):
+        event_date = (event.get("date") or "")[:10]
+        competitions = event.get("competitions") or []
+        if not event_date or not competitions:
+            continue
+        competition = competitions[0]
+        status_type = (
+            competition.get("status", {}).get("type", {})
+            or event.get("status", {}).get("type", {})
+        )
+        if not status_type.get("completed", False):
+            continue
+        competitors = competition.get("competitors") or []
+        own = next((
+            item for item in competitors
+            if (item.get("team") or {}).get("abbreviation", "").upper()
+            == team_abbr.upper()
+        ), None)
+        if own is None:
+            continue
+        opponent = next((item for item in competitors if item is not own), None)
+        if opponent is None:
+            continue
+        if own.get("winner") is True:
+            result = "W"
+        elif opponent.get("winner") is True:
+            result = "L"
+        else:
+            try:
+                own_score = float(own.get("score"))
+                opponent_score = float(opponent.get("score"))
+                if own_score == opponent_score:
+                    continue
+                result = "W" if own_score > opponent_score else "L"
+            except (TypeError, ValueError):
+                continue
+        completed_games.append((event_date, result))
+    completed_games.sort(key=lambda item: item[0])
+    return tuple(completed_games)
+
+
+def fetch_team_recent_form(team_abbr: str, selected_date: str) -> dict:
+    """Retorna os cinco resultados concluídos anteriores à data pesquisada."""
+    started = time.perf_counter()
+    try:
+        target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
+        cache_window = int(time.time() // 900)
+        schedule = fetch_team_schedule_cached(
+            team_abbr, season_year(target_date), cache_window
+        )
+        schedule_elapsed = time.perf_counter() - started
+        logger.info(
+            "Games team schedule: data=%s equipe=%s tempo=%.2fs jogos=%s",
+            selected_date, team_abbr, schedule_elapsed, len(schedule)
+        )
+        previous_games = [
+            result for game_date, result in schedule
+            if game_date < selected_date
+        ][-5:]
+        wins = previous_games.count("W")
+        losses = previous_games.count("L")
+        return {
+            "last5": previous_games,
+            "last5_record": f"{wins}-{losses}",
+            "last5_games": len(previous_games),
+            "last5_status": "ok" if previous_games else "unavailable"
+        }
+    except Exception as error:
+        logger.warning(
+            "Não foi possível consultar retrospecto recente de %s: %s",
+            team_abbr, error
+        )
+        return {
+            "last5": [], "last5_record": None,
+            "last5_games": 0, "last5_status": "unavailable"
+        }
+
+
 def fetch_espn_games(
-    selected_date: str
+    selected_date: str,
+    enrich_context: bool = True,
+    prewarm_player_history: bool = False
 ) -> dict:
 
     try:
@@ -1633,6 +2314,12 @@ def fetch_espn_games(
                 {}
             )
 
+            team_logos = team.get("logos") or []
+            logo_url = (
+                team_logos[0].get("href")
+                if team_logos and isinstance(team_logos[0], dict)
+                else team.get("logo")
+            )
             item = {
                 "abbr": team.get(
                     "abbreviation",
@@ -1641,7 +2328,8 @@ def fetch_espn_games(
                 "name": team.get(
                     "displayName",
                     ""
-                )
+                ),
+                "logo": logo_url
             }
 
             if competitor.get("homeAway") == "home":
@@ -1654,6 +2342,8 @@ def fetch_espn_games(
             # A ESPN fornece o início em UTC; a interface exibe horário de Brasília.
             event_date = event.get("date")
             start_time_brt = None
+            start_date_et = None
+            start_time_et = None
 
             if event_date:
                 try:
@@ -1663,6 +2353,11 @@ def fetch_espn_games(
                     start_time_brt = start_utc.astimezone(
                         ZoneInfo("America/Sao_Paulo")
                     ).strftime("%H:%M")
+                    start_et = start_utc.astimezone(
+                        ZoneInfo("America/New_York")
+                    )
+                    start_date_et = start_et.strftime("%Y-%m-%d")
+                    start_time_et = start_et.strftime("%H:%M")
                 except (ValueError, TypeError):
                     logger.warning(
                         "Horário inválido recebido da ESPN para jogo %s: %s",
@@ -1675,6 +2370,8 @@ def fetch_espn_games(
                 "home": home,
                 "away": away,
                 "start_time_brt": start_time_brt,
+                "start_date_et": start_date_et,
+                "start_time_et": start_time_et,
                 "status": (
                     event.get("status", {})
                     .get("type", {})
@@ -1692,6 +2389,60 @@ def fetch_espn_games(
                     )
                 )
             })
+
+    # A agenda completa usa contexto recente e prewarm defensivo para a interface.
+    # A coleta de resultados precisa apenas do placar/confrontos e deve evitar
+    # esse trabalho extra, pois o endpoint é chamado para cada data/mercado.
+    if enrich_context:
+        team_abbreviations = {
+            team.get("abbr")
+            for game in games
+            for team in (game.get("home"), game.get("away"))
+            if team and team.get("abbr")
+        }
+        team_forms = {}
+        games_context_start = time.perf_counter()
+        recent_form_cache_before = _cache_metrics(fetch_team_schedule_cached)
+        if team_abbreviations:
+            with ThreadPoolExecutor(max_workers=min(10, len(team_abbreviations))) as executor:
+                futures = {
+                    executor.submit(fetch_team_recent_form, team_abbr, selected_date): team_abbr
+                    for team_abbr in team_abbreviations
+                }
+                for future in as_completed(futures):
+                    team_abbr = futures[future]
+                    try:
+                        team_forms[team_abbr] = future.result()
+                    except Exception as error:
+                        logger.warning("Falha inesperada no retrospecto de %s: %s", team_abbr, error)
+                        team_forms[team_abbr] = {
+                            "last5": [], "last5_record": None,
+                            "last5_games": 0, "last5_status": "unavailable"
+                        }
+
+        games_context_elapsed = time.perf_counter() - games_context_start
+        recent_form_cache_after = _cache_metrics(fetch_team_schedule_cached)
+        logger.info(
+            "Games timing: data=%s equipes=%s tempo_contexto=%.2fs cache_hits_delta=%s cache_misses_delta=%s cache_size=%s",
+            selected_date,
+            len(team_abbreviations),
+            games_context_elapsed,
+            recent_form_cache_after["hits"] - recent_form_cache_before["hits"],
+            recent_form_cache_after["misses"] - recent_form_cache_before["misses"],
+            recent_form_cache_after["currsize"]
+        )
+
+        for game in games:
+            for side in ("home", "away"):
+                team = game.get(side)
+                if team:
+                    team.update(team_forms.get(team.get("abbr"), {
+                        "last5": [], "last5_record": None,
+                        "last5_games": 0, "last5_status": "unavailable"
+                    }))
+
+        # O benchmark defensivo é carregado sob demanda pelo fluxo de
+        # candidatos. Não iniciar um prewarm paralelo durante a consulta da agenda.
 
     return {
         "date": selected_date,
@@ -1770,8 +2521,12 @@ def get_players_for_date(
     selected_date: str
 ) -> dict:
 
+    # A coleta de candidatos precisa apenas da agenda para identificar
+    # equipes e elencos. O retrospecto recente é exibido na tela de jogos
+    # e não deve ser consultado novamente dentro da pesquisa.
     schedule = fetch_espn_games(
-        selected_date
+        selected_date,
+        enrich_context=False
     )
 
     teams = set()
@@ -1875,12 +2630,18 @@ def get_athlete_logs(
     year: int
 ) -> tuple:
 
-    data = request_json(
-        GAMELOG_URL.format(
-            athlete=athlete_id
-        ),
-        {"season": year}
-    )
+    gamelog_request_started = time.perf_counter()
+    try:
+        data = request_json(
+            GAMELOG_URL.format(
+                athlete=athlete_id
+            ),
+            {"season": year}
+        )
+    finally:
+        _http_local.last_gamelog_http_elapsed = (
+            time.perf_counter() - gamelog_request_started
+        )
 
     season_label = (
         f"{year - 1}-{str(year)[-2:]} Regular Season"
@@ -1959,6 +2720,11 @@ def get_athlete_logs(
                 "opponent": (
                     metadata.get("opponent") or {}
                 ).get("abbreviation"),
+                "home_away": (
+                    str(metadata.get("homeAway") or "").strip().lower()
+                    if str(metadata.get("homeAway") or "").strip().lower() in {"home", "away"}
+                    else None
+                ),
                 "minutes": parse_minutes(
                     stats[0]
                 ),
@@ -1977,6 +2743,43 @@ def get_athlete_logs(
                 )
             }
 
+    # O endpoint de game log nem sempre inclui homeAway em events.
+    # Completa o mando pela agenda oficial da equipe, que já expõe
+    # competitor.homeAway e é compartilhada em cache por equipe/temporada.
+    teams_missing_venue = {
+        game.get("team")
+        for game in games.values()
+        if not game.get("home_away") and game.get("team")
+    }
+
+    for team_abbr in teams_missing_venue:
+        try:
+            team_schedule = get_team_regular_season_schedule(
+                team_abbr.upper(),
+                year
+            )
+            venue_by_event = {
+                str(team_game.get("game_id")): team_game.get("home_away")
+                for team_game in team_schedule
+                if team_game.get("home_away") in {"home", "away"}
+            }
+
+            for game in games.values():
+                if (
+                    game.get("team", "").upper() == team_abbr.upper()
+                    and not game.get("home_away")
+                ):
+                    game["home_away"] = venue_by_event.get(
+                        str(game.get("event_id"))
+                    )
+        except Exception as error:
+            logger.warning(
+                "Não foi possível completar mando do game log para %s/%s: %s",
+                team_abbr,
+                year,
+                error
+            )
+
     ordered = sorted(
         games.values(),
         key=lambda game: game["date"],
@@ -1984,6 +2787,252 @@ def get_athlete_logs(
     )
 
     return tuple(ordered)
+
+
+def normalize_diagnostic_player_name(name):
+    """
+    Normalização leve usada somente no diagnóstico de auditoria.
+    Não participa da elegibilidade nem da persistência de resultados.
+    """
+    if name is None:
+        return ""
+    value = str(name).strip().lower()
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return " ".join(value.split())
+
+
+def find_player_in_summary_for_diagnostic(
+    summary,
+    snapshot_player_id,
+    snapshot_player_name
+):
+    """
+    Procura o atleta no boxscore primeiro pelo ID e, somente para diagnóstico,
+    por nome normalizado. Não altera a regra oficial de coleta.
+    """
+    players_blocks = (
+        summary.get("boxscore", {})
+        .get("players", [])
+    )
+    if not isinstance(players_blocks, list):
+        return None
+
+    snapshot_id = str(snapshot_player_id or "").strip()
+    snapshot_name = normalize_diagnostic_player_name(snapshot_player_name)
+    name_matches = []
+
+    for team_block in players_blocks:
+        if not isinstance(team_block, dict):
+            continue
+        team_abbr = (
+            team_block.get("team", {}).get("abbreviation")
+            or ""
+        ).upper()
+        statistics_blocks = team_block.get("statistics", [])
+        if isinstance(statistics_blocks, dict):
+            statistics_blocks = [statistics_blocks]
+        if not isinstance(statistics_blocks, list):
+            continue
+
+        for statistics_block in statistics_blocks:
+            if not isinstance(statistics_block, dict):
+                continue
+            keys = (
+                statistics_block.get("keys")
+                or statistics_block.get("names")
+                or statistics_block.get("labels")
+                or []
+            )
+            key_indexes = {}
+            for index, key in enumerate(keys):
+                normalized_key = normalize_stat_key(key)
+                if normalized_key:
+                    key_indexes[normalized_key] = index
+
+            athletes = statistics_block.get("athletes", [])
+            if not isinstance(athletes, list):
+                continue
+
+            for athlete_entry in athletes:
+                if not isinstance(athlete_entry, dict):
+                    continue
+                athlete = athlete_entry.get("athlete", {})
+                if not isinstance(athlete, dict):
+                    continue
+
+                boxscore_id = str(athlete.get("id", "")).strip()
+                boxscore_name = (
+                    athlete.get("displayName")
+                    or athlete.get("fullName")
+                    or athlete.get("shortName")
+                    or ""
+                )
+                raw_stats = (
+                    athlete_entry.get("stats")
+                    or athlete_entry.get("statistics")
+                )
+
+                minutes = None
+                if raw_stats is not None:
+                    minutes = get_player_stat_value(
+                        raw_stats,
+                        key_indexes,
+                        "minutes"
+                    )
+
+                min_index = key_indexes.get("minutes")
+                raw_min_value = None
+                if isinstance(raw_stats, list) and min_index is not None and min_index < len(raw_stats):
+                    raw_min_value = raw_stats[min_index]
+                elif isinstance(raw_stats, dict):
+                    raw_min_value = raw_stats.get("minutes", raw_stats.get("MIN"))
+
+                candidate = {
+                    "boxscore_player_id": boxscore_id,
+                    "boxscore_player_name": boxscore_name,
+                    "boxscore_team": team_abbr,
+                    "boxscore_minutes": minutes,
+                    "boxscore_statistics_keys": keys,
+                    "boxscore_stats_type": type(raw_stats).__name__ if raw_stats is not None else "ausente",
+                    "boxscore_stats_length": len(raw_stats) if isinstance(raw_stats, (list, dict)) else None,
+                    "boxscore_min_index": min_index,
+                    "boxscore_raw_min_value": raw_min_value,
+                    "boxscore_athlete_entry_keys": list(athlete_entry.keys()),
+                    "boxscore_athlete_keys": list(athlete.keys()),
+                    "boxscore_did_not_play": athlete_entry.get("didNotPlay") or athlete_entry.get("did_not_play") or athlete_entry.get("reason")
+                }
+
+                if boxscore_id and boxscore_id == snapshot_id:
+                    candidate["match_method"] = "id"
+                    return candidate
+
+                if (
+                    snapshot_name
+                    and normalize_diagnostic_player_name(boxscore_name)
+                    == snapshot_name
+                ):
+                    name_matches.append(candidate)
+
+    if name_matches:
+        name_matches[0]["match_method"] = "name"
+        return name_matches[0]
+
+    return None
+
+
+@lru_cache(maxsize=300)
+def get_game_team_player_status(
+    game_id: str,
+    team_abbr: str,
+    player_id: str
+):
+    """
+    Consulta o roster específico da partida. A API Core da ESPN retorna
+    a coleção de atletas em "entries" (não em "athletes"/"items") e pode
+    entregar referências $ref que precisam ser resolvidas.
+    """
+    summary = get_game_summary(game_id)
+    competitions = (
+        summary.get("header", {})
+        .get("competitions", [])
+    )
+
+    team_id = None
+    for competition in competitions:
+        for competitor in competition.get("competitors", []):
+            competitor_team = (
+                competitor.get("team", {}).get("abbreviation", "")
+            ).upper()
+            if competitor_team == str(team_abbr or "").upper():
+                team_id = str(
+                    competitor.get("id")
+                    or competitor.get("team", {}).get("id")
+                    or ""
+                ).strip()
+                break
+        if team_id:
+            break
+
+    if not team_id:
+        return None
+
+    roster_url = (
+        "https://sports.core.api.espn.com/v2/sports/basketball/"
+        "leagues/nba/events/{event}/competitions/{competition}/"
+        "competitors/{team}/roster"
+    ).format(
+        event=str(game_id),
+        competition=str(game_id),
+        team=team_id
+    )
+    roster = request_json(roster_url)
+
+    # O endpoint Core usa "entries". Mantém compatibilidade com formatos
+    # alternativos, mas prioriza a estrutura realmente retornada pela ESPN.
+    entries = roster.get("entries")
+    if not isinstance(entries, list):
+        entries = roster.get("athletes")
+    if not isinstance(entries, list):
+        entries = roster.get("items")
+    if not isinstance(entries, list):
+        return None
+
+    def resolve_reference(value):
+        if isinstance(value, str) and value.startswith("http"):
+            return request_json(value)
+        if isinstance(value, dict) and value.get("$ref"):
+            return request_json(value["$ref"])
+        return value if isinstance(value, dict) else {}
+
+    target_id = str(player_id).strip()
+
+    for raw_entry in entries:
+        entry = resolve_reference(raw_entry)
+        if not isinstance(entry, dict):
+            continue
+
+        athlete_value = entry.get("athlete")
+        athlete = resolve_reference(athlete_value)
+        if not athlete and entry.get("player"):
+            athlete = resolve_reference(entry.get("player"))
+
+        athlete_id = str(
+            athlete.get("id")
+            or entry.get("playerId")
+            or entry.get("athleteId")
+            or entry.get("id")
+            or ""
+        ).strip()
+
+        # Algumas respostas guardam a referência do atleta em um objeto
+        # com URL e o ID só aparece após resolver esse recurso.
+        if athlete_id != target_id:
+            continue
+
+        did_not_play = (
+            entry.get("didNotPlay")
+            or entry.get("did_not_play")
+            or entry.get("notPlayed")
+            or athlete.get("didNotPlay")
+            or athlete.get("did_not_play")
+        )
+        active = entry.get("active")
+        if active is None:
+            active = athlete.get("active")
+
+        return {
+            "player_id": athlete_id,
+            "did_not_play": bool(did_not_play),
+            "active": active,
+            "reason": (
+                entry.get("reason")
+                or entry.get("notPlayingReason")
+                or entry.get("status", {}).get("description")
+                or athlete.get("reason")
+            )
+        }
+
+    return None
 
 
 def extract_player_game_from_summary(
@@ -2123,7 +3172,32 @@ def extract_player_game_from_summary(
                     )
                 )
 
+                # A ESPN pode listar atletas que não participaram da partida
+                # sem bloco de estatísticas. Se o próprio registro do boxscore
+                # marcar didNotPlay, esse caso é DNP confirmado, não pendência.
+                did_not_play = (
+                    athlete_entry.get("didNotPlay")
+                    or athlete_entry.get("did_not_play")
+                )
+                dnp_reason = athlete_entry.get("reason")
+
                 if raw_stats is None:
+                    if did_not_play:
+                        return {
+                            "player_id": player_id,
+                            "player": player_name,
+                            "team": team_abbr,
+                            "minutes": 0.0,
+                            "assists": None,
+                            "rebounds": None,
+                            "points": None,
+                            "fga": None,
+                            "three_pa": None,
+                            "two_pa": None,
+                            "fgm": None,
+                            "did_not_play": True,
+                            "dnp_reason": dnp_reason
+                        }
                     return None
 
                 minutes = get_player_stat_value(
@@ -2216,7 +3290,7 @@ NBA_TEAM_ABBREVIATIONS = (
 )
 
 
-@lru_cache(maxsize=12)
+@lru_cache(maxsize=2)
 def get_league_position_defense_baseline(year, target_date_iso):
     """Média da liga de totais cedidos por jogo a cada posição, usando os últimos 5/10 jogos de cada equipe."""
     started = time.perf_counter()
@@ -2247,6 +3321,7 @@ def get_league_position_defense_baseline(year, target_date_iso):
     }
 
     summaries = {}
+    player_status_by_game = {}
 
     def fetch_summary(game_id):
         return game_id, get_game_summary(game_id)
@@ -2259,6 +3334,22 @@ def get_league_position_defense_baseline(year, target_date_iso):
                 summaries[game_id] = summary
             except Exception as error:
                 logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
+
+    # Aproveita os mesmos boxscores já carregados pelo benchmark defensivo.
+    # Não dispara nenhuma chamada adicional à ESPN para o contexto de companheiros.
+    for game_id, summary in summaries.items():
+        status_index = {}
+        player_blocks = (summary.get("boxscore") or {}).get("players") or []
+        team_abbreviations = {
+            str((block.get("team") or {}).get("abbreviation") or "").upper()
+            for block in player_blocks
+            if (block.get("team") or {}).get("abbreviation")
+        }
+        for team_abbr in team_abbreviations:
+            status_index.update(
+                extract_team_player_status(summary, team_abbr)
+            )
+        player_status_by_game[str(game_id)] = status_index
 
     stat_keys = ("points", "assists", "rebounds", "fga", "three_pa", "two_pa", "fgm")
     samples = {
@@ -2316,7 +3407,8 @@ def get_league_position_defense_baseline(year, target_date_iso):
         "positions": {},
         "minute_player_samples": minute_player_samples,
         "teams_analyzed": len(team_samples),
-        "unique_games": len(summaries)
+        "unique_games": len(summaries),
+        "player_status_by_game": player_status_by_game
     }
     for position in ("G", "F", "C"):
         result["positions"][position] = {}
@@ -2344,6 +3436,79 @@ def get_league_position_defense_baseline(year, target_date_iso):
         time.perf_counter() - started
     )
     return result
+
+
+# Serializa a construção do benchmark por processo. Isso evita que o
+# prewarm e a primeira consulta de candidatos montem o mesmo benchmark em paralelo.
+_LEAGUE_BASELINE_SINGLEFLIGHT_LOCK = threading.Lock()
+
+
+def get_league_position_defense_baseline_singleflight(year, target_date_iso):
+    with _LEAGUE_BASELINE_SINGLEFLIGHT_LOCK:
+        return get_league_position_defense_baseline(year, target_date_iso)
+
+
+_DEFENSE_PREWARM_LOCK = threading.Lock()
+_DEFENSE_PREWARM_DATES = set()
+_DEFENSE_PREWARM_STATE = {}
+
+
+def schedule_defense_context_prewarm(selected_date):
+    """Prepara o benchmark defensivo da data sem bloquear /games."""
+    with _DEFENSE_PREWARM_LOCK:
+        if selected_date in _DEFENSE_PREWARM_DATES:
+            return
+        _DEFENSE_PREWARM_DATES.add(selected_date)
+        _DEFENSE_PREWARM_STATE[selected_date] = {
+            "status": "running",
+            "started_at": time.perf_counter(),
+            "elapsed": None
+        }
+
+    def warm():
+        started = time.perf_counter()
+        try:
+            target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
+            baseline = get_league_position_defense_baseline_singleflight(
+                season_year(target_date),
+                selected_date
+            )
+            elapsed = time.perf_counter() - started
+            with _DEFENSE_PREWARM_LOCK:
+                _DEFENSE_PREWARM_STATE[selected_date] = {
+                    "status": "ready",
+                    "started_at": started,
+                    "elapsed": elapsed
+                }
+            logger.info(
+                "Defense prewarm: data=%s status=ok equipes=%s jogos_unicos=%s tempo=%.2fs",
+                selected_date,
+                baseline.get("teams_analyzed", 0),
+                baseline.get("unique_games", 0),
+                elapsed
+            )
+        except Exception as error:
+            elapsed = time.perf_counter() - started
+            with _DEFENSE_PREWARM_LOCK:
+                _DEFENSE_PREWARM_DATES.discard(selected_date)
+                _DEFENSE_PREWARM_STATE[selected_date] = {
+                    "status": "error",
+                    "started_at": started,
+                    "elapsed": elapsed,
+                    "error": str(error)
+                }
+            logger.warning(
+                "Defense prewarm: data=%s status=error tempo=%.2fs erro=%s",
+                selected_date,
+                time.perf_counter() - started,
+                error
+            )
+
+    threading.Thread(
+        target=warm,
+        name=f"defense-prewarm-{selected_date}",
+        daemon=True
+    ).start()
 
 
 def get_player_team_game_counts(
@@ -2435,6 +3600,51 @@ def get_opponents_for_date(
     return opponents
 
 
+def build_player_venue_production(games, target_date, stat_key):
+    """
+    Produção individual por mando de quadra.
+    L10 é independente por local; a temporada considera todos os jogos
+    anteriores à data-alvo com homeAway válido.
+    """
+    previous_games = [
+        game for game in games
+        if game.get("date") and game["date"] < target_date.isoformat()
+    ]
+
+    result = {}
+    for venue in ("home", "away"):
+        venue_games = [
+            game for game in previous_games
+            if game.get("home_away") == venue
+            and game.get(stat_key) is not None
+        ]
+        last10 = venue_games[:10]
+
+        def summarize(sample):
+            if not sample:
+                return {
+                    "average": None,
+                    "games": 0,
+                    "minutes_avg": None
+                }
+            return {
+                "average": round(
+                    sum(float(game[stat_key]) for game in sample) / len(sample), 2
+                ),
+                "games": len(sample),
+                "minutes_avg": round(
+                    sum(float(game.get("minutes") or 0) for game in sample) / len(sample), 1
+                )
+            }
+
+        result[venue] = {
+            "season": summarize(venue_games),
+            "last10": summarize(last10)
+        }
+
+    return result
+
+
 def build_player_result(
     player,
     games,
@@ -2502,7 +3712,9 @@ def build_player_result(
     avg5 = average(last5)
     avg10 = average(last10)
 
-    consistency = (
+    # Frequência de jogos L5 que atingem/superam a própria média L5.
+    # Este fator não mede dispersão ou estabilidade estatística.
+    above_l5_mean_rate = (
         sum(
             game[stat_key] >= avg5
             for game in last5
@@ -2515,7 +3727,7 @@ def build_player_result(
         + avg10 * 0.40
     ) * (
         0.80
-        + consistency * 0.20
+        + above_l5_mean_rate * 0.20
     )
 
     defense_l5 = (
@@ -2737,6 +3949,9 @@ def build_player_result(
         "last5_avg": round(avg5, 2),
         "last10_avg": round(avg10, 2),
         "minutes_last5_avg": round(minutes_avg, 1),
+        "venue_production": build_player_venue_production(
+            games, target_date, stat_key
+        ),
         "triage_score": round(score, 2),
         "games_last5": len(last5),
         "games_last10": len(last10),
@@ -2892,7 +4107,8 @@ def build_player_result(
 def collect_candidates(
     selected_date,
     market,
-    limit
+    limit,
+    persist_operational=True
 ):
 
     total_start = time.perf_counter()
@@ -2913,6 +4129,36 @@ def collect_candidates(
     roster_elapsed = time.perf_counter() - stage_start
 
     players = roster_data["players"]
+
+    # Relatório atual da ESPN usado somente para elegibilidade pré-jogo.
+    # Não altera triage_score nem a fotografia imutável dos candidatos.
+    availability_start = time.perf_counter()
+    availability_report_status = "ok"
+    availability_report_warning = None
+    try:
+        injury_payload = request_json(
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
+        )
+        injury_index = parse_espn_injuries(injury_payload)
+        if not injury_index:
+            availability_report_status = "empty"
+            availability_report_warning = "A ESPN retornou um relatório válido, mas sem atletas listados."
+            logger.warning("Relatório de lesões ESPN vazio; nenhum atleta será presumido ativo.")
+    except Exception as error:
+        injury_index = {}
+        availability_report_status = "unavailable"
+        availability_report_warning = "Não foi possível validar o relatório de lesões; confira a disponibilidade manualmente."
+        logger.warning("Falha ao consultar disponibilidade ESPN: %s", error)
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=disponibilidade status=%s reportados=%s tempo=%.2fs",
+        selected_date,
+        market,
+        availability_report_status,
+        len(injury_index),
+        time.perf_counter() - availability_start
+    )
+
     opponents = get_opponents_for_date(
         roster_data["schedule"]
     )
@@ -2925,6 +4171,9 @@ def collect_candidates(
         roster_elapsed
     )
 
+    # O Scanner consulta o histórico dos atletas diretamente nesta
+    # requisição, com concorrência limitada, sem aguardar prewarm externo.
+
     # Primeiro buscamos os históricos dos jogadores. Isso permite
     # identificar quem realmente pode virar candidato antes de
     # consultar o histórico defensivo dos adversários.
@@ -2932,16 +4181,57 @@ def collect_candidates(
     player_logs = {}
     successful_logs = 0
     errors = 0
+    # Registra se o prewarm iniciado pela busca de jogos terminou antes
+    # da primeira consulta de mercado. Não espera nem altera o fluxo do Scanner.
+    with _PLAYER_HISTORY_PREWARM_LOCK:
+        player_prewarm_state = dict(
+            _PLAYER_HISTORY_PREWARM_STATE.get(selected_date, {})
+        )
+    logger.info(
+        "Player history prewarm at candidates start: data=%s status=%s "
+        "elapsed=%.2fs players=%s successful=%s errors=%s",
+        selected_date,
+        player_prewarm_state.get("status", "not_started"),
+        (
+            time.perf_counter() - player_prewarm_state["started"]
+            if player_prewarm_state.get("started") is not None
+            else 0.0
+        ),
+        player_prewarm_state.get("players", 0),
+        player_prewarm_state.get("successful", 0),
+        player_prewarm_state.get("errors", 0),
+    )
+
+    player_cache_before = _cache_metrics(get_athlete_logs)
+
+    player_fetch_durations = []
+    player_http_durations = []
+    player_fetch_errors = 0
 
     def fetch_player(player):
-        logs = get_athlete_logs(
-            player["id"],
-            year
-        )
-        return player, logs
+        fetch_started = time.perf_counter()
+        _http_local.last_gamelog_http_elapsed = None
+        try:
+            logs = get_athlete_logs(
+                player["id"],
+                year
+            )
+            error = None
+        except Exception as caught_error:
+            logs = None
+            error = caught_error
 
+        fetch_elapsed = time.perf_counter() - fetch_started
+        http_elapsed = getattr(
+            _http_local,
+            "last_gamelog_http_elapsed",
+            None
+        )
+        return player, logs, fetch_elapsed, http_elapsed, error
+
+    player_history_workers = 16
     with ThreadPoolExecutor(
-        max_workers=12
+        max_workers=player_history_workers
     ) as executor:
 
         futures = [
@@ -2955,18 +4245,81 @@ def collect_candidates(
         for future in as_completed(futures):
 
             try:
-                player, logs = future.result()
+                player, logs, fetch_elapsed, http_elapsed, fetch_error = future.result()
+                player_fetch_durations.append(fetch_elapsed)
+                if http_elapsed is not None:
+                    player_http_durations.append(http_elapsed)
+
+                if fetch_error is not None:
+                    errors += 1
+                    player_fetch_errors += 1
+                    logger.warning(
+                        "Falha ao consultar jogador: %s",
+                        fetch_error
+                    )
+                    continue
+
                 successful_logs += 1
                 player_logs[player["id"]] = (player, logs)
 
             except Exception as error:
                 errors += 1
+                player_fetch_errors += 1
                 logger.warning(
-                    "Falha ao consultar jogador: %s",
+                    "Falha ao processar retorno de jogador: %s",
                     error
                 )
 
     player_logs_elapsed = time.perf_counter() - stage_start
+
+    def latency_summary(values):
+        if not values:
+            return {
+                "count": 0,
+                "avg": 0.0,
+                "median": 0.0,
+                "p95": 0.0,
+                "max": 0.0
+            }
+
+        ordered = sorted(values)
+        count = len(ordered)
+        middle = count // 2
+        median = (
+            ordered[middle]
+            if count % 2
+            else (ordered[middle - 1] + ordered[middle]) / 2
+        )
+        p95_index = min(count - 1, int((count - 1) * 0.95))
+        return {
+            "count": count,
+            "avg": sum(ordered) / count,
+            "median": median,
+            "p95": ordered[p95_index],
+            "max": ordered[-1]
+        }
+
+    fetch_latency = latency_summary(player_fetch_durations)
+    http_latency = latency_summary(player_http_durations)
+    logger.info(
+        "Candidatos player latency: data=%s mercado=%s workers=%s "
+        "fetch_count=%s fetch_avg=%.3fs fetch_median=%.3fs fetch_p95=%.3fs fetch_max=%.3fs "
+        "http_count=%s http_avg=%.3fs http_median=%.3fs http_p95=%.3fs http_max=%.3fs erros=%s",
+        selected_date,
+        market,
+        player_history_workers,
+        fetch_latency["count"],
+        fetch_latency["avg"],
+        fetch_latency["median"],
+        fetch_latency["p95"],
+        fetch_latency["max"],
+        http_latency["count"],
+        http_latency["avg"],
+        http_latency["median"],
+        http_latency["p95"],
+        http_latency["max"],
+        player_fetch_errors
+    )
 
     # Mantém exatamente os mesmos critérios de elegibilidade usados
     # em build_player_result(): mínimo de 3 jogos anteriores e média
@@ -3001,6 +4354,15 @@ def collect_candidates(
             (player, logs)
         )
 
+    player_cache_after = _cache_metrics(get_athlete_logs)
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_athlete_logs hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        player_cache_after["hits"] - player_cache_before["hits"],
+        player_cache_after["misses"] - player_cache_before["misses"],
+        player_cache_after["currsize"]
+    )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=historico_jogadores jogadores_consultados=%s elegiveis=%s tempo=%.2fs",
         selected_date,
@@ -3013,6 +4375,10 @@ def collect_candidates(
     # Só consultamos defesa para adversários que realmente possuem
     # pelo menos um jogador elegível para este mercado/data.
     stage_start = time.perf_counter()
+    defense_cache_before = _cache_metrics(get_team_defense_history)
+    schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
+    summary_cache_before = _cache_metrics(_get_cached_game_summary)
+    league_cache_before = _cache_metrics(get_league_position_defense_baseline)
 
     eligible_opponents = {
         opponents.get(player["team"])
@@ -3039,6 +4405,15 @@ def collect_candidates(
         )
         return team, defense
 
+    with _DEFENSE_PREWARM_LOCK:
+        prewarm_state = dict(_DEFENSE_PREWARM_STATE.get(selected_date, {}))
+    logger.info(
+        "Defense prewarm status at candidates start: data=%s status=%s elapsed=%.2fs",
+        selected_date,
+        prewarm_state.get("status", "not_started"),
+        prewarm_state.get("elapsed") or 0.0
+    )
+
     league_baseline = None
 
     with ThreadPoolExecutor(
@@ -3051,7 +4426,7 @@ def collect_candidates(
         ]
         league_future = (
             executor.submit(
-                get_league_position_defense_baseline,
+                get_league_position_defense_baseline_singleflight,
                 year,
                 target_date.isoformat()
             )
@@ -3070,7 +4445,15 @@ def collect_candidates(
 
         if league_future:
             try:
+                baseline_wait_started = time.perf_counter()
                 league_baseline = league_future.result()
+                logger.info(
+                    "Defense benchmark wait: data=%s mercado=%s prewarm_status_at_start=%s wait=%.2fs",
+                    selected_date,
+                    market,
+                    prewarm_state.get("status", "not_started"),
+                    time.perf_counter() - baseline_wait_started
+                )
             except Exception as error:
                 logger.warning(
                     "Falha ao calcular benchmark defensivo da liga: %s",
@@ -3079,6 +4462,43 @@ def collect_candidates(
 
     defense_elapsed = time.perf_counter() - stage_start
 
+    defense_cache_after = _cache_metrics(get_team_defense_history)
+    schedule_cache_after = _cache_metrics(get_team_regular_season_schedule)
+    summary_cache_after = _cache_metrics(_get_cached_game_summary)
+    league_cache_after = _cache_metrics(get_league_position_defense_baseline)
+
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_team_defense_history hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        defense_cache_after["hits"] - defense_cache_before["hits"],
+        defense_cache_after["misses"] - defense_cache_before["misses"],
+        defense_cache_after["currsize"]
+    )
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_team_regular_season_schedule hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        schedule_cache_after["hits"] - schedule_cache_before["hits"],
+        schedule_cache_after["misses"] - schedule_cache_before["misses"],
+        schedule_cache_after["currsize"]
+    )
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=get_game_summary hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        summary_cache_after["hits"] - summary_cache_before["hits"],
+        summary_cache_after["misses"] - summary_cache_before["misses"],
+        summary_cache_after["currsize"]
+    )
+    logger.info(
+        "Candidatos cache: data=%s mercado=%s cache=league_position_defense_baseline hits_delta=%s misses_delta=%s size=%s",
+        selected_date,
+        market,
+        league_cache_after["hits"] - league_cache_before["hits"],
+        league_cache_after["misses"] - league_cache_before["misses"],
+        league_cache_after["currsize"]
+    )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s tempo=%.2fs",
         selected_date,
@@ -3122,11 +4542,12 @@ def collect_candidates(
 
     stage_start = time.perf_counter()
 
-    save_candidate_snapshots(
-        selected_date,
-        market,
-        results
-    )
+    if persist_operational:
+        save_candidate_snapshots(
+            selected_date,
+            market,
+            results
+        )
 
     database_elapsed = time.perf_counter() - stage_start
     total_elapsed = time.perf_counter() - total_start
@@ -3149,19 +4570,173 @@ def collect_candidates(
 
     final_limit = min(limit, 10)
 
+    # Remove somente ausências confirmadas depois de salvar o snapshot.
+    # Assim o histórico original e o triage_score permanecem intactos.
+    (
+        displayed_results,
+        unavailable_top10_results,
+        outside_top10_results,
+        eligible_all_results,
+    ) = select_eligible_players(
+        results,
+        injury_index,
+        limit=final_limit
+    )
+
+    # Captura histórica: o contexto de companheiros precisa existir ANTES
+    # do snapshot imutável. Limitamos a captura histórica aos 10 primeiros
+    # candidatos do ranking para não transformar a auditoria em uma nova etapa
+    # cara para toda a população elegível. O restante continua sendo calculado
+    # apenas quando necessário para a resposta operacional.
+    audit_context_start = time.perf_counter()
+    if not persist_operational and league_baseline and league_baseline.get("player_status_by_game"):
+        player_logs_by_id = player_logs
+        roster_by_team = {}
+        for roster_player in players:
+            roster_by_team.setdefault(
+                str(roster_player.get("team") or "").upper(), []
+            ).append(roster_player)
+        candidate_lookup = {
+            str(player.get("id")): (player, logs)
+            for player, logs in eligible_players
+        }
+        status_index = league_baseline["player_status_by_game"]
+
+        for result in eligible_all_results[:10]:
+            candidate_id = str(result.get("player_id") or "")
+            candidate_entry = candidate_lookup.get(candidate_id)
+            if not candidate_entry:
+                continue
+            candidate_player, candidate_logs = candidate_entry
+            team = str(candidate_player.get("team") or "").upper()
+            team_games = [
+                game for game in get_team_regular_season_schedule(team, year)
+                if (game.get("date") or "")[:10] < target_date.isoformat()
+            ]
+            team_games.sort(
+                key=lambda game: game.get("date") or "", reverse=True
+            )
+            team_games = team_games[:10]
+            player_logs_by_id[candidate_id] = (candidate_player, candidate_logs)
+            result["teammate_context"] = build_candidate_teammate_context(
+                candidate_id=candidate_id,
+                team=team,
+                roster=roster_by_team.get(team, []),
+                player_logs_by_id=player_logs_by_id,
+                team_games=team_games,
+                teammate_status_by_game=status_index
+            )
+
+        logger.info(
+            "Auditoria timing: data=%s mercado=%s etapa=contexto_companheiros_snapshot candidatos=%s tempo=%.2fs",
+            selected_date,
+            market,
+            sum(1 for item in eligible_all_results[:10] if item.get("teammate_context")),
+            time.perf_counter() - audit_context_start
+        )
+
+    # A auditoria independente só captura quando chamada explicitamente pelo
+    # endpoint /capture-audit-snapshot. O uso normal do Scanner não pode criar
+    # nem alterar a fotografia da auditoria.
+    audit_snapshots_saved = 0
+    if not persist_operational:
+        audit_snapshots_saved = save_audit_snapshots(
+            selected_date,
+            market,
+            eligible_all_results,
+            availability_report_status
+        )
+
+    # O contexto é anexado somente à resposta, depois do snapshot imutável.
+    # Assim não altera candidate_snapshots, Auditoria nem triage_score.
+    context_start = time.perf_counter()
+    if persist_operational and league_baseline and league_baseline.get("player_status_by_game"):
+        player_logs_by_id = player_logs
+        roster_by_team = {}
+        for roster_player in players:
+            roster_by_team.setdefault(
+                str(roster_player.get("team") or "").upper(), []
+            ).append(roster_player)
+
+        candidate_lookup = {
+            str(player.get("id")): (player, logs)
+            for player, logs in eligible_players
+        }
+        status_index = league_baseline["player_status_by_game"]
+
+        for result in displayed_results:
+            if result.get("teammate_context"):
+                continue
+            candidate_id = str(result.get("player_id") or "")
+            candidate_entry = candidate_lookup.get(candidate_id)
+            if not candidate_entry:
+                continue
+            candidate_player, candidate_logs = candidate_entry
+            team = str(candidate_player.get("team") or "").upper()
+            team_games = [
+                game for game in get_team_regular_season_schedule(team, year)
+                if (game.get("date") or "")[:10] < target_date.isoformat()
+            ]
+            team_games.sort(
+                key=lambda game: game.get("date") or "", reverse=True
+            )
+            team_games = team_games[:10]
+
+            # Garante que o próprio histórico do candidato seja a fonte
+            # usada no split, sem uma segunda consulta de atleta.
+            player_logs_by_id[candidate_id] = (candidate_player, candidate_logs)
+            result["teammate_context"] = build_candidate_teammate_context(
+                candidate_id=candidate_id,
+                team=team,
+                roster=roster_by_team.get(team, []),
+                player_logs_by_id=player_logs_by_id,
+                team_games=team_games,
+                teammate_status_by_game=status_index
+            )
+    context_elapsed = time.perf_counter() - context_start
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=contexto_companheiros candidatos=%s jogos_boxscore=%s tempo=%.2fs",
+        selected_date,
+        market,
+        sum(1 for item in displayed_results if item.get("teammate_context")),
+        len(league_baseline.get("player_status_by_game", {})) if league_baseline else 0,
+        context_elapsed
+    )
+
     return {
         "date": selected_date,
         "market": market,
         "market_label": MARKETS[market]["label"],
-        "count": min(len(results), final_limit),
+        "count": len(displayed_results),
+        "selection_summary": {
+            "analyzed_candidates": len(results),
+            "eligible_candidates": len(eligible_all_results),
+            "displayed_candidates": len(displayed_results),
+            "outside_top10_count": len(outside_top10_results),
+            "unavailable_from_initial_top10_count": len(unavailable_top10_results),
+            "unavailable_from_initial_top10": unavailable_top10_results,
+            "outside_top10": outside_top10_results,
+        },
         "source": "ESPN",
         "season": season_for(target_date),
         "teams_found": roster_data["teams_found"],
         "players_found": len(players),
         "players_consulted": successful_logs,
         "players_with_errors": errors,
+        "availability": {
+            "source": "ESPN",
+            "report_status": availability_report_status,
+            "warning": availability_report_warning,
+            "reported_players": len(injury_index),
+            "confirmed_out_removed": len(unavailable_top10_results),
+            "uncertain_kept": sum(
+                1 for item in displayed_results
+                if (item.get("availability") or {}).get("availability") == "uncertain"
+            ),
+        },
         "updated_at": datetime.now().isoformat(),
-        "candidates": results[:final_limit]
+        "audit_snapshots_saved": audit_snapshots_saved,
+        "candidates": displayed_results
     }
 
 
@@ -3170,7 +4745,7 @@ def health():
     return {
         "status": "ok",
         "service": "NBA Props Scanner",
-        "version": "3.15.0",
+        "version": "3.17.0",
         "source": "ESPN"
     }
 
@@ -3197,7 +4772,13 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    return fetch_espn_games(selected_date)
+    # Mantém o retrospecto L5/L10 das equipes visível na agenda, mas sem
+    # iniciar prewarms pesados. O histórico individual e o contexto defensivo
+    # continuam sendo carregados sob demanda pelo Scanner.
+    return fetch_espn_games(
+        selected_date,
+        enrich_context=True
+    )
 
 
 @app.get("/candidates")
@@ -3239,7 +4820,233 @@ def candidates(
     )
 
 
-@app.get("/collect-results")
+@app.get("/capture-audit-snapshot", dependencies=[Depends(require_admin_api_key)])
+def capture_audit_snapshot(
+    selected_date: str = Query(alias="date"),
+    market: str = Query(...)
+):
+    """Gera a população de auditoria sem registrar uso operacional do Scanner."""
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(
+            status_code=400,
+            detail="Mercado inválido ou inativo na auditoria."
+        )
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    try:
+        datetime.strptime(selected_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Data inválida. Utilize AAAA-MM-DD."
+        )
+
+    result = collect_candidates(
+        selected_date,
+        market,
+        10,
+        persist_operational=False
+    )
+
+    return {
+        "status": "captured",
+        "date": selected_date,
+        "market": market,
+        "eligible_players": result["selection_summary"]["eligible_candidates"],
+        "snapshots_saved": result["audit_snapshots_saved"],
+        "players_consulted": result["players_consulted"],
+        "players_with_errors": result["players_with_errors"],
+        "availability_report_status": result["availability"]["report_status"],
+        "updated_at": result["updated_at"]
+    }
+
+
+@app.get("/refresh-audit", dependencies=[Depends(require_admin_api_key)])
+def refresh_audit(
+    selected_date: Optional[str] = Query(default=None, alias="date"),
+    history: bool = Query(default=False),
+):
+    """
+    Rotina híbrida da Auditoria.
+
+    Modo diário:
+    1) garante a captura do dia informado para todos os mercados ativos;
+    2) tenta apurar pendências de resultados de datas anteriores à data informada.
+
+    Modo histórico acumulado (?history=true):
+    1) usa automaticamente a data atual de São Paulo;
+    2) garante a captura de hoje para todos os mercados ativos;
+    3) tenta apurar todas as combinações históricas pendentes, incluindo hoje.
+    """
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados não configurado."
+        )
+
+    if history:
+        target_date = audit_history_cutoff_date()
+        selected_date = target_date.isoformat()
+    else:
+        if not selected_date:
+            raise HTTPException(
+                status_code=400,
+                detail="Data obrigatória para atualização diária."
+            )
+        try:
+            target_date = datetime.strptime(
+                selected_date,
+                "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Data inválida. Utilize AAAA-MM-DD."
+            )
+
+    capture_results = []
+    capture_failures = []
+
+    # Não reconstruímos uma fotografia que já existe. A Auditoria é baseada
+    # em snapshots imutáveis; recapturar uma data/mercado já capturado só
+    # desperdiça CPU/memória e pode provocar picos no serviço.
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT market
+                FROM audit_snapshot_runs
+                WHERE selected_date = %s
+                """,
+                (target_date,)
+            )
+            captured_markets = {
+                str(row[0]).strip()
+                for row in cursor.fetchall()
+            }
+
+    for market in ACTIVE_MARKETS:
+        if market in captured_markets:
+            capture_results.append({
+                "market": market,
+                "status": "already_captured",
+                "snapshots_saved": 0,
+                "eligible_players": None,
+                "players_consulted": 0,
+                "players_with_errors": 0,
+            })
+            continue
+
+        try:
+            result = collect_candidates(
+                selected_date,
+                market,
+                10,
+                persist_operational=False
+            )
+            capture_results.append({
+                "market": market,
+                "status": "captured",
+                "snapshots_saved": result.get("audit_snapshots_saved", 0),
+                "eligible_players": result.get("selection_summary", {}).get("eligible_candidates", 0),
+                "players_consulted": result.get("players_consulted", 0),
+                "players_with_errors": result.get("players_with_errors", 0),
+            })
+        except Exception as error:
+            logger.exception(
+                "Falha na captura híbrida da auditoria: data=%s mercado=%s",
+                selected_date,
+                market
+            )
+            capture_failures.append({
+                "market": market,
+                "error": str(error)
+            })
+
+    # A captura do dia informado é separada da apuração histórica.
+    # Depois de garantir os snapshots do dia, procura combinações que já
+    # possuem snapshots pendentes em datas anteriores e tenta atualizá-las.
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT s.selected_date, s.market
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
+                WHERE s.selected_date >= %s
+                  AND s.selected_date <= %s
+                  AND r.id IS NULL
+                  AND nr.id IS NULL
+                ORDER BY s.selected_date ASC, s.market ASC
+                """,
+                (
+                    audit_history_start_date(),
+                    target_date if history else target_date - timedelta(days=1)
+                )
+            )
+            pending_combinations = cursor.fetchall()
+
+    collection_results = []
+    collection_failures = []
+
+    for pending_date, market in pending_combinations:
+        try:
+            result = collect_results(
+                selected_date=pending_date.isoformat(),
+                market=market
+            )
+            collection_results.append({
+                "date": pending_date.isoformat(),
+                "market": market,
+                "status": result.get("status"),
+                "results_saved": result.get("audit_results_saved", 0),
+                "dnp": result.get("audit_no_results", 0),
+                "pending": result.get("audit_pending", 0),
+            })
+        except Exception as error:
+            logger.exception(
+                "Falha na apuração híbrida da auditoria: data=%s mercado=%s",
+                pending_date,
+                market
+            )
+            collection_failures.append({
+                "date": pending_date.isoformat(),
+                "market": market,
+                "error": str(error)
+            })
+
+    return {
+        "status": (
+            "ok"
+            if not capture_failures and not collection_failures
+            else "partial"
+        ),
+        "date": selected_date,
+        "history": history,
+        "capture": {
+            "markets": capture_results,
+            "failures": capture_failures,
+        },
+        "collection": {
+            "combinations_found": len(pending_combinations),
+            "processed": collection_results,
+            "failures": collection_failures,
+        }
+    }
+
+
+@app.get("/collect-results", dependencies=[Depends(require_admin_api_key)])
 def collect_results(
     selected_date: str = Query(
         alias="date"
@@ -3285,11 +5092,13 @@ def collect_results(
         )
 
     schedule = fetch_espn_games(
-        selected_date
+        selected_date,
+        enrich_context=False
     )
 
     completed_games = {}
     completed_game_ids = []
+    completed_game_context = {}
 
     for game in schedule.get("games", []):
 
@@ -3304,24 +5113,63 @@ def collect_results(
             completed_games[(home.upper(), away.upper())] = game_id
             completed_games[(away.upper(), home.upper())] = game_id
             completed_game_ids.append(game_id)
+            completed_game_context[game_id] = {
+                "matchup": f"{away.upper()}@{home.upper()}",
+                "start_time_brt": game.get("start_time_brt"),
+                "start_date_et": game.get("start_date_et"),
+                "start_time_et": game.get("start_time_et"),
+            }
 
     with get_database_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT
+                    'operational' AS snapshot_source,
                     player_id,
                     player_name,
                     team,
                     opponent,
                     payload
-                FROM candidate_snapshots
-                WHERE
-                    selected_date = %s
-                    AND market = %s
-                ORDER BY player_name
+                FROM candidate_snapshots s
+                WHERE s.selected_date = %s AND s.market = %s
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM candidate_results r
+                        WHERE r.selected_date = s.selected_date
+                            AND r.market = s.market
+                            AND r.player_id = s.player_id
+                    )
+
+                UNION ALL
+
+                SELECT
+                    'audit' AS snapshot_source,
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    s.payload
+                FROM audit_snapshots s
+                WHERE s.selected_date = %s AND s.market = %s
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM audit_results r
+                        WHERE r.selected_date = s.selected_date
+                            AND r.market = s.market
+                            AND r.player_id = s.player_id
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM audit_no_results nr
+                        WHERE nr.selected_date = s.selected_date
+                            AND nr.market = s.market
+                            AND nr.player_id = s.player_id
+                    )
+
+                ORDER BY player_name, snapshot_source
                 """,
-                (target_date, market)
+                (target_date, market, target_date, market)
             )
             snapshots = cursor.fetchall()
 
@@ -3329,9 +5177,25 @@ def collect_results(
         return {
             "date": selected_date,
             "market": market,
-            "status": "no_snapshots",
-            "results_saved": 0
+            "status": "no_pending_snapshots",
+            "results_saved_this_run": 0,
+            "operational_results_saved": 0,
+            "audit_results_saved": 0,
+            "operational_pending": 0,
+            "audit_pending": 0,
+            "pending": 0
         }
+
+    # Só consulta os boxscores dos jogos que realmente aparecem nos snapshots
+    # pendentes desta data/mercado. Isso reduz chamadas desnecessárias e a
+    # pressão de memória/CPU no serviço de staging.
+    pending_game_ids = {
+        completed_games.get(
+            ((snapshot[3] or "").upper(), (snapshot[4] or "").upper())
+        )
+        for snapshot in snapshots
+    }
+    pending_game_ids.discard(None)
 
     summary_cache = {}
 
@@ -3342,7 +5206,7 @@ def collect_results(
         )
 
     with ThreadPoolExecutor(
-        max_workers=4
+        max_workers=2
     ) as executor:
 
         futures = [
@@ -3350,7 +5214,7 @@ def collect_results(
                 fetch_summary,
                 game_id
             )
-            for game_id in completed_game_ids
+            for game_id in pending_game_ids
         ]
 
         for future in as_completed(futures):
@@ -3360,18 +5224,30 @@ def collect_results(
             except Exception:
                 pass
 
-    results_to_save = []
-    pending = 0
+    operational_results_to_save = []
+    audit_results_to_save = []
+    audit_no_results_to_save = []
+    audit_pending_reasons_to_save = []
+    operational_pending = 0
+    audit_pending = 0
+    audit_no_result_count = 0
 
     for snapshot in snapshots:
 
         (
+            snapshot_source,
             player_id,
             player_name,
             team,
             opponent,
             payload
         ) = snapshot
+
+        target_results = (
+            audit_results_to_save
+            if snapshot_source == "audit"
+            else operational_results_to_save
+        )
 
         game_id = completed_games.get(
             (
@@ -3381,13 +5257,32 @@ def collect_results(
         )
 
         if not game_id:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+                audit_pending_reason = (
+                    target_date, market, str(player_id),
+                    "game_not_found",
+                    "Confronto não localizado entre os jogos concluídos",
+                    f"{team or '?'} x {opponent or '?'}"
+                )
+                audit_pending_reasons_to_save.append(audit_pending_reason)
+            else:
+                operational_pending += 1
             continue
 
         summary = summary_cache.get(game_id)
 
         if not summary:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+                audit_pending_reasons_to_save.append((
+                    target_date, market, str(player_id),
+                    "summary_unavailable",
+                    "Resumo da partida não disponível",
+                    f"game_id={game_id}"
+                ))
+            else:
+                operational_pending += 1
             continue
 
         player_game = (
@@ -3397,23 +5292,139 @@ def collect_results(
             )
         )
 
+        # Alguns boxscores da ESPN não trazem atletas inativos/DNP no bloco
+        # tradicional de estatísticas. Antes de manter o caso como pendente,
+        # consulta o roster da própria partida para confirmar didNotPlay.
+        if not player_game and snapshot_source == "audit":
+            try:
+                roster_status = get_game_team_player_status(
+                    game_id,
+                    team,
+                    player_id
+                )
+            except Exception as error:
+                logger.warning(
+                    "Falha ao consultar roster da partida para DNP: game_id=%s player_id=%s error=%s",
+                    game_id,
+                    player_id,
+                    error
+                )
+                roster_status = None
+
+            if roster_status and roster_status.get("did_not_play"):
+                audit_no_results_to_save.append((
+                    target_date,
+                    market,
+                    str(player_id),
+                    player_name,
+                    team,
+                    opponent,
+                    "did_not_play",
+                    game_id,
+                    Jsonb({
+                        "minutes": 0.0,
+                        "reason": roster_status.get("reason") or "did_not_play",
+                        "game_date": selected_date,
+                        "source": "game_roster"
+                    })
+                ))
+                audit_no_result_count += 1
+                continue
+
+        # Segunda fonte independente: relatório oficial de lesões da NBA.
+        # Só status explícito "Out" no relatório do confronto pode encerrar
+        # como DNP; ausência do atleta ou falha da consulta mantém pendente.
+        if not player_game and snapshot_source == "audit":
+            game_context = completed_game_context.get(game_id, {})
+            try:
+                official_status = get_official_nba_injury_status(
+                    selected_date=selected_date,
+                    start_time_brt=game_context.get("start_time_brt"),
+                    matchup=game_context.get("matchup"),
+                    player_name=player_name,
+                    start_date_et=game_context.get("start_date_et"),
+                    start_time_et=game_context.get("start_time_et"),
+                )
+            except Exception as error:
+                logger.warning(
+                    "Falha ao consultar relatório oficial NBA: game_id=%s player=%s error=%s",
+                    game_id, player_name, error
+                )
+                official_status = None
+
+            if official_status and official_status.get("status") == "Out":
+                audit_no_results_to_save.append((
+                    target_date,
+                    market,
+                    str(player_id),
+                    player_name,
+                    team,
+                    opponent,
+                    "did_not_play",
+                    game_id,
+                    Jsonb({
+                        "minutes": 0.0,
+                        "reason": "official_nba_status_out",
+                        "game_date": selected_date,
+                        **official_status,
+                    })
+                ))
+                audit_no_result_count += 1
+                continue
+
         if not player_game:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+                audit_pending_reasons_to_save.append((
+                    target_date, market, str(player_id),
+                    "player_not_found",
+                    "Jogador não encontrado no boxscore da partida",
+                    f"game_id={game_id}"
+                ))
+            else:
+                operational_pending += 1
             continue
 
         minutes = player_game.get("minutes")
 
         if minutes is None or minutes <= 0:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_no_results_to_save.append((
+                    target_date,
+                    market,
+                    str(player_id),
+                    player_name,
+                    team,
+                    opponent,
+                    "did_not_play",
+                    game_id,
+                    Jsonb({
+                        "minutes": minutes,
+                        "reason": "did_not_play",
+                        "game_date": selected_date
+                    })
+                ))
+                audit_no_result_count += 1
+            else:
+                operational_pending += 1
             continue
 
         actual = player_game.get(actual_stat_key)
 
         if actual is None:
-            pending += 1
+            if snapshot_source == "audit":
+                audit_pending += 1
+                audit_pending_reasons_to_save.append((
+                    target_date, market, str(player_id),
+                    "stat_unavailable",
+                    "Estatística do mercado não disponível no boxscore",
+                    f"game_id={game_id}; player_id={player_id}"
+                ))
+            else:
+                operational_pending += 1
             continue
 
-        results_to_save.append((
+        target_results.append((
             target_date,
             market,
             str(player_id),
@@ -3429,60 +5440,137 @@ def collect_results(
             })
         ))
 
-    inserted = 0
+    operational_inserted = 0
+    audit_inserted = 0
 
-    if results_to_save:
-        with get_database_connection() as connection:
-            with connection.cursor() as cursor:
-                for row in results_to_save:
-                    cursor.execute(
-                        """
-                        INSERT INTO candidate_results (
-                            selected_date,
-                            market,
-                            player_id,
-                            player_name,
-                            team,
-                            opponent,
-                            actual_value,
-                            game_id,
-                            payload
-                        )
-                        VALUES (
-                            %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s
-                        )
-                        ON CONFLICT (
-                            selected_date,
-                            market,
-                            player_id
-                        ) DO NOTHING
-                        RETURNING id
-                        """,
-                        row
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in operational_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO candidate_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, actual_value, game_id, payload
                     )
-                    if cursor.fetchone():
-                        inserted += 1
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+                if cursor.fetchone():
+                    operational_inserted += 1
+
+            for row in audit_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, actual_value, game_id, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+                if cursor.fetchone():
+                    audit_inserted += 1
+
+            for row in audit_no_results_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_no_results (
+                        selected_date, market, player_id, player_name,
+                        team, opponent, reason, game_id, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO NOTHING
+                    RETURNING id
+                    """,
+                    row
+                )
+
+            # Atualiza o motivo mais recente das pendências técnicas.
+            for row in audit_pending_reasons_to_save:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_pending_reasons (
+                        selected_date, market, player_id,
+                        reason_code, reason, detail, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (selected_date, market, player_id)
+                    DO UPDATE SET
+                        reason_code = EXCLUDED.reason_code,
+                        reason = EXCLUDED.reason,
+                        detail = EXCLUDED.detail,
+                        updated_at = NOW()
+                    """,
+                    row
+                )
+
+            # Um resultado concluído ou encerrado como DNP deixa de ter
+            # motivo de pendência persistido.
+            cursor.execute(
+                """
+                DELETE FROM audit_pending_reasons p
+                WHERE p.selected_date = %s
+                  AND p.market = %s
+                  AND EXISTS (
+                      SELECT 1
+                      FROM audit_results r
+                      WHERE r.selected_date = p.selected_date
+                        AND r.market = p.market
+                        AND r.player_id = p.player_id
+                  )
+                """,
+                (target_date, market)
+            )
+            cursor.execute(
+                """
+                DELETE FROM audit_pending_reasons p
+                WHERE p.selected_date = %s
+                  AND p.market = %s
+                  AND EXISTS (
+                      SELECT 1
+                      FROM audit_no_results nr
+                      WHERE nr.selected_date = p.selected_date
+                        AND nr.market = p.market
+                        AND nr.player_id = p.player_id
+                  )
+                """,
+                (target_date, market)
+            )
 
     return {
         "date": selected_date,
         "market": market,
         "status": "processed",
-        "results_saved_this_run": inserted,
-        "pending": pending
+        "results_saved_this_run": operational_inserted + audit_inserted,
+        "operational_results_saved": operational_inserted,
+        "audit_results_saved": audit_inserted,
+        "operational_pending": operational_pending,
+        "audit_pending": audit_pending,
+        "audit_no_results": audit_no_result_count,
+        "audit_pending_reasons_saved": len(audit_pending_reasons_to_save),
+        "pending": operational_pending + audit_pending
     }
 
 
-@app.get("/collect-pending-results")
+@app.get("/collect-pending-results", dependencies=[Depends(require_admin_api_key)])
 def collect_pending_results(
     max_combinations: int = Query(default=100, ge=1, le=200)
 ):
     """
-    Coleta automaticamente resultados de todos os snapshots pendentes.
+    Coleta resultados pendentes das populações operacional e de auditoria.
 
-    Procura combinações data/mercado que ainda não possuem resultado,
-    tenta processá-las pelo mesmo fluxo usado pela coleta manual e
-    deixa pendente apenas o que ainda não pôde ser resolvido.
+    Cada população é consultada e gravada em sua própria tabela de resultados.
+    A combinação data/mercado é processada uma única vez, mesmo quando há
+    pendências nas duas populações.
     """
 
     if not DATABASE_URL:
@@ -3497,24 +5585,43 @@ def collect_pending_results(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT DISTINCT
-                    s.selected_date,
-                    s.market
-                FROM candidate_snapshots s
-                LEFT JOIN candidate_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
-                WHERE
-                    r.id IS NULL
-                    AND s.selected_date <= %s
-                    AND s.market = ANY(%s)
-                ORDER BY
-                    s.selected_date ASC,
-                    s.market ASC
+                SELECT
+                    pending.selected_date,
+                    pending.market
+                FROM (
+                    SELECT s.selected_date, s.market
+                    FROM candidate_snapshots s
+                    LEFT JOIN candidate_results r
+                        ON r.selected_date = s.selected_date
+                        AND r.market = s.market
+                        AND r.player_id = s.player_id
+                    WHERE r.id IS NULL
+                        AND s.selected_date <= %s
+                        AND s.market = ANY(%s)
+
+                    UNION
+
+                    SELECT s.selected_date, s.market
+                    FROM audit_snapshots s
+                    LEFT JOIN audit_results r
+                        ON r.selected_date = s.selected_date
+                        AND r.market = s.market
+                        AND r.player_id = s.player_id
+                    LEFT JOIN audit_no_results nr
+                        ON nr.selected_date = s.selected_date
+                        AND nr.market = s.market
+                        AND nr.player_id = s.player_id
+                    WHERE r.id IS NULL
+                        AND nr.id IS NULL
+                        AND s.selected_date <= %s
+                        AND s.market = ANY(%s)
+                ) AS pending
+                ORDER BY pending.selected_date ASC, pending.market ASC
                 LIMIT %s
                 """,
                 (
+                    today,
+                    list(ACTIVE_MARKETS),
                     today,
                     list(ACTIVE_MARKETS),
                     max_combinations
@@ -3525,6 +5632,10 @@ def collect_pending_results(
     processed = []
     total_saved = 0
     total_pending = 0
+    total_operational_saved = 0
+    total_audit_saved = 0
+    total_operational_pending = 0
+    total_audit_pending = 0
     total_errors = 0
 
     for selected_date, market in pending_combinations:
@@ -3543,11 +5654,19 @@ def collect_pending_results(
 
             total_saved += saved
             total_pending += pending
+            total_operational_saved += int(result.get("operational_results_saved", 0))
+            total_audit_saved += int(result.get("audit_results_saved", 0))
+            total_operational_pending += int(result.get("operational_pending", 0))
+            total_audit_pending += int(result.get("audit_pending", 0))
 
             processed.append({
                 "date": selected_date.isoformat(),
                 "market": market,
                 "results_saved": saved,
+                "operational_results_saved": result.get("operational_results_saved", 0),
+                "audit_results_saved": result.get("audit_results_saved", 0),
+                "operational_pending": result.get("operational_pending", 0),
+                "audit_pending": result.get("audit_pending", 0),
                 "pending": pending,
                 "status": result.get("status", "processed")
             })
@@ -3575,9 +5694,704 @@ def collect_pending_results(
         "combinations_found": len(pending_combinations),
         "combinations_limit": max_combinations,
         "results_saved_this_run": total_saved,
+        "operational_results_saved": total_operational_saved,
+        "audit_results_saved": total_audit_saved,
+        "operational_pending": total_operational_pending,
+        "audit_pending": total_audit_pending,
         "pending_after_processing": total_pending,
         "errors": total_errors,
         "processed": processed
+    }
+
+
+@app.get("/audit-history-coverage")
+def audit_history_coverage(
+    market: str = Query(...)
+):
+    """
+    Consulta somente leitura da cobertura da auditoria independente.
+    Retorna a quantidade de snapshots, resultados, DNPs e pendências
+    por data, além do primeiro e último dia efetivamente encontrados.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH snapshot_counts AS (
+                    SELECT selected_date, COUNT(*) AS snapshots_total
+                    FROM audit_snapshots
+                    WHERE market = %s
+                    GROUP BY selected_date
+                ),
+                result_counts AS (
+                    SELECT selected_date, COUNT(*) AS completed_results
+                    FROM audit_results
+                    WHERE market = %s
+                    GROUP BY selected_date
+                ),
+                no_result_counts AS (
+                    SELECT selected_date, COUNT(*) AS no_results
+                    FROM audit_no_results
+                    WHERE market = %s
+                    GROUP BY selected_date
+                )
+                SELECT
+                    s.selected_date,
+                    s.snapshots_total,
+                    COALESCE(r.completed_results, 0),
+                    COALESCE(n.no_results, 0)
+                FROM snapshot_counts s
+                LEFT JOIN result_counts r ON r.selected_date = s.selected_date
+                LEFT JOIN no_result_counts n ON n.selected_date = s.selected_date
+                ORDER BY s.selected_date
+                """,
+                (market, market, market)
+            )
+            rows = cursor.fetchall()
+
+    days = []
+    for selected_date, snapshots_total, completed_results, no_results in rows:
+        snapshots = int(snapshots_total or 0)
+        completed = int(completed_results or 0)
+        dnp = int(no_results or 0)
+        days.append({
+            "date": selected_date.isoformat(),
+            "snapshots": snapshots,
+            "completed_results": completed,
+            "no_results": dnp,
+            "pending_results": max(snapshots - completed - dnp, 0),
+        })
+
+    return {
+        "status": "ok",
+        "market": market,
+        "period": {
+            "first_date": days[0]["date"] if days else None,
+            "last_date": days[-1]["date"] if days else None,
+        },
+        "days": days,
+    }
+
+
+@app.get("/audit-collection-status")
+def audit_collection_status(
+    date: str = Query(...)
+):
+    """
+    Consulta somente leitura do estado já persistido da coleta.
+    Não executa coleta nem altera snapshots/resultados.
+    """
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida. Use YYYY-MM-DD.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    'audit' AS source,
+                    s.market,
+                    COUNT(*) AS snapshots_total,
+                    COUNT(r.player_id) AS completed_results,
+                    COUNT(nr.player_id) AS no_results
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
+                WHERE s.selected_date = %s
+                GROUP BY s.market
+
+                UNION ALL
+
+                SELECT
+                    'operational' AS source,
+                    s.market,
+                    COUNT(*) AS snapshots_total,
+                    COUNT(r.player_id) AS completed_results,
+                    0 AS no_results
+                FROM candidate_snapshots s
+                LEFT JOIN candidate_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                WHERE s.selected_date = %s
+                GROUP BY s.market
+
+                ORDER BY market, source
+                """,
+                [selected_date, selected_date]
+            )
+            rows = cursor.fetchall()
+
+    markets = {}
+    for source, market, snapshots_total, completed_results, no_results in rows:
+        total = int(snapshots_total or 0)
+        completed = int(completed_results or 0)
+        no_result_count = int(no_results or 0)
+        markets.setdefault(market, {})[source] = {
+            "snapshots_total": total,
+            "completed_results": completed,
+            "no_results": no_result_count,
+            "pending_results": max(total - completed - no_result_count, 0),
+        }
+
+    # Motivos persistidos são apenas para pendências técnicas ainda abertas.
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT market, reason_code, reason, COUNT(*)
+                FROM audit_pending_reasons
+                WHERE selected_date = %s
+                GROUP BY market, reason_code, reason
+                ORDER BY market, reason_code
+                """,
+                (selected_date,)
+            )
+            reason_rows = cursor.fetchall()
+
+    for market, reason_code, reason, count in reason_rows:
+        markets.setdefault(market, {}).setdefault("audit", {}).setdefault("pending_reasons", []).append({
+            "reason_code": reason_code,
+            "reason": reason,
+            "count": int(count or 0),
+        })
+
+    return {
+        "status": "ok",
+        "date": date,
+        "markets": markets,
+    }
+
+
+
+@app.get("/audit-pending-details")
+def audit_pending_details(
+    date: str = Query(...),
+    market: str = Query(...)
+):
+    """
+    Lista somente as pendências ainda abertas de um mercado/data,
+    com motivo curto e persistido. Não altera nenhum dado.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido.")
+
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida. Use YYYY-MM-DD.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    COALESCE(
+                        pr.reason,
+                        'Motivo ainda não registrado'
+                    ) AS reason,
+                    pr.reason_code,
+                    pr.detail,
+                    s.captured_at
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
+                LEFT JOIN audit_pending_reasons pr
+                    ON pr.selected_date = s.selected_date
+                    AND pr.market = s.market
+                    AND pr.player_id = s.player_id
+                WHERE s.selected_date = %s
+                  AND s.market = %s
+                  AND r.player_id IS NULL
+                  AND nr.player_id IS NULL
+                ORDER BY s.audit_rank, s.player_name
+                """,
+                (selected_date, market)
+            )
+            rows = cursor.fetchall()
+
+    return {
+        "status": "ok",
+        "date": date,
+        "market": market,
+        "pending": [
+            {
+                "player_id": str(player_id),
+                "player_name": player_name,
+                "team": team,
+                "opponent": opponent,
+                "reason": reason,
+                "reason_code": reason_code,
+                "detail": detail,
+                "captured_at": captured_at.isoformat() if captured_at else None,
+            }
+            for (
+                player_id,
+                player_name,
+                team,
+                opponent,
+                reason,
+                reason_code,
+                detail,
+                captured_at,
+            ) in rows
+        ],
+    }
+
+
+@app.get("/audit-collection-diagnostics")
+def audit_collection_diagnostics(
+    date: str = Query(...)
+):
+    """
+    Diagnóstico somente leitura das pendências da população independente
+    de auditoria. Não altera snapshots nem resultados.
+    """
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida. Use YYYY-MM-DD.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    actual_stat_keys = {
+        "points": "points",
+        "assists": "assists",
+        "rebounds": "rebounds",
+        "threes": "three_pa",
+        "two_pa": "two_pa",
+        "fgm": "fgm",
+        "attempts": "fga"
+    }
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    s.market,
+                    s.player_id,
+                    s.player_name,
+                    s.team,
+                    s.opponent,
+                    s.availability_status,
+                    s.captured_at,
+                    s.payload,
+                    run.availability_report_status,
+                    run.captured_at
+                FROM audit_snapshots s
+                LEFT JOIN audit_results r
+                    ON r.selected_date = s.selected_date
+                    AND r.market = s.market
+                    AND r.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
+                LEFT JOIN audit_snapshot_runs run
+                    ON run.selected_date = s.selected_date
+                    AND run.market = s.market
+                WHERE s.selected_date = %s
+                    AND r.id IS NULL
+                    AND nr.id IS NULL
+                ORDER BY s.market, s.player_name
+                """,
+                (selected_date,)
+            )
+            pending_snapshots = cursor.fetchall()
+
+    if not pending_snapshots:
+        return {
+            "status": "ok",
+            "date": date,
+            "pending_total": 0,
+            "diagnostics": []
+        }
+
+    schedule = fetch_espn_games(date)
+    completed_games = {}
+    completed_game_ids = set()
+
+    for game in schedule.get("games", []):
+        if not game.get("completed"):
+            continue
+        home = game.get("home", {}).get("abbr")
+        away = game.get("away", {}).get("abbr")
+        game_id = str(game.get("game_id") or "")
+        if home and away and game_id:
+            completed_games[(home.upper(), away.upper())] = game_id
+            completed_games[(away.upper(), home.upper())] = game_id
+            completed_game_ids.add(game_id)
+
+    summary_cache = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(get_game_summary, game_id): game_id
+            for game_id in completed_game_ids
+        }
+        for future in as_completed(futures):
+            game_id = futures[future]
+            try:
+                summary_cache[game_id] = future.result()
+            except Exception as error:
+                logger.warning(
+                    "Diagnóstico auditoria: falha no resumo game_id=%s: %s",
+                    game_id,
+                    error
+                )
+                summary_cache[game_id] = None
+
+    diagnostics = []
+
+    for (
+        market, player_id, player_name, team, opponent,
+        snapshot_availability_status, snapshot_captured_at, snapshot_payload,
+        run_availability_report_status, run_captured_at
+    ) in pending_snapshots:
+        game_id = completed_games.get(
+            ((team or "").upper(), (opponent or "").upper())
+        )
+
+        reason_code = "ok"
+        reason = "Sem pendência identificada"
+        detail = None
+
+        if not game_id:
+            reason_code = "game_not_found"
+            reason = "Confronto não localizado entre os jogos concluídos"
+            detail = f"{team or '?'} x {opponent or '?'}"
+        else:
+            summary = summary_cache.get(game_id)
+
+            if not summary:
+                reason_code = "summary_unavailable"
+                reason = "Resumo da partida não disponível"
+                detail = f"game_id={game_id}"
+            else:
+                diagnostic_player = find_player_in_summary_for_diagnostic(
+                    summary,
+                    player_id,
+                    player_name
+                )
+
+                if not diagnostic_player:
+                    reason_code = "player_not_found"
+                    reason = "Jogador não encontrado no boxscore da partida"
+                    detail = f"game_id={game_id}"
+                elif diagnostic_player.get("match_method") == "name":
+                    reason_code = "id_mismatch"
+                    reason = "Jogador encontrado por nome, mas o ID do snapshot não coincide"
+                    detail = (
+                        f"game_id={game_id}; "
+                        f"snapshot_player_id={player_id}; "
+                        f"boxscore_player_id={diagnostic_player.get('boxscore_player_id')}"
+                    )
+                else:
+                    minutes = diagnostic_player.get("boxscore_minutes")
+
+                    if minutes is None or minutes <= 0:
+                        reason_code = "zero_minutes"
+                        reason = "Jogador não registrou minutos"
+                        detail = (
+                            f"game_id={game_id}; "
+                            f"boxscore_player_id={diagnostic_player.get('boxscore_player_id')}; "
+                            f"minutos={minutes}"
+                        )
+                    else:
+                        reason_code = "unexpected"
+                        reason = "Resultado encontrado, mas não foi persistido"
+                        detail = (
+                            f"game_id={game_id}; "
+                            f"boxscore_player_id={diagnostic_player.get('boxscore_player_id')}; "
+                            f"minutos={minutes}"
+                        )
+
+        diagnostics.append({
+            "market": market,
+            "player_id": str(player_id),
+            "player_name": player_name,
+            "team": team,
+            "opponent": opponent,
+            "game_id": game_id,
+            "reason_code": reason_code,
+            "reason": reason,
+            "detail": detail,
+            "boxscore_player_id": (
+                diagnostic_player.get("boxscore_player_id")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "boxscore_player_name": (
+                diagnostic_player.get("boxscore_player_name")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "boxscore_team": (
+                diagnostic_player.get("boxscore_team")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "boxscore_minutes": (
+                diagnostic_player.get("boxscore_minutes")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_statistics_keys": (
+                diagnostic_player.get("boxscore_statistics_keys")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_stats_type": (
+                diagnostic_player.get("boxscore_stats_type")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_stats_length": (
+                diagnostic_player.get("boxscore_stats_length")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_min_index": (
+                diagnostic_player.get("boxscore_min_index")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_raw_min_value": (
+                diagnostic_player.get("boxscore_raw_min_value")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_athlete_entry_keys": (
+                diagnostic_player.get("boxscore_athlete_entry_keys")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_athlete_keys": (
+                diagnostic_player.get("boxscore_athlete_keys")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "boxscore_did_not_play": (
+                diagnostic_player.get("boxscore_did_not_play")
+                if game_id and summary and diagnostic_player else None
+            ),
+            "match_method": (
+                diagnostic_player.get("match_method")
+                if game_id and summary and diagnostic_player
+                else None
+            ),
+            "snapshot_availability_status": snapshot_availability_status,
+            "snapshot_availability_detail": (
+                snapshot_payload.get("availability")
+                if isinstance(snapshot_payload, dict)
+                else None
+            ),
+            "snapshot_captured_at": (
+                snapshot_captured_at.isoformat()
+                if snapshot_captured_at else None
+            ),
+            "audit_run_availability_report_status": run_availability_report_status,
+            "audit_run_captured_at": (
+                run_captured_at.isoformat()
+                if run_captured_at else None
+            )
+        })
+
+    return {
+        "status": "ok",
+        "date": date,
+        "pending_total": len(diagnostics),
+        "diagnostics": diagnostics
+    }
+
+
+@app.get("/validation-history-summary")
+def validation_history_summary(
+    market: str = Query(default="assists"),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    cohort: str = Query(default="all")
+):
+    """Resumo leve da auditoria para a tabela comparativa por mercado.
+
+    Mantém a mesma população e as mesmas definições da /validation-history,
+    mas calcula apenas os KPIs necessários para a comparação dos seis mercados.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+    if cohort not in {"top10", "all"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
+
+    try:
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else None
+        parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período de datas inválido.")
+    # Sem datas: histórico acumulado da coorte validada, desde 19/11.
+    if not date_from and not date_to:
+        parsed_from = audit_metrics_start_date()
+        parsed_to = audit_history_cutoff_date()
+
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH snapshot_source AS (
+            SELECT
+                selected_date, market, player_id, triage_score,
+                last5_avg, last10_avg, audit_rank AS display_rank,
+                'audit' AS snapshot_source
+            FROM audit_snapshots
+            WHERE market = %s
+
+        ),
+        filtered AS (
+            SELECT *,
+                COUNT(*) FILTER (WHERE display_rank IS NULL)
+                    OVER (PARTITION BY selected_date, market) AS missing_rank_count
+            FROM snapshot_source
+        ),
+        ranked AS (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY selected_date, market
+                    ORDER BY
+                        CASE WHEN missing_rank_count = 0 THEN display_rank END ASC NULLS LAST,
+                        triage_score DESC NULLS LAST,
+                        player_id ASC
+                ) AS cohort_rank
+            FROM filtered
+        ),
+        resolved AS (
+            SELECT
+                r.selected_date,
+                r.player_id,
+                r.triage_score,
+                r.last5_avg,
+                r.last10_avg,
+                ar.actual_value AS actual_value,
+                CASE
+                    WHEN ar.id IS NOT NULL THEN 'completed'
+                    WHEN nr.id IS NOT NULL THEN 'no_result'
+                    ELSE 'pending'
+                END AS result_status
+            FROM ranked r
+            LEFT JOIN audit_results ar
+              ON r.snapshot_source = 'audit'
+             AND ar.selected_date = r.selected_date
+             AND ar.market = r.market
+             AND ar.player_id = r.player_id
+            LEFT JOIN audit_no_results nr
+              ON r.snapshot_source = 'audit'
+             AND nr.selected_date = r.selected_date
+             AND nr.market = r.market
+             AND nr.player_id = r.player_id
+            WHERE (%s = 'all' OR r.cohort_rank <= 10)
+    """
+
+    params = [market, cohort]
+
+    if parsed_from:
+        query += " AND r.selected_date >= %s"
+        params.append(parsed_from)
+    if parsed_to:
+        query += " AND r.selected_date <= %s"
+        params.append(parsed_to)
+
+    query += """
+        )
+        SELECT
+            COUNT(*) AS snapshots_total,
+            COUNT(*) FILTER (WHERE result_status = 'completed') AS completed_results,
+            COUNT(*) FILTER (WHERE result_status = 'no_result') AS no_result_results,
+            COUNT(*) FILTER (WHERE result_status = 'pending') AS pending_results,
+            AVG(actual_value) FILTER (WHERE result_status = 'completed') AS actual_average,
+            AVG(triage_score) FILTER (WHERE result_status = 'completed' AND triage_score IS NOT NULL) AS score_average,
+            AVG(ABS(actual_value - last5_avg)) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
+            ) AS l5_mae,
+            AVG(ABS(actual_value - last10_avg)) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
+            ) AS l10_mae,
+            AVG(last5_avg) FILTER (
+                WHERE result_status = 'completed' AND last5_avg IS NOT NULL
+            ) AS l5_prediction_average,
+            AVG(last10_avg) FILTER (
+                WHERE result_status = 'completed' AND last10_avg IS NOT NULL
+            ) AS l10_prediction_average,
+            CORR(triage_score, actual_value) FILTER (
+                WHERE result_status = 'completed' AND triage_score IS NOT NULL AND actual_value IS NOT NULL
+            ) AS score_actual_pearson,
+            MIN(selected_date) AS first_date,
+            MAX(selected_date) AS last_date
+        FROM resolved
+    """
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            row = cursor.fetchone()
+
+    snapshots_total = int(row[0] or 0)
+    completed_results = int(row[1] or 0)
+    no_result_results = int(row[2] or 0)
+    pending_results = int(row[3] or 0)
+    l5_mae = float(row[6]) if row[6] is not None else None
+    l10_mae = float(row[7]) if row[7] is not None else None
+    l5_prediction_average = float(row[8]) if row[8] is not None else None
+    l10_prediction_average = float(row[9]) if row[9] is not None else None
+
+    return {
+        "status": "ok",
+        "market": market,
+        "market_label": MARKETS[market]["label"],
+        "cohort": cohort,
+        "period": {
+            "first_date": row[11].isoformat() if row[11] is not None else None,
+            "last_date": row[12].isoformat() if row[12] is not None else None
+        },
+        "summary": {
+            "snapshots_total": snapshots_total,
+            "completed_results": completed_results,
+            "no_result_results": no_result_results,
+            "pending_results": pending_results,
+            "completion_rate_pct": round(
+                (completed_results + no_result_results) / snapshots_total * 100, 2
+            ) if snapshots_total else 0,
+            "actual_average": round(float(row[4]), 2) if row[4] is not None else None,
+            "score_average": round(float(row[5]), 2) if row[5] is not None else None,
+            "l5_mae": round(l5_mae, 2) if l5_mae is not None else None,
+            "l10_mae": round(l10_mae, 2) if l10_mae is not None else None,
+            "l5_relative_error_pct": round(l5_mae / l5_prediction_average * 100, 2)
+                if l5_mae is not None and l5_prediction_average not in (None, 0) else None,
+            "l10_relative_error_pct": round(l10_mae / l10_prediction_average * 100, 2)
+                if l10_mae is not None and l10_prediction_average not in (None, 0) else None,
+            "score_actual_pearson": round(float(row[10]), 4) if row[10] is not None else None
+        }
     }
 
 
@@ -3600,8 +6414,8 @@ def validation_history(
     - comparação entre L5 e L10;
     - erro médio das referências (MAE);
     - evolução dos resultados por dia;
-    - calibração: quanto cada faixa de score realmente corresponde
-      à produção dos jogadores.
+    - desempenho observado da produção real por faixa de Score
+      (sem interpretação como calibração probabilística).
     """
 
     if market not in ACTIVE_MARKETS:
@@ -3626,6 +6440,11 @@ def validation_history(
             date_to,
             "%Y-%m-%d"
         ).date()
+    # Histórico acumulado da coorte validada: 19/11 até hoje.
+    if not date_from and not date_to:
+        parsed_from = audit_metrics_start_date()
+        parsed_to = audit_history_cutoff_date()
+
 
     if not DATABASE_URL:
         raise HTTPException(
@@ -3637,27 +6456,27 @@ def validation_history(
         with connection.cursor() as cursor:
 
             query = """
-                WITH snapshot_cohort AS (
+                WITH snapshot_source AS (
                     SELECT
-                        s.selected_date,
-                        s.market,
-                        s.player_id,
-                        s.player_name,
-                        s.team,
-                        s.opponent,
-                        s.position,
-                        s.triage_score,
-                        s.last5_avg,
-                        s.last10_avg,
-                        s.minutes_last5_avg,
-                        s.display_rank,
+                        selected_date, market, player_id, player_name,
+                        team, opponent, position, triage_score, last5_avg,
+                        last10_avg, minutes_last5_avg, payload,
+                        audit_rank AS display_rank,
+                        'audit' AS snapshot_source
+                    FROM audit_snapshots
+                    WHERE market = %s
+
+                        ),
+                snapshot_cohort AS (
+                    SELECT
+                        s.*,
                         COUNT(*) FILTER (
                             WHERE s.display_rank IS NULL
                         ) OVER (
                             PARTITION BY s.selected_date, s.market
                         ) AS missing_rank_count
-                    FROM candidate_snapshots s
-                    WHERE s.market = %s
+                    FROM snapshot_source s
+                    WHERE 1 = 1
             """
 
             params = [market]
@@ -3674,24 +6493,14 @@ def validation_history(
                 ),
                 ranked_snapshots AS (
                     SELECT
-                        selected_date,
-                        market,
-                        player_id,
-                        player_name,
-                        team,
-                        opponent,
-                        position,
-                        triage_score,
-                        last5_avg,
-                        last10_avg,
-                        minutes_last5_avg,
+                        selected_date, market, player_id, player_name,
+                        team, opponent, position, triage_score, last5_avg,
+                        last10_avg, minutes_last5_avg, payload, snapshot_source,
                         ROW_NUMBER() OVER (
                             PARTITION BY selected_date, market
                             ORDER BY
-                                CASE
-                                    WHEN missing_rank_count = 0
-                                    THEN display_rank
-                                END ASC NULLS LAST,
+                                CASE WHEN missing_rank_count = 0
+                                     THEN display_rank END ASC NULLS LAST,
                                 triage_score DESC NULLS LAST,
                                 player_id ASC
                         ) AS cohort_rank
@@ -3708,12 +6517,26 @@ def validation_history(
                     s.last5_avg,
                     s.last10_avg,
                     s.minutes_last5_avg,
-                    r.actual_value
+                    ar.actual_value,
+                    CASE
+                        WHEN ar.id IS NOT NULL THEN 'completed'
+                        WHEN nr.id IS NOT NULL THEN 'no_result'
+                        ELSE 'pending'
+                    END AS result_status,
+                    s.payload->>'games_last5' AS games_last5,
+                    s.payload->>'games_last10' AS games_last10,
+                    s.cohort_rank AS audit_cohort_rank
                 FROM ranked_snapshots s
-                LEFT JOIN candidate_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
+                LEFT JOIN audit_results ar
+                    ON s.snapshot_source = 'audit'
+                    AND ar.selected_date = s.selected_date
+                    AND ar.market = s.market
+                    AND ar.player_id = s.player_id
+                LEFT JOIN audit_no_results nr
+                    ON s.snapshot_source = 'audit'
+                    AND nr.selected_date = s.selected_date
+                    AND nr.market = s.market
+                    AND nr.player_id = s.player_id
                 WHERE (%s = 'all' OR s.cohort_rank <= 10)
                 ORDER BY s.selected_date ASC, s.triage_score DESC
             """
@@ -3723,9 +6546,16 @@ def validation_history(
             audit_rows = cursor.fetchall()
 
     snapshots_total = len(audit_rows)
+    audit_dates = sorted({row[0] for row in audit_rows if row[0] is not None})
+    first_audit_date = audit_dates[0].isoformat() if audit_dates else None
+    last_audit_date = audit_dates[-1].isoformat() if audit_dates else None
     completed_rows = [
         row for row in audit_rows
         if row[10] is not None
+    ]
+    no_result_rows = [
+        row for row in audit_rows
+        if row[10] is None and row[11] == 'no_result'
     ]
 
     def safe_average(values):
@@ -3738,6 +6568,15 @@ def validation_history(
         if not rows:
             return {
                 "games": 0,
+                "l5_sample": 0,
+                "l10_sample": 0,
+                "l5_full_window_sample": 0,
+                "l5_partial_window_sample": 0,
+                "l5_unknown_window_sample": 0,
+                "l10_full_window_sample": 0,
+                "l10_partial_window_sample": 0,
+                "l10_unknown_window_sample": 0,
+                "pearson_sample": 0,
                 "actual_average": None,
                 "score_average": None,
                 "l5_prediction_average": None,
@@ -3746,7 +6585,8 @@ def validation_history(
                 "l10_mae": None,
                 "l5_relative_error_pct": None,
                 "l10_relative_error_pct": None,
-                "score_actual_pearson": None
+                "score_actual_pearson": None,
+                "score_actual_spearman": None
             }
 
         actual_values = []
@@ -3755,6 +6595,8 @@ def validation_history(
         l10_errors = []
         l5_predictions = []
         l10_predictions = []
+        l5_window_counts = []
+        l10_window_counts = []
         pairs = []
 
         for row in rows:
@@ -3770,18 +6612,30 @@ def validation_history(
                 last5_avg,
                 last10_avg,
                 minutes_last5_avg,
-                actual_value
+                actual_value,
+                result_status,
+                games_last5_raw,
+                games_last10_raw,
+                audit_cohort_rank
             ) = row
 
             actual = float(actual_value)
             actual_values.append(actual)
 
             if last5_avg is not None:
+                try:
+                    l5_window_counts.append(int(games_last5_raw) if games_last5_raw is not None else None)
+                except (TypeError, ValueError):
+                    l5_window_counts.append(None)
                 prediction_l5 = float(last5_avg)
                 l5_predictions.append(prediction_l5)
                 l5_errors.append(abs(actual - prediction_l5))
 
             if last10_avg is not None:
+                try:
+                    l10_window_counts.append(int(games_last10_raw) if games_last10_raw is not None else None)
+                except (TypeError, ValueError):
+                    l10_window_counts.append(None)
                 prediction_l10 = float(last10_avg)
                 l10_predictions.append(prediction_l10)
                 l10_errors.append(abs(actual - prediction_l10))
@@ -3808,6 +6662,8 @@ def validation_history(
             if den != 0:
                 pearson = round(num / den, 4)
 
+        spearman = spearman_correlation(pairs)
+
         l5_mae = safe_average(l5_errors)
         l10_mae = safe_average(l10_errors)
         l5_prediction_average = safe_average(l5_predictions)
@@ -3827,6 +6683,15 @@ def validation_history(
 
         return {
             "games": len(rows),
+            "l5_sample": len(l5_errors),
+            "l10_sample": len(l10_errors),
+            "l5_full_window_sample": sum(value is not None and value >= 5 for value in l5_window_counts),
+            "l5_partial_window_sample": sum(value is not None and value < 5 for value in l5_window_counts),
+            "l5_unknown_window_sample": sum(value is None for value in l5_window_counts),
+            "l10_full_window_sample": sum(value is not None and value >= 10 for value in l10_window_counts),
+            "l10_partial_window_sample": sum(value is not None and value < 10 for value in l10_window_counts),
+            "l10_unknown_window_sample": sum(value is None for value in l10_window_counts),
+            "pearson_sample": len(pairs),
             "actual_average": safe_average(actual_values),
             "score_average": safe_average(score_values),
             "l5_prediction_average": l5_prediction_average,
@@ -3835,310 +6700,110 @@ def validation_history(
             "l10_mae": l10_mae,
             "l5_relative_error_pct": l5_relative_error,
             "l10_relative_error_pct": l10_relative_error,
-            "score_actual_pearson": pearson
+            "score_actual_pearson": pearson,
+            "score_actual_spearman": spearman
         }
 
-    # Faixas de score calibradas
+    # Faixas relativas ao próprio mercado: quintis da distribuição observada.
+    # A fórmula do Score permanece intacta; aqui só mudamos a forma de agrupá-lo
+    # para evitar que os mesmos limites absolutos tenham interpretações diferentes
+    # entre estatísticas com distribuições distintas.
+    market_score_bands = build_market_score_bands(completed_rows)
+    score_band_defs = market_score_bands.get("bands", [])
     score_bands = [
-        {"label": "7+", "min": 7.0, "max": None},
-        {"label": "6-6.99", "min": 6.0, "max": 7.0},
-        {"label": "5-5.99", "min": 5.0, "max": 6.0},
-        {"label": "4-4.99", "min": 4.0, "max": 5.0},
-        {"label": "<4", "min": None, "max": 4.0}
+        {
+            "label": item["label"],
+            "min": item["lower_bound"],
+            "max": item["upper_bound"],
+        }
+        for item in score_band_defs
     ]
 
     bands_output = []
-
-    for band in score_bands:
-
+    for band_def in score_band_defs:
         band_rows = []
-
+        lower = band_def.get("lower_bound")
+        upper = band_def.get("upper_bound")
         for row in completed_rows:
-
             score = row[6]
-
             if score is None:
                 continue
-
             score = float(score)
-
-            if band["min"] is not None and score < band["min"]:
+            if lower is not None and score < lower:
                 continue
-            if band["max"] is not None and score >= band["max"]:
+            if upper is not None and score >= upper:
                 continue
-
             band_rows.append(row)
 
         metrics = build_metrics(band_rows)
         bands_output.append({
-            "band": band["label"],
+            "band": band_def["label"],
+            "band_index": band_def["index"],
+            "score_min_observed": band_def["score_min_observed"],
+            "score_max_observed": band_def["score_max_observed"],
+            "share_pct": band_def["share_pct"],
             **metrics
         })
 
 
-    # Investigação de perfis semelhantes para todas as faixas de score.
-    # A faixa escolhida é comparada com registros concluídos de outras faixas,
-    # priorizando outros jogadores da mesma posição e L5/L10/minutos próximos.
-    def normalize_audit_position(value):
-        raw = str(value or "").strip().upper()
-        if raw in ("G", "PG", "SG", "GUARD"):
-            return "G"
-        if raw in ("F", "SF", "PF", "FORWARD"):
-            return "F"
-        if raw in ("C", "CENTER"):
-            return "C"
-        return "OTHER" if raw else "N/D"
-
-    def audit_minutes_band(value):
-        if value is None:
-            return "N/D"
-        minutes = float(value)
-        if minutes < 24:
-            return "<24 min"
-        if minutes < 30:
-            return "24–29,9 min"
-        return "30+ min"
-
-    feature_indexes = (7, 8, 9)  # L5, L10 e minutos médios.
-    feature_scales = {}
-    for feature_index in feature_indexes:
-        values = [
-            float(row[feature_index])
-            for row in completed_rows
-            if row[feature_index] is not None
-        ]
-        if values:
-            mean_value = sum(values) / len(values)
-            variance = sum((value - mean_value) ** 2 for value in values) / len(values)
-            feature_scales[feature_index] = variance ** 0.5 or 1.0
-        else:
-            feature_scales[feature_index] = 1.0
-
+    # Análise de jogadores semelhantes desativada.
+    # Não integra os indicadores comerciais da auditoria e não deve consumir
+    # processamento no endpoint principal de histórico.
     similarity_analyses = {}
+    similarity_analysis = {}
 
-    for score_band in score_bands:
-        band_label = score_band["label"]
-
-        def row_in_band(row, band):
-            score = row[6]
-            if score is None:
-                return False
-            score = float(score)
-            if band["min"] is not None and score < band["min"]:
-                return False
-            if band["max"] is not None and score >= band["max"]:
-                return False
-            return True
-
-        target_rows_for_band = [
-            row for row in completed_rows if row_in_band(row, score_band)
-        ]
-        other_candidates = [
-            row for row in completed_rows
-            if row[6] is not None and not row_in_band(row, score_band)
-        ]
-
-        similarity_groups = {}
-        matched_target_rows = []
-
-        for target in target_rows_for_band:
-            target_position = normalize_audit_position(target[5])
-            target_minutes_band = audit_minutes_band(target[9])
-            group_key = (target_position, target_minutes_band)
-            group = similarity_groups.setdefault(group_key, {
-                "targets": [],
-                "peers": {}
-            })
-
-            target_features = [target[index] for index in feature_indexes]
-            if any(value is None for value in target_features):
-                continue
-
-            target_player_id = str(target[1])
-            ranked_peers = []
-
-            for candidate in other_candidates:
-                if str(candidate[1]) == target_player_id:
-                    continue
-                if normalize_audit_position(candidate[5]) != target_position:
-                    continue
-
-                candidate_features = [candidate[index] for index in feature_indexes]
-                if any(value is None for value in candidate_features):
-                    continue
-
-                squared_distances = [
-                    (
-                        (float(target_value) - float(candidate_value))
-                        / feature_scales[feature_index]
-                    ) ** 2
-                    for feature_index, target_value, candidate_value
-                    in zip(feature_indexes, target_features, candidate_features)
-                ]
-                distance = (sum(squared_distances) / len(squared_distances)) ** 0.5
-
-                if distance <= 1.25:
-                    ranked_peers.append((distance, candidate))
-
-            ranked_peers.sort(key=lambda item: item[0])
-            if not ranked_peers:
-                continue
-
-            group["targets"].append(target)
-            matched_target_rows.append(target)
-
-            for distance, peer in ranked_peers[:3]:
-                peer_key = (peer[0], str(peer[1]))
-                if peer_key not in group["peers"]:
-                    group["peers"][peer_key] = {
-                        "row": peer,
-                        "distance": distance
-                    }
-
-        similarity_cohorts = []
-        matched_peer_rows_by_key = {}
-
-        for (position_group, minutes_group), group in sorted(similarity_groups.items()):
-            target_rows = group["targets"]
-            if not target_rows:
-                continue
-
-            peer_entries = list(group["peers"].values())
-            peer_rows = [entry["row"] for entry in peer_entries]
-            for peer in peer_rows:
-                peer_key = (peer[0], str(peer[1]))
-                matched_peer_rows_by_key.setdefault(peer_key, peer)
-
-            target_average = safe_average([float(row[10]) for row in target_rows])
-            peer_average = safe_average([float(row[10]) for row in peer_rows])
-            target_players = len({str(row[1]) for row in target_rows})
-            peer_players = len({str(row[1]) for row in peer_rows})
-
-            similarity_cohorts.append({
-                "position": position_group,
-                "minutes_band": minutes_group,
-                "target_records": len(target_rows),
-                "target_players": target_players,
-                "target_actual_average": target_average,
-                "similar_records": len(peer_rows),
-                "similar_players": peer_players,
-                "similar_actual_average": peer_average,
-                "actual_difference": (
-                    round(target_average - peer_average, 2)
-                    if target_average is not None and peer_average is not None
-                    else None
-                ),
-                "actual_difference_pct": (
-                    round((target_average - peer_average) / abs(peer_average) * 100, 2)
-                    if target_average is not None and peer_average not in (None, 0)
-                    else None
-                ),
-                "average_similarity_distance": safe_average(
-                    [entry["distance"] for entry in peer_entries]
-                ),
-                "sample_status": (
-                    "Volume maior"
-                    if len(target_rows) >= 30 and target_players >= 15
-                    and len(peer_rows) >= 30 and peer_players >= 15
-                    else "Em acompanhamento"
-                    if len(target_rows) >= 10 and target_players >= 5
-                    and len(peer_rows) >= 20 and peer_players >= 8
-                    else "Amostra reduzida"
-                )
-            })
-
-        matched_peer_rows = list(matched_peer_rows_by_key.values())
-        target_average = safe_average([float(row[10]) for row in matched_target_rows])
-        peer_average = safe_average([float(row[10]) for row in matched_peer_rows])
-        target_players = len({str(row[1]) for row in matched_target_rows})
-        peer_players = len({str(row[1]) for row in matched_peer_rows})
-
-        similarity_analyses[band_label] = {
-            "target_band": band_label,
-            "target_count": len(matched_target_rows),
-            "target_players": target_players,
-            "target_actual_average": target_average,
-            "similar_count": len(matched_peer_rows),
-            "similar_players": peer_players,
-            "similar_actual_average": peer_average,
-            "actual_difference": (
-                round(target_average - peer_average, 2)
-                if target_average is not None and peer_average is not None
-                else None
-            ),
-            "actual_difference_pct": (
-                round((target_average - peer_average) / abs(peer_average) * 100, 2)
-                if target_average is not None and peer_average not in (None, 0)
-                else None
-            ),
-            "sample_status": (
-                "Volume maior"
-                if len(matched_target_rows) >= 30 and target_players >= 15
-                and len(matched_peer_rows) >= 30 and peer_players >= 15
-                else "Em acompanhamento"
-                if len(matched_target_rows) >= 10 and target_players >= 5
-                and len(matched_peer_rows) >= 20 and peer_players >= 8
-                else "Amostra reduzida"
-            ),
-            "cohorts": similarity_cohorts,
-            "method_note": (
-                "Compara registros concluídos da faixa selecionada com até três "
-                "registros de outros jogadores fora dessa faixa, da mesma posição "
-                "e com L5, L10 e minutos médios mais próximos. As variáveis são "
-                "padronizadas pelo desvio-padrão do mercado; pares com distância "
-                "média padronizada acima de 1,25 são descartados. Análise exploratória."
-            )
-        }
-
-    # Mantém compatibilidade com consumidores da versão anterior da API.
-    similarity_analysis = similarity_analyses.get("6-6.99", {})
     overall_metrics = build_metrics(completed_rows)
+    model_comparison = build_model_comparison(completed_rows)
 
-    # Separação entre a faixa de maior score e a de menor score.
-    high_band = next((b for b in bands_output if b["band"] == "7+"), None)
-    low_band = next((b for b in bands_output if b["band"] == "<4"), None)
-    high_low = {
-        "high_score_band": high_band,
-        "low_score_band": low_band,
-        "actual_average_difference": (
-            round(high_band["actual_average"] - low_band["actual_average"], 2)
-            if high_band and low_band
-            and high_band["actual_average"] is not None
-            and low_band["actual_average"] is not None
-            else None
-        ),
-        "high_vs_low_pct": (
-            round(
-                (high_band["actual_average"] - low_band["actual_average"])
-                / low_band["actual_average"] * 100, 2
-            )
-            if high_band and low_band
-            and high_band["actual_average"] is not None
-            and low_band["actual_average"] not in (None, 0)
-            else None
-        )
-    }
-
-    by_date = {}
-
-    for row in completed_rows:
-        d_str = row[0].isoformat() if row[0] else None
-        if d_str:
-            by_date.setdefault(d_str, []).append(row)
+    # Avalia o ranking diário real: top 10 por data versus demais candidatos.
+    top10_vs_rest = build_top10_vs_rest_metrics(completed_rows)
 
     daily_output = []
+    audit_rows_by_date = {}
+    completed_by_date = {}
 
-    for d_str in sorted(by_date.keys()):
-        daily_metrics = build_metrics(by_date[d_str])
+    for row in audit_rows:
+        d_str = row[0].isoformat() if row[0] else None
+        if d_str:
+            audit_rows_by_date.setdefault(d_str, []).append(row)
+            if row[10] is not None:
+                completed_by_date.setdefault(d_str, []).append(row)
+
+    for d_str in sorted(audit_rows_by_date.keys()):
+        date_rows = audit_rows_by_date[d_str]
+        date_completed = [row for row in date_rows if row[10] is not None]
+        date_no_result = [row for row in date_rows if row[10] is None and row[11] == "no_result"]
+        date_pending = max(len(date_rows) - len(date_completed) - len(date_no_result), 0)
+        date_resolved = len(date_completed) + len(date_no_result)
+        date_metrics = build_metrics(completed_by_date.get(d_str, []))
         daily_output.append({
             "date": d_str,
-            **daily_metrics
+            "snapshots_total": len(date_rows),
+            "completed_results": len(date_completed),
+            "no_result_results": len(date_no_result),
+            "pending_results": date_pending,
+            "completion_rate_pct": round(date_resolved / len(date_rows) * 100, 2) if date_rows else 0,
+            **date_metrics
         })
 
     completed_count = len(completed_rows)
-    pending_count = max(snapshots_total - completed_count, 0)
+    no_result_count = len(no_result_rows)
+    pending_rows = [
+        row for row in audit_rows
+        if row[10] is None and row[11] == 'pending'
+    ]
+    pending_count = len(pending_rows)
+
+    def period_for_rows(rows):
+        dates = sorted({row[0] for row in rows if row[0] is not None})
+        return {
+            "first_date": dates[0].isoformat() if dates else None,
+            "last_date": dates[-1].isoformat() if dates else None
+        }
+
+    resolved_count = completed_count + no_result_count
     completion_rate = (
-        round(completed_count / snapshots_total * 100, 2)
+        round(resolved_count / snapshots_total * 100, 2)
         if snapshots_total else 0
     )
 
@@ -4151,21 +6816,262 @@ def validation_history(
         "summary": {
             "snapshots_total": snapshots_total,
             "completed_results": completed_count,
+            "no_result_results": no_result_count,
             "pending_results": pending_count,
             "completion_rate_pct": completion_rate,
             **overall_metrics
         },
+        "periods": {
+            "snapshots": period_for_rows(audit_rows),
+            "completed": period_for_rows(completed_rows),
+            "no_result": period_for_rows(no_result_rows),
+            "pending": period_for_rows(pending_rows)
+        },
         "score_bands": bands_output,
+        "score_band_reference": market_score_bands,
+        "model_comparison": model_comparison,
         "similarity_analysis": similarity_analysis,
         "similarity_analyses": similarity_analyses,
-        "ranking_quality": high_low,
+        "ranking_quality": top10_vs_rest,
         "daily": daily_output,
+        "data_source_policy": "Base oficial independente: somente audit_snapshots, audit_results e audit_no_results. O histórico legado operacional permanece preservado, mas não compõe estes indicadores.",
         "method_note": (
-            "Precisão: MAE L5/L10. Erro relativo: MAE dividido pela média "
-            "das previsões correspondentes, usando a mesma amostra válida. "
-            "Ranking: médias reais e quantidade por faixa de score. "
-            "Registros pendentes são excluídos; score original não é alterado."
+            "Precisão: MAE L5/L10, com amostras completas e parciais identificadas. "
+            "Erro relativo: MAE dividido pela média das previsões correspondentes. "
+            "Pearson mede associação linear e Spearman associação monotônica do ranking. "
+            "Top 10 versus demais compara também o resultado ajustado pela média L10. "
+            "Faixas de Score são específicas do mercado e do recorte, baseadas em quintis da distribuição observada; não são calibração probabilística. "
+            "Registros sem resultado (ex.: DNP) e pendentes não entram nas métricas; "
+            "a cobertura considera concluídos + sem resultado; Score original não é alterado."
         )
+    }
+
+
+
+
+@app.get("/context-validation")
+def context_validation(
+    market: str = Query(default="assists"),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    cohort: str = Query(default="all"),
+):
+    """Audita referências defensivas pré-jogo capturadas no snapshot independente.
+
+    É deliberadamente exploratório: não altera Score, Gap ou snapshots históricos.
+    """
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+    if cohort not in {"all", "top10"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
+
+    try:
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_metrics_start_date()
+        parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else audit_history_cutoff_date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período de datas inválido.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH snapshot_source AS (
+            SELECT
+                s.selected_date,
+                s.player_id,
+                s.player_name,
+                s.triage_score,
+                s.last10_avg,
+                s.audit_rank,
+                s.payload,
+                ar.actual_value,
+                ROW_NUMBER() OVER (
+                    PARTITION BY s.selected_date, s.market
+                    ORDER BY s.audit_rank ASC, s.player_id ASC
+                ) AS cohort_rank
+            FROM audit_snapshots s
+            LEFT JOIN audit_results ar
+              ON ar.selected_date = s.selected_date
+             AND ar.market = s.market
+             AND ar.player_id = s.player_id
+            WHERE s.market = %s
+              AND s.selected_date >= %s
+              AND s.selected_date <= %s
+        )
+        SELECT
+            selected_date,
+            player_id,
+            player_name,
+            last10_avg,
+            actual_value,
+            payload->>'opponent_position_minutes_filtered_defense_l10_avg',
+            payload->>'opponent_position_minute_band_defense_l10_avg',
+            payload->>'opponent_position_equal_game_defense_l10_avg',
+            payload->>'opponent_position_minutes_filtered_defense_l10_games',
+            payload->>'opponent_position_minute_band_defense_l10_games',
+            payload->>'opponent_position_equal_game_defense_l10_games',
+            payload->>'minutes_last5_avg'
+        FROM snapshot_source
+        WHERE actual_value IS NOT NULL
+          AND (%s = 'all' OR cohort_rank <= 10)
+        ORDER BY selected_date ASC, player_name ASC
+    """
+    params = [market, parsed_from, parsed_to, cohort]
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+    records = []
+    for row in rows:
+        (
+            selected_date,
+            player_id,
+            player_name,
+            player_l10_avg,
+            actual,
+            minutes_filtered,
+            minute_band,
+            equal_game,
+            minutes_filtered_games,
+            minute_band_games,
+            equal_game_games,
+            minutes_last5_avg,
+        ) = row
+        records.append({
+            "date": selected_date.isoformat() if selected_date else None,
+            "player_id": str(player_id),
+            "player": player_name,
+            "player_l10_avg": player_l10_avg,
+            "actual": actual,
+            "opponent_position_minutes_filtered_defense_l10_avg": minutes_filtered,
+            "opponent_position_minute_band_defense_l10_avg": minute_band,
+            "opponent_position_equal_game_defense_l10_avg": equal_game,
+            "minutes_filtered_games": int(minutes_filtered_games or 0),
+            "minute_band_games": int(minute_band_games or 0),
+            "equal_game_games": int(equal_game_games or 0),
+            "minutes_last5_avg": minutes_last5_avg,
+        })
+
+    dates = sorted({item["date"] for item in records if item["date"]})
+    metrics = build_context_reference_metrics(records)
+    metrics["distinct_dates"] = len(dates)
+    metrics["minimum_dates_for_temporal_validation"] = 14
+    metrics["temporal_status"] = "ready" if len(dates) >= 14 else "collecting"
+
+    return {
+        "status": "ok",
+        "market": market,
+        "cohort": cohort,
+        "date_from": parsed_from.isoformat(),
+        "date_to": parsed_to.isoformat(),
+        "metrics": metrics,
+        "coverage": {
+            "records_completed": len(records),
+            "distinct_dates": len(dates),
+            "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None,
+        },
+        "method_note": (
+            "As referências de minutagem são comparadas com a média L10 do próprio "
+            "jogador somente para diagnóstico exploratório. A média L10 permanece "
+            "a referência individual; nenhuma dessas métricas altera o triage_score."
+        ),
+    }
+
+
+@app.get("/teammate-split-validation")
+def teammate_split_validation(
+    market: str = Query(default="assists"),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    cohort: str = Query(default="all"),
+):
+    """Audita a associação entre splits históricos de companheiros e erro L10."""
+    if market not in ACTIVE_MARKETS:
+        raise HTTPException(status_code=400, detail="Mercado inválido ou inativo na auditoria.")
+    if cohort not in {"all", "top10"}:
+        raise HTTPException(status_code=400, detail="População de auditoria inválida.")
+    try:
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else audit_metrics_start_date()
+        parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else audit_history_cutoff_date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período de datas inválido.")
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH snapshot_source AS (
+            SELECT
+                s.selected_date,
+                s.player_id,
+                s.player_name,
+                s.last10_avg,
+                s.audit_rank,
+                s.payload,
+                ar.actual_value,
+                ROW_NUMBER() OVER (
+                    PARTITION BY s.selected_date, s.market
+                    ORDER BY s.audit_rank ASC, s.player_id ASC
+                ) AS cohort_rank
+            FROM audit_snapshots s
+            LEFT JOIN audit_results ar
+              ON ar.selected_date = s.selected_date
+             AND ar.market = s.market
+             AND ar.player_id = s.player_id
+            WHERE s.market = %s
+              AND s.selected_date >= %s
+              AND s.selected_date <= %s
+        )
+        SELECT selected_date, player_id, player_name, last10_avg,
+               actual_value, payload
+        FROM snapshot_source
+        WHERE actual_value IS NOT NULL
+          AND (%s = 'all' OR cohort_rank <= 10)
+        ORDER BY selected_date ASC, player_name ASC
+    """
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, [market, parsed_from, parsed_to, cohort])
+            rows = cursor.fetchall()
+
+    stat_key = {
+        "points": "points",
+        "assists": "assists",
+        "rebounds": "rebounds",
+        "threes": "three_pa",
+        "two_pa": "two_pa",
+        "fgm": "fgm",
+    }[market]
+    records = []
+    for selected_date, player_id, player_name, last10_avg, actual, payload in rows:
+        payload = payload if isinstance(payload, dict) else {}
+        records.append({
+            "date": selected_date.isoformat() if selected_date else None,
+            "player_id": str(player_id),
+            "player": player_name,
+            "player_l10_avg": last10_avg,
+            "actual": actual,
+            "teammate_context": payload.get("teammate_context") or {},
+        })
+
+    metrics = build_teammate_split_metrics(records, stat_key)
+    dates = sorted({item["date"] for item in records if item.get("date")})
+    return {
+        "status": "ok",
+        "market": market,
+        "market_label": MARKETS[market]["label"],
+        "cohort": cohort,
+        "date_from": parsed_from.isoformat(),
+        "date_to": parsed_to.isoformat(),
+        "metrics": metrics,
+        "coverage": {
+            "records_completed": len(records),
+            "distinct_dates": len(dates),
+            "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None,
+        },
     }
 
 
@@ -4184,15 +7090,28 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Período de datas inválido.")
+    # Sem datas: métricas acumuladas da coorte validada desde 19/11.
+    if not date_from and not date_to:
+        parsed_from = audit_metrics_start_date()
+        parsed_to = audit_history_cutoff_date()
+
     if not DATABASE_URL:
         raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
 
     query = """
-        WITH snapshot_cohort AS (
-            SELECT s.selected_date, s.market, s.player_id, s.player_name, s.team, s.opponent, s.position,
-                   s.triage_score, s.last5_avg, s.last10_avg, s.payload, s.display_rank,
-                   COUNT(*) FILTER (WHERE s.display_rank IS NULL) OVER (PARTITION BY s.selected_date, s.market) AS missing_rank_count
-            FROM candidate_snapshots s WHERE s.market = %s
+        WITH snapshot_source AS (
+            SELECT
+                selected_date, market, player_id, player_name, team, opponent,
+                position, triage_score, last5_avg, last10_avg, payload,
+                audit_rank AS display_rank, 'audit' AS snapshot_source
+            FROM audit_snapshots
+            WHERE market = %s
+
+        ), snapshot_cohort AS (
+            SELECT *,
+                COUNT(*) FILTER (WHERE display_rank IS NULL)
+                    OVER (PARTITION BY selected_date, market) AS missing_rank_count
+            FROM snapshot_source
         ), ranked_snapshots AS (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY selected_date, market ORDER BY
                 CASE WHEN missing_rank_count = 0 THEN display_rank END ASC NULLS LAST,
@@ -4210,10 +7129,13 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
                s.payload->>'league_position_allowed_l5_games',
                s.payload->>'league_position_allowed_l10_games',
                s.payload->>'opponent_position_equal_game_reference_version',
-               r.actual_value
-        FROM ranked_snapshots s INNER JOIN candidate_results r
-          ON r.selected_date = s.selected_date AND r.market = s.market AND r.player_id = s.player_id
+               ar.actual_value
+        FROM ranked_snapshots s
+        LEFT JOIN audit_results ar
+          ON s.snapshot_source = 'audit'
+         AND ar.selected_date = s.selected_date AND ar.market = s.market AND ar.player_id = s.player_id
         WHERE (%s = 'all' OR s.cohort_rank <= 10)
+          AND ar.id IS NOT NULL
     """
     params = [market, cohort]
     limits = {"7+": (7.0, None), "6-6.99": (6.0, 7.0), "5-5.99": (5.0, 6.0), "4-4.99": (4.0, 5.0), "<4": (None, 4.0)}
@@ -4288,6 +7210,7 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
             "date": game_date.isoformat() if game_date else None,
             "player_id": str(player_id), "player": player, "team": team, "opponent": opponent,
             "position": position, "score": number(score), "actual": actual,
+            "player_l5_avg": number(l5), "player_l10_avg": number(l10),
             "l5": period(class5, allowed5, league5, pct5, games5, league_games5),
             "l10": period(class10, allowed10, league10, pct10, games10, league_games10)
         })
@@ -4296,29 +7219,19 @@ def gap_validation(market: str = Query(default="assists"), score_band: str = Que
         output = {}
         for label in ("Acima", "Próximo", "Abaixo", "Sem referência"):
             group = [item for item in detailed if item[period_key]["classification"] == label]
-            valid = [item for item in group if item["actual"] is not None]
-            def avg(values):
-                return round(sum(values) / len(values), 2) if values else None
-            output[label] = {
-                "count": len(group),
-                "completed": len(valid),
-                "defense_allowed_average": avg([x[period_key]["defense_allowed"] for x in group if x[period_key]["defense_allowed"] is not None]),
-                "league_average": avg([x[period_key]["league_average"] for x in group if x[period_key]["league_average"] is not None]),
-                "actual_player_average": avg([x["actual"] for x in valid]),
-                "deviation_pct_average": avg([x[period_key]["difference_pct"] for x in group if x[period_key]["difference_pct"] is not None]),
-                "defense_games_average": avg([x[period_key]["games"] for x in group if x[period_key]["games"] > 0]),
-                "league_games_average": avg([x[period_key]["league_games"] for x in group if x[period_key]["league_games"] > 0])
-            }
+            output[label] = build_gap_group_metrics(group, period_key)
         return output
 
     return {
         "status": "ok", "market": market, "market_label": MARKETS[market]["label"],
         "cohort": cohort, "cohort_label": "Top 10 exibidos" if cohort == "top10" else "Todos os elegíveis",
         "score_band": score_band, "completed_records": len(detailed),
-        "legacy_records_without_new_reference": legacy_records, "classification_margin_pct": 10,
+        "legacy_records_without_new_reference": legacy_records,
+        "data_source_policy": "Base oficial independente: somente audit_snapshots, audit_results e audit_no_results. O histórico legado operacional permanece preservado, mas não compõe estes indicadores.",
+        "classification_margin_pct": 10,
         "periods": {"l5": summarize("l5"), "l10": summarize("l10")},
         "records": detailed,
-        "method_note": "Contexto defensivo = total da estatística cedida aos jogadores da posição por partida, comparado à média da liga para a mesma posição e período. Acima significa que a defesa permite mais de 10% que a liga; Abaixo, menos de 10%; Próximo, dentro de ±10%. A média real exibida é a produção individual dos candidatos agrupados pela classificação defensiva. Snapshots antigos não possuem o benchmark da liga e ficam sem referência."
+        "method_note": "Contexto defensivo = total da estatística cedida aos jogadores da posição por partida, comparado à média da liga para a mesma posição e período. Acima significa que a defesa permite mais de 10% que a liga; Abaixo, menos de 10%; Próximo, dentro de ±10%. A média real exibida é descritiva e não demonstra causalidade nem capacidade preditiva da classificação. Snapshots antigos não possuem o benchmark da liga e ficam sem referência."
     }
 
 
@@ -4331,3 +7244,21 @@ def home():
     if not INDEX_FILE.is_file():
         raise HTTPException(status_code=404, detail="Arquivo index.html não encontrado.")
     return FileResponse(INDEX_FILE, media_type="text/html")
+
+
+# ============================================================
+# CENTRAL DE CONTEXTO NBA (MÓDULO INDEPENDENTE)
+# Cache de summaries compartilhado com o Scanner para evitar requisições duplicadas.
+# ============================================================
+# A Central usa armazenamento próprio e não participa do fluxo de
+# candidatos, do triage_score ou das tabelas da Auditoria.
+from app.context_center import create_context_router
+
+app.include_router(
+    create_context_router(
+        get_database_connection,
+        get_team_defense_history_fresh,
+        NBA_TEAM_ABBREVIATIONS,
+        require_admin_api_key
+    )
+)

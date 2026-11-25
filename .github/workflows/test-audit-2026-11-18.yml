@@ -1,0 +1,37 @@
+name: Reprocess audit collection 2026-11-16 to 2026-11-19
+
+on:
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for staging deploy
+        run: sleep 90
+
+      - name: Collect 2026-11-19 by market
+        run: |
+          set -u
+          API_BASE="https://nba-props-scanner-staging.onrender.com"
+          FAILED=0
+
+          for RUN_DATE in 2026-11-16 2026-11-17 2026-11-18 2026-11-19; do
+            for MARKET in points assists rebounds threes two_pa fgm; do
+              echo "::group::$RUN_DATE / $MARKET"
+              BODY_FILE="/tmp/response-$RUN_DATE-$MARKET.txt"
+              HTTP_CODE=$(curl -sS -o "$BODY_FILE" -w "%{http_code}" \
+                --retry 2 --retry-delay 5 --retry-all-errors --max-time 180 \
+                "$API_BASE/collect-results?date=$RUN_DATE&market=$MARKET" || true)
+              echo "HTTP $HTTP_CODE"
+              cat "$BODY_FILE" || true
+              echo
+              if [ "$HTTP_CODE" != "200" ]; then
+                FAILED=1
+              fi
+              echo "::endgroup::"
+            done
+          done
+
+          exit "$FAILED"
