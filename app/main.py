@@ -1691,7 +1691,7 @@ def get_completed_team_games(
     return games[:limit]
 
 
-@lru_cache(maxsize=500)
+@lru_cache(maxsize=100)
 def _get_cached_game_summary(
     event_id: str
 ) -> dict:
@@ -3323,7 +3323,7 @@ NBA_TEAM_ABBREVIATIONS = (
 
 @lru_cache(maxsize=2)
 def get_league_position_defense_baseline(year, target_date_iso):
-    """Média da liga de totais cedidos por jogo a cada posição, usando os últimos 5/10 jogos de cada equipe."""
+    """Média da liga por posição, processando boxscores sem reter a liga inteira em memória."""
     started = time.perf_counter()
     team_samples = {}
 
@@ -3344,43 +3344,20 @@ def get_league_position_defense_baseline(year, target_date_iso):
             except Exception as error:
                 logger.warning("Falha ao consultar agenda da liga: %s", error)
 
-    game_ids = {
-        str(game["game_id"])
-        for games in team_samples.values()
-        for game in games
-        if game.get("game_id")
-    }
+    # Cada boxscore é processado assim que chega. Guardamos apenas as métricas
+    # agregadas, amostras individuais de minutos e o índice compacto de status.
+    # Antes, o dicionário summaries mantinha centenas de respostas ESPN completas
+    # simultaneamente, além do cache global de boxscores.
+    game_team_indexes = {}
+    for team, games in team_samples.items():
+        for index, game in enumerate(games[:10]):
+            game_id = str(game.get("game_id") or "")
+            if game_id:
+                game_team_indexes.setdefault(game_id, []).append((team, index))
 
-    summaries = {}
+    game_ids = list(game_team_indexes.keys())
     player_status_by_game = {}
-
-    def fetch_summary(game_id):
-        return game_id, get_game_summary(game_id)
-
-    with ThreadPoolExecutor(max_workers=12) as executor:
-        futures = [executor.submit(fetch_summary, game_id) for game_id in game_ids]
-        for future in as_completed(futures):
-            try:
-                game_id, summary = future.result()
-                summaries[game_id] = summary
-            except Exception as error:
-                logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
-
-    # Aproveita os mesmos boxscores já carregados pelo benchmark defensivo.
-    # Não dispara nenhuma chamada adicional à ESPN para o contexto de companheiros.
-    for game_id, summary in summaries.items():
-        status_index = {}
-        player_blocks = (summary.get("boxscore") or {}).get("players") or []
-        team_abbreviations = {
-            str((block.get("team") or {}).get("abbreviation") or "").upper()
-            for block in player_blocks
-            if (block.get("team") or {}).get("abbreviation")
-        }
-        for team_abbr in team_abbreviations:
-            status_index.update(
-                extract_team_player_status(summary, team_abbr)
-            )
-        player_status_by_game[str(game_id)] = status_index
+    processed_games = 0
 
     stat_keys = ("points", "assists", "rebounds", "fga", "three_pa", "two_pa", "fgm")
     samples = {
@@ -3390,8 +3367,6 @@ def get_league_position_defense_baseline(year, target_date_iso):
         }
         for window in (5, 10)
     }
-    # Guarda somente os dados individuais já extraídos dos mesmos boxscores.
-    # Isso permite comparar a faixa de minutos sem novas consultas à ESPN.
     minute_player_samples = {
         window: {
             position: []
@@ -3400,15 +3375,28 @@ def get_league_position_defense_baseline(year, target_date_iso):
         for window in (5, 10)
     }
 
-    for team, games in team_samples.items():
-        for index, game in enumerate(games[:10]):
-            summary = summaries.get(str(game.get("game_id")))
-            if not summary:
-                continue
+    def process_summary(game_id, summary):
+        nonlocal processed_games
+        if not summary:
+            return
+
+        processed_games += 1
+        player_blocks = (summary.get("boxscore") or {}).get("players") or []
+        team_abbreviations = {
+            str((block.get("team") or {}).get("abbreviation") or "").upper()
+            for block in player_blocks
+            if (block.get("team") or {}).get("abbreviation")
+        }
+        status_index = {}
+        for team_abbr in team_abbreviations:
+            status_index.update(extract_team_player_status(summary, team_abbr))
+        player_status_by_game[str(game_id)] = status_index
+
+        for team, index in game_team_indexes.get(str(game_id), []):
             try:
                 positions = aggregate_position_game(summary, team).get("positions", {})
             except Exception as error:
-                logger.warning("Falha ao agregar benchmark %s/%s: %s", team, game.get("game_id"), error)
+                logger.warning("Falha ao agregar benchmark %s/%s: %s", team, game_id, error)
                 continue
 
             for position in ("G", "F", "C"):
@@ -3434,11 +3422,25 @@ def get_league_position_defense_baseline(year, target_date_iso):
                     if index < 5:
                         samples[5][position][stat_key].append(value)
 
+    def fetch_summary(game_id):
+        return game_id, get_game_summary(game_id)
+
+    # A defesa dos adversários usa até 12 consultas simultâneas. O benchmark
+    # fica limitado a 4, evitando o pico combinado de até 24 boxscores.
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(fetch_summary, game_id) for game_id in game_ids]
+        for future in as_completed(futures):
+            try:
+                game_id, summary = future.result()
+                process_summary(game_id, summary)
+            except Exception as error:
+                logger.warning("Falha ao consultar jogo para benchmark da liga: %s", error)
+
     result = {
         "positions": {},
         "minute_player_samples": minute_player_samples,
         "teams_analyzed": len(team_samples),
-        "unique_games": len(summaries),
+        "unique_games": processed_games,
         "player_status_by_game": player_status_by_game
     }
     for position in ("G", "F", "C"):
@@ -3461,13 +3463,12 @@ def get_league_position_defense_baseline(year, target_date_iso):
 
     logger.info(
         "Benchmark liga: data=%s equipes=%s jogos_unicos=%s L5_G=%s L10_G=%s tempo=%.2fs",
-        target_date_iso, len(team_samples), len(summaries),
+        target_date_iso, len(team_samples), processed_games,
         result["positions"]["G"]["assists"]["l5_games"],
         result["positions"]["G"]["assists"]["l10_games"],
         time.perf_counter() - started
     )
     return result
-
 
 # Serializa a construção do benchmark por processo. Isso evita que o
 # prewarm e a primeira consulta de candidatos montem o mesmo benchmark em paralelo.
