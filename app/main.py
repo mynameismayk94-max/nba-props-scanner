@@ -2520,7 +2520,6 @@ def get_team_roster(
     return tuple(players.values())
 
 
-@lru_cache(maxsize=8)
 def get_players_for_date(
     selected_date: str
 ) -> dict:
