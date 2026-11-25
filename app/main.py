@@ -4456,14 +4456,11 @@ def collect_candidates(
             executor.submit(fetch_team_defense, team)
             for team in eligible_opponents
         ]
-        league_future = (
-            executor.submit(
-                get_league_position_defense_baseline_singleflight,
-                year,
-                target_date.isoformat()
-            )
-            if eligible_players else None
-        )
+        # O benchmark completo da liga é pesado (até 30 equipes e centenas
+        # de boxscores). Ele pertence à Auditoria/contexto aprofundado, não ao
+        # caminho crítico do Scanner. Mantemos a defesa recente do adversário,
+        # que alimenta as métricas posicionais exibidas no Scanner.
+        league_future = None
 
         for future in as_completed(futures):
             try:
@@ -4617,12 +4614,17 @@ def collect_candidates(
 
     # População completa para auditoria, sem limite de exibição.
     # Mantém-se separada de candidate_snapshots, que registra o uso operacional.
-    audit_snapshots_saved = save_audit_snapshots(
-        selected_date,
-        market,
-        eligible_all_results,
-        availability_report_status
-    )
+    # A captura completa da Auditoria roda somente em sua rotina própria
+    # (/capture-audit-snapshot e /refresh-audit). Uma consulta do Scanner não
+    # deve gravar novamente toda a população da Auditoria.
+    audit_snapshots_saved = 0
+    if not persist_operational:
+        audit_snapshots_saved = save_audit_snapshots(
+            selected_date,
+            market,
+            eligible_all_results,
+            availability_report_status
+        )
 
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
