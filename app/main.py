@@ -2524,10 +2524,12 @@ def get_players_for_date(
     selected_date: str
 ) -> dict:
 
-    # Mantém o retrospecto L5/L10 das equipes visível na agenda.
+    # A coleta de candidatos precisa apenas de confrontos e elencos.
+    # O retrospecto L5 das equipes é carregado separadamente por /games,
+    # evitando consultas extras no caminho crítico do Scanner.
     schedule = fetch_espn_games(
         selected_date,
-        enrich_context=True
+        enrich_context=False
     )
 
     teams = set()
@@ -4745,12 +4747,11 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    # O endpoint /games precisa responder rápido: o contexto recente das equipes
-    # não deve bloquear a abertura da agenda nem competir com o Scanner.
-    # O Scanner carrega os dados necessários sob demanda em /candidates.
+    # A agenda exibe o retrospecto recente das equipes.
+    # O trabalho de contexto dos times fica fora do fluxo de coleta do Scanner.
     return fetch_espn_games(
         selected_date,
-        enrich_context=False
+        enrich_context=True
     )
 
 
