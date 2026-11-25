@@ -4205,11 +4205,6 @@ def collect_candidates(
     # O Scanner consulta o histórico dos atletas diretamente nesta
     # requisição, com concorrência limitada, sem aguardar prewarm externo.
 
-    # O histórico individual pode ter sido aquecido em segundo plano pelo
-    # endpoint /games. Se ainda estiver em andamento, esperamos o trabalho
-    # existente em vez de disparar uma segunda bateria de 317 chamadas.
-    wait_player_history_prewarm(selected_date)
-
     # Primeiro buscamos os históricos dos jogadores. Isso permite
     # identificar quem realmente pode virar candidato antes de
     # consultar o histórico defensivo dos adversários.
@@ -4815,26 +4810,12 @@ def games(
         )
 
     # Mantém o retrospecto L5/L10 das equipes visível na agenda.
-    # O histórico individual é aquecido em segundo plano enquanto o usuário
-    # escolhe o mercado. Se a consulta começar antes do prewarm terminar,
-    # /candidates espera o mesmo trabalho em vez de duplicar as 317 chamadas.
-    schedule = fetch_espn_games(
+    # Não inicia prewarm de históricos: o Scanner carrega os dados sob demanda,
+    # evitando retenção adicional de memória na instância de 512 MB.
+    return fetch_espn_games(
         selected_date,
         enrich_context=True
     )
-
-    teams = set()
-    for game in schedule.get("games", []):
-        teams.add(game["home"]["abbr"])
-        teams.add(game["away"]["abbr"])
-
-    if teams:
-        schedule_player_history_prewarm(
-            selected_date,
-            teams
-        )
-
-    return schedule
 
 
 @app.get("/candidates")
