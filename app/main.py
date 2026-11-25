@@ -4449,7 +4449,7 @@ def collect_candidates(
     league_baseline = None
 
     with ThreadPoolExecutor(
-        max_workers=4
+        max_workers=6
     ) as executor:
 
         futures = [
