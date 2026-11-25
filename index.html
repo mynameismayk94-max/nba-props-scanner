@@ -1300,9 +1300,9 @@ function filtrosHtml(){
       <label for="filtroDiferenca">CONTEXTO DEFENSIVO</label>
       <select id="filtroDiferenca">
         <option value="all">Todos</option>
-        <option value="above">Jogador acima da referência</option>
-        <option value="close">Próximo da referência</option>
-        <option value="below">Jogador abaixo da referência</option>
+        <option value="above">Defesa acima da média</option>
+        <option value="close">Próxima da média</option>
+        <option value="below">Defesa abaixo da média</option>
       </select>
     </div>
     <div class="filter-group">
@@ -1329,7 +1329,7 @@ function filtrosHtml(){
 }
 
 function obterDiferenca(jogador){
-  return desvioDefensivoPct(jogador.last5_avg, jogador.opponent_position_equal_game_defense_l5_avg);
+  return desvioDefensivoPct(jogador.opponent_position_allowed_l5_avg, jogador.league_position_allowed_l5_avg);
 }
 
 function filtrarCandidatos(){
@@ -1343,7 +1343,7 @@ function filtrarCandidatos(){
     const minutos = Number(p.minutes_last5_avg);
     const triage = Number(p.triage_score);
     const pos = String(p.position || '').toUpperCase();
-    const defensiveClass = classificarContextoDefensivo(p.last5_avg, p.opponent_position_equal_game_defense_l5_avg);
+    const defensiveClass = classificarContextoDefensivo(p.opponent_position_allowed_l5_avg, p.league_position_allowed_l5_avg);
 
     if(min > 0 && (!Number.isFinite(minutos) || minutos < min)) return false;
     if(score > 0 && (!Number.isFinite(triage) || triage < score)) return false;
@@ -1416,7 +1416,7 @@ function renderizarResultados(){
   }
 
   html += '<div class="tablewrap"><table>';
-  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Total cedido à posição</th><th>Jogador vs defesa</th><th>Ação</th></tr>';
+  html += '<tr><th>Jogador</th><th>Eq</th><th>Pos</th><th>Adv</th><th>L5</th><th>L10</th><th>Min</th><th>Presença</th><th>Score</th><th>Total cedido à posição</th><th>Defesa vs liga</th><th>Ação</th></tr>';
 
   filtrados.forEach(p => {
     const proj5 = p.opponent_position_allowed_l5_avg;
@@ -1433,7 +1433,7 @@ function renderizarResultados(){
     html += celulaParticipacaoEquipe(p);
     html += '<td class="metric">' + numero(p.triage_score) + '</td>';
     html += '<td class="new-metric"><div class="split-metric">' + blocoPeriodo(proj5, 'L5') + blocoPeriodo(proj10, 'L10') + '</div></td>';
-    html += celulaDiferenca(p.last5_avg, p.opponent_position_equal_game_defense_l5_avg, p.last10_avg, p.opponent_position_equal_game_defense_l10_avg);
+    html += celulaDiferenca(p.opponent_position_allowed_l5_avg, p.league_position_allowed_l5_avg, p.opponent_position_allowed_l10_avg, p.league_position_allowed_l10_avg);
     html += '<td><button class="analisar" onclick="abrirAnalise(' + candidatosAtuais.indexOf(p) + ')">Analisar</button></td>';
     html += '</tr>';
   });
