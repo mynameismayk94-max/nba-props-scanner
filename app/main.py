@@ -3037,7 +3037,9 @@ def get_game_team_player_status(
 
 def extract_player_game_from_summary(
     summary,
-    player_id
+    player_id,
+    player_name=None,
+    team_abbr=None
 ):
 
     player_id = str(
@@ -3156,7 +3158,33 @@ def extract_player_game_from_summary(
                     not athlete_espn_id
                     or athlete_espn_id != player_id
                 ):
-                    continue
+                    # Em snapshots antigos, o ID do atleta pode não coincidir
+                    # com o ID atualmente entregue pelo boxscore da ESPN.
+                    # Fallback seguro: mesmo time + nome normalizado.
+                    snapshot_name = normalize_diagnostic_player_name(player_name)
+                    boxscore_name = normalize_diagnostic_player_name(
+                        athlete.get("displayName")
+                        or athlete.get("fullName")
+                        or athlete.get("shortName")
+                        or ""
+                    )
+                    boxscore_team = team_abbr.upper()
+                    expected_team = str(team_abbr or "").upper()
+                    if (
+                        snapshot_name
+                        and snapshot_name == boxscore_name
+                        and expected_team
+                        and expected_team == boxscore_team
+                    ):
+                        logger.info(
+                            "Audit boxscore player matched by name fallback: player=%s snapshot_id=%s boxscore_id=%s team=%s",
+                            player_name,
+                            player_id,
+                            athlete_espn_id,
+                            boxscore_team
+                        )
+                    else:
+                        continue
 
                 player_name = (
                     athlete.get("displayName")
@@ -5288,7 +5316,9 @@ def collect_results(
         player_game = (
             extract_player_game_from_summary(
                 summary,
-                player_id
+                player_id,
+                player_name=player_name,
+                team_abbr=team
             )
         )
 
