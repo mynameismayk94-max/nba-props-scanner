@@ -497,12 +497,22 @@ def build_teammate_split_metrics(records: Iterable[dict], stat_key: str) -> dict
     def summarize(items):
         residuals = [num(x.get("actual")) - num(x.get("player_l10_avg")) for x in items]
         residuals = [x for x in residuals if x is not None]
+        effects = [
+            num(x.get("_teammate_effect"))
+            for x in items
+            if num(x.get("_teammate_effect")) is not None
+        ]
+        actuals = [
+            num(x.get("actual"))
+            for x in items
+            if num(x.get("actual")) is not None
+        ]
         return {
             "records": len(items),
             "mae_l10": round(sum(abs(x) for x in residuals) / len(residuals), 4) if residuals else None,
             "bias_l10": round(sum(residuals) / len(residuals), 4) if residuals else None,
-            "actual_average": round(sum(num(x.get("actual")) for x in items if num(x.get("actual")) is not None) / len(items), 4) if items else None,
-            "effect_average": round(sum(x["_teammate_effect"] for x in items) / len(items), 4) if items else None,
+            "actual_average": round(sum(actuals) / len(actuals), 4) if actuals else None,
+            "effect_average": round(sum(effects) / len(effects), 4) if effects else None,
         }
 
     return {
