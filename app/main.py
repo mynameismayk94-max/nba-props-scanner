@@ -4409,7 +4409,7 @@ def collect_candidates(
                 year,
                 target_date.isoformat()
             )
-            if eligible_players and not persist_operational else None
+            if eligible_players else None
         )
 
         for future in as_completed(futures):
