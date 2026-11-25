@@ -3491,69 +3491,6 @@ def get_league_position_defense_baseline_singleflight(year, target_date_iso):
         return get_league_position_defense_baseline(year, target_date_iso)
 
 
-_DEFENSE_PREWARM_LOCK = threading.Lock()
-_DEFENSE_PREWARM_DATES = set()
-_DEFENSE_PREWARM_STATE = {}
-
-
-def schedule_defense_context_prewarm(selected_date):
-    """Prepara o benchmark defensivo da data sem bloquear /games."""
-    with _DEFENSE_PREWARM_LOCK:
-        if selected_date in _DEFENSE_PREWARM_DATES:
-            return
-        _DEFENSE_PREWARM_DATES.add(selected_date)
-        _DEFENSE_PREWARM_STATE[selected_date] = {
-            "status": "running",
-            "started_at": time.perf_counter(),
-            "elapsed": None
-        }
-
-    def warm():
-        started = time.perf_counter()
-        try:
-            target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
-            baseline = get_league_position_defense_baseline_singleflight(
-                season_year(target_date),
-                selected_date
-            )
-            elapsed = time.perf_counter() - started
-            with _DEFENSE_PREWARM_LOCK:
-                _DEFENSE_PREWARM_STATE[selected_date] = {
-                    "status": "ready",
-                    "started_at": started,
-                    "elapsed": elapsed
-                }
-            logger.info(
-                "Defense prewarm: data=%s status=ok equipes=%s jogos_unicos=%s tempo=%.2fs",
-                selected_date,
-                baseline.get("teams_analyzed", 0),
-                baseline.get("unique_games", 0),
-                elapsed
-            )
-        except Exception as error:
-            elapsed = time.perf_counter() - started
-            with _DEFENSE_PREWARM_LOCK:
-                _DEFENSE_PREWARM_DATES.discard(selected_date)
-                _DEFENSE_PREWARM_STATE[selected_date] = {
-                    "status": "error",
-                    "started_at": started,
-                    "elapsed": elapsed,
-                    "error": str(error)
-                }
-            logger.warning(
-                "Defense prewarm: data=%s status=error tempo=%.2fs erro=%s",
-                selected_date,
-                time.perf_counter() - started,
-                error
-            )
-
-    threading.Thread(
-        target=warm,
-        name=f"defense-prewarm-{selected_date}",
-        daemon=True
-    ).start()
-
-
 def get_player_team_game_counts(
     player_games,
     team_abbr: str,
@@ -4453,15 +4390,6 @@ def collect_candidates(
         )
         return team, defense
 
-    with _DEFENSE_PREWARM_LOCK:
-        prewarm_state = dict(_DEFENSE_PREWARM_STATE.get(selected_date, {}))
-    logger.info(
-        "Defense prewarm status at candidates start: data=%s status=%s elapsed=%.2fs",
-        selected_date,
-        prewarm_state.get("status", "not_started"),
-        prewarm_state.get("elapsed") or 0.0
-    )
-
     league_baseline = None
 
     # Mantém no máximo 12 consultas de boxscore simultâneas:
@@ -4499,10 +4427,9 @@ def collect_candidates(
                 baseline_wait_started = time.perf_counter()
                 league_baseline = league_future.result()
                 logger.info(
-                    "Defense benchmark wait: data=%s mercado=%s prewarm_status_at_start=%s wait=%.2fs",
+                    "Defense benchmark wait: data=%s mercado=%s wait=%.2fs",
                     selected_date,
                     market,
-                    prewarm_state.get("status", "not_started"),
                     time.perf_counter() - baseline_wait_started
                 )
             except Exception as error:
@@ -4701,7 +4628,6 @@ def collect_candidates(
 
     # O Scanner operacional mantém apenas as métricas centrais.
     # Splits de companheiros permanecem exclusivos da captura explícita da Auditoria.
-    context_elapsed = 0.0
 
     return {
         "date": selected_date,
