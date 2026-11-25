@@ -3358,6 +3358,10 @@ def get_league_position_defense_baseline(year, target_date_iso):
     game_ids = list(game_team_indexes.keys())
     player_status_by_game = {}
     processed_games = 0
+    position_samples_by_team = {
+        team: {}
+        for team in team_samples
+    }
 
     stat_keys = ("points", "assists", "rebounds", "fga", "three_pa", "two_pa", "fgm")
     samples = {
@@ -3395,10 +3399,16 @@ def get_league_position_defense_baseline(year, target_date_iso):
         for team, index in game_team_indexes.get(str(game_id), []):
             try:
                 positions = aggregate_position_game(summary, team).get("positions", {})
+                position_samples_by_team[team][index] = positions
             except Exception as error:
                 logger.warning("Falha ao agregar benchmark %s/%s: %s", team, game_id, error)
-                continue
 
+    # Reaplica a ordem original por equipe/data para manter as mesmas amostras
+    # e a mesma ordem numérica do cálculo anterior, independentemente da rede.
+    for team, games in team_samples.items():
+        team_positions = position_samples_by_team.get(team, {})
+        for index, _game in enumerate(games[:10]):
+            positions = team_positions.get(index, {})
             for position in ("G", "F", "C"):
                 position_data = positions.get(position, {})
                 players = position_data.get("players", [])
