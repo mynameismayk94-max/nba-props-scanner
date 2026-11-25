@@ -455,9 +455,9 @@
         <details>
           <summary>Como interpretar o contexto defensivo?</summary>
           <div class="legend-detail">
-            <div><strong>Menor valor = defesa mais forte · maior valor = mais vulnerável</strong></div>
-            <div class="mt-1 space-y-1"><div><span class="text-emerald-400">Acima</span> — defesa permite mais de 10% que a média da liga para a posição.</div><div><span class="text-amber-300">Próximo</span> — dentro de ±10%.</div><div><span class="text-red-400">Abaixo</span> — permite menos de 10%.</div></div>
-            <div class="text-gray-500 mt-1">Referência: média da produção por aparição de jogadores da mesma posição nos jogos recentes do adversário, com peso igual por partida. A classificação compara a média do jogador com essa referência; é descritiva e não altera o Score.</div>
+            <div><strong>Comparação da média do jogador com o que a defesa costuma permitir à mesma posição.</strong></div>
+            <div class="mt-1 space-y-1"><div><span class="text-emerald-400">Acima</span> — média do jogador mais de 10% acima da referência defensiva.</div><div><span class="text-amber-300">Próximo</span> — diferença dentro de ±10%.</div><div><span class="text-red-400">Abaixo</span> — média do jogador mais de 10% abaixo da referência defensiva.</div></div>
+            <div class="text-gray-500 mt-1">A referência é a média da produção por aparição de jogadores da mesma posição nos jogos recentes do adversário, com peso igual por partida. É um contexto descritivo e não altera o Score.</div>
           </div>
         </details>
       </div>
@@ -1300,9 +1300,9 @@ function filtrosHtml(){
       <label for="filtroDiferenca">CONTEXTO DEFENSIVO</label>
       <select id="filtroDiferenca">
         <option value="all">Todos</option>
-        <option value="above">Defesa acima da média</option>
-        <option value="close">Próxima da média</option>
-        <option value="below">Defesa abaixo da média</option>
+        <option value="above">Jogador acima da referência</option>
+        <option value="close">Próximo da referência</option>
+        <option value="below">Jogador abaixo da referência</option>
       </select>
     </div>
     <div class="filter-group">
