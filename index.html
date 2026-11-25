@@ -127,9 +127,6 @@
   .market-button { grid-column: span 2; display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; min-height: 52px; height: auto; padding: 9px 8px; background: #111827; border: 1px solid #374151; color: #d1d5db; white-space: normal; overflow-wrap: break-word; word-break: normal; text-align: center; line-height: 1.3; }
   .market-button:hover { background: #1f2937; border-color: #4b5563; }
   .market-button.active, .market-button.active:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
-.audit-metric-card { display: flex; flex-direction: column; justify-content: center; width: 100%; height: 100%; min-height: 68px; background: #111827; border: 1px solid #1f2937; color: #d1d5db; }
-  .audit-metric-card:hover { background: #1f2937; border-color: #374151; }
-  .audit-metric-card[aria-expanded="true"], .audit-metric-card[aria-expanded="true"]:hover { background: rgba(16, 185, 129, .13); border-color: #10b981; color: #34d399; }
   .audit-cohort-buttons .market-button { grid-column: span 1; min-height: 40px; }
   .schedule-search-button { min-height: 36px; height: 36px; padding: 6px 12px; }
 
@@ -217,23 +214,12 @@
   #api { color: #111827; background: #f9fafb; border-color: #9ca3af; font-weight: 500; }
   #api:focus { color: #111827; background: #ffffff; border-color: #10b981; outline: none; box-shadow: 0 0 0 2px rgba(16, 185, 129, .12); }
 
-  /* Legendas compactas da Pesquisa: informação essencial visível e detalhe expansível. */
-  .scanner-legend { display: grid; gap: 4px; margin-top: 8px; padding: 8px 9px; background: rgba(3, 7, 18, .45); border: 1px solid #1f2937; border-radius: 8px; font-size: 10px; line-height: 1.35; color: #9ca3af; }
-  .scanner-legend details { width: 100%; }
-  .scanner-legend summary { list-style: none; cursor: pointer; color: #d1d5db; font-weight: 600; }
-  .scanner-legend summary::-webkit-details-marker { display: none; }
-  .scanner-legend summary::before { content: 'ⓘ'; color: #9ca3af; margin-right: 5px; }
-  .scanner-legend summary::after { content: '＋'; float: right; color: #6b7280; font-weight: 400; }
-  .scanner-legend details[open] summary::after { content: '−'; }
-  .scanner-legend .legend-detail { margin-top: 5px; padding-top: 5px; border-top: 1px solid #1f2937; color: #9ca3af; }
+  /* Legenda do critério de leitura do GAP */
+  .scanner-legend { display: grid; gap: 5px; margin-top: 8px; padding: 9px 10px; background: rgba(3, 7, 18, .45); border: 1px solid #1f2937; border-radius: 8px; font-size: 10px; line-height: 1.35; color: #9ca3af; }
+  .scanner-legend strong { color: #d1d5db; }
   .scanner-legend .legend-positive { color: #f87171; font-weight: 600; }
   .scanner-legend .legend-negative { color: #34d399; font-weight: 600; }
   .scanner-legend .legend-neutral { color: #9ca3af; font-weight: 600; }
-
-  /* Feedback imediato ao abrir o detalhamento contextual. */
-  .context-loading { display: flex; align-items: center; gap: 7px; padding: 8px 9px; margin-bottom: 8px; background: rgba(3, 7, 18, .45); border: 1px solid #1f2937; border-radius: 7px; color: #9ca3af; font-size: 10px; }
-  .context-loading-dot { width: 7px; height: 7px; border: 2px solid #374151; border-top-color: #34d399; border-radius: 999px; animation: context-spin .8s linear infinite; flex: 0 0 auto; }
-  @keyframes context-spin { to { transform: rotate(360deg); } }
 
   /* Scanner: Data segue exatamente o mesmo limite horizontal do campo de baixo. */
   .schedule-controls {
@@ -267,39 +253,6 @@
   /* Status do servidor com contraste legível */
   .status { padding: 8px; background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; border-radius: 6px; margin-top: 8px; font-size: 11px; color: #34d399; font-weight: 500; }
 
-  /* Card de pendências: mantém o mesmo padrão dos demais boxes da auditoria.
-     Só fica verde enquanto o detalhe está aberto/selecionado. */
-  #audit-pending-card {
-    background: #111827;
-    border: 1px solid #1f2937;
-    color: inherit;
-    box-shadow: none;
-    outline: none;
-    height: 100%;
-    min-height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: flex-start;
-  }
-  #audit-pending-card:hover {
-    background: #111827;
-    border-color: #374151;
-  }
-  #audit-pending-card:focus {
-    background: #111827;
-    border-color: #1f2937;
-    box-shadow: none;
-    outline: none;
-  }
-  #audit-pending-card[aria-expanded="true"],
-  #audit-pending-card[aria-expanded="true"]:hover,
-  #audit-pending-card[aria-expanded="true"]:focus {
-    background: rgba(16, 185, 129, .13);
-    border-color: #10b981;
-    color: #34d399;
-  }
-
   /* Modais com proporção perfeita no celular */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.85); z-index: 1000; padding: 8px; overflow-y: auto; }
   .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
@@ -319,7 +272,7 @@
   .analysis-table th, .analysis-table td { padding: 6px 4px; border-bottom: 1px solid #1f2937; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
   .analysis-table th:first-child, .analysis-table td:first-child { width: 42%; color: #9ca3af; }
   .analysis-table th:not(:first-child), .analysis-table td:not(:first-child) { width: 29%; }
-  .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; position: static; top: auto; z-index: auto; }
+  .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; }
   .analysis-table td b { color: #f9fafb; font-variant-numeric: tabular-nums; }
   .analysis-note { margin-top: 6px; padding: 6px 7px; background: #0b1220; border-left: 2px solid #10b981; border-radius: 4px; font-size: 9px; line-height: 1.35; color: #9ca3af; }
   .availability-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 2px 5px; border-radius: 4px; font-size: 8px; font-weight: 700; line-height: 1.1; vertical-align: middle; }
@@ -327,31 +280,6 @@
   .availability-uncertain { color: #fcd34d; background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .25); }
   .availability-out { color: #fca5a5; background: rgba(239, 68, 68, .10); border: 1px solid rgba(239, 68, 68, .25); }
   .availability-unknown { color: #9ca3af; background: rgba(107, 114, 128, .10); border: 1px solid rgba(107, 114, 128, .22); }
-
-  /* Status de evidência da Auditoria: leitura imediata, sem sugerir validação antes do holdout. */
-  .evidence-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  /* Em telas estreitas, o terceiro status ocupa a linha inteira; em telas maiores,
-     os três status ficam lado a lado, sem uma célula vazia. */
-  .evidence-status-card:last-child { grid-column: 1 / -1; }
-  .evidence-status-card { min-width: 0; border: 1px solid #1f2937; background: #0b1220; border-radius: 8px; padding: 7px 8px; }
-  .evidence-status-card .evidence-status-label { display: flex; align-items: center; justify-content: space-between; gap: 5px; font-size: 8px; color: #9ca3af; text-transform: uppercase; font-weight: 700; }
-  .evidence-status-card .evidence-status-value { margin-top: 3px; font-size: 9px; font-weight: 800; letter-spacing: .03em; }
-  .evidence-status-card .evidence-status-detail { margin-top: 2px; font-size: 8px; line-height: 1.25; color: #6b7280; }
-  .evidence-badge { display: inline-flex; align-items: center; justify-content: center; padding: 2px 5px; border-radius: 4px; font-size: 7px; font-weight: 800; white-space: nowrap; }
-  .evidence-descriptive { color: #cbd5e1; background: rgba(100, 116, 139, .12); border: 1px solid rgba(100, 116, 139, .25); }
-  .evidence-exploratory { color: #fcd34d; background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .25); }
-  .evidence-collecting { color: #93c5fd; background: rgba(59, 130, 246, .10); border: 1px solid rgba(59, 130, 246, .25); }
-  .evidence-ready { color: #a7f3d0; background: rgba(16, 185, 129, .10); border: 1px solid rgba(16, 185, 129, .25); }
-  .evidence-validated { color: #6ee7b7; background: rgba(16, 185, 129, .16); border: 1px solid rgba(16, 185, 129, .35); }
-  @media (min-width: 640px) {
-    .evidence-status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .evidence-status-card:last-child { grid-column: auto; }
-    #audit-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    #context-validation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    #context-validation-grid > :last-child { grid-column: auto; }
-  }
-  #audit-kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #context-validation-grid > :last-child { grid-column: 1 / -1; }
 
   /* Diagnóstico de auditoria: nunca deixar JSON/IDs longos estourarem o viewport. */
   #collection-status { min-width: 0; max-width: 100%; overflow: hidden; }
@@ -370,24 +298,24 @@
 <!-- SaaS Top Header Proporcional -->
 <header class="glass-panel sticky top-0 z-50 border-b border-gray-800 rounded-none">
   <div class="max-w-7xl mx-auto px-3 h-12 flex items-center justify-between gap-2">
-    <div class="flex items-center space-x-2 min-w-0 shrink-0">
+    <div class="flex items-center space-x-2 min-w-0">
       <div class="h-7 w-7 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-bold text-gray-950 text-xs shrink-0 shadow">
         🏀
       </div>
-      <div class="shrink-0 whitespace-nowrap">
-        <span class="font-bold text-[11px] sm:text-sm tracking-tight text-white block whitespace-nowrap">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
+      <div class="truncate">
+        <span class="font-bold text-xs sm:text-sm tracking-tight text-white block truncate">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
       </div>
     </div>
 
     <!-- Navegação por Abas Compacta -->
-    <nav class="flex space-x-0.5 sm:space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
-      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="tab-button active px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
-        Pesquisa
+    <nav class="flex space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
+      <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="tab-button active px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+        Scanner
       </button>
-      <button id="tab-history-btn" onclick="switchTab('history')" class="tab-button px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+      <button id="tab-history-btn" onclick="switchTab('history')" class="tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Auditoria
       </button>
-      <button id="tab-context-btn" onclick="switchTab('context')" class="tab-button px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
+      <button id="tab-context-btn" onclick="switchTab('context')" class="tab-button px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Contexto NBA
       </button>
     </nav>
@@ -443,23 +371,12 @@
         </div>
       </div>
 
-      <div class="scanner-legend" aria-label="Como interpretar o Score e o contexto defensivo">
-        <details>
-          <summary>Como o Score é formado?</summary>
-          <div class="legend-detail">
-            <div><strong>L5 60% + L10 40% + ajuste de frequência</strong></div>
-            <div class="mt-1">A média L5 recebe peso de 60% e a média L10, 40%. Depois, aplica-se um fator de 0,80 a 1,00 conforme a proporção de jogos L5 em que o jogador atingiu ou superou a própria média L5. Isso mede frequência acima da média, não estabilidade ou dispersão.</div>
-            <div class="text-gray-500 mt-1">O Score é um indicador estatístico de prioridade, não uma recomendação ou garantia de resultado.</div>
-          </div>
-        </details>
-        <details>
-          <summary>Como interpretar o contexto defensivo?</summary>
-          <div class="legend-detail">
-            <div><strong>Comparação da média do jogador com o que a defesa costuma permitir à mesma posição.</strong></div>
-            <div class="mt-1 space-y-1"><div><span class="text-emerald-400">Acima</span> — média do jogador mais de 10% acima da referência defensiva.</div><div><span class="text-amber-300">Próximo</span> — diferença dentro de ±10%.</div><div><span class="text-red-400">Abaixo</span> — média do jogador mais de 10% abaixo da referência defensiva.</div></div>
-            <div class="text-gray-500 mt-1">A referência é a média da produção por aparição de jogadores da mesma posição nos jogos recentes do adversário, com peso igual por partida. É um contexto descritivo e não altera o Score.</div>
-          </div>
-        </details>
+      <div class="scanner-legend" aria-label="Contexto defensivo por posição">
+        <div><strong>Como interpretar o contexto defensivo:</strong></div>
+        <div><span class="text-emerald-400">Acima</span> — defesa permite mais de 10% que a média da liga para a posição.</div>
+        <div><span class="text-amber-300">Próximo</span> — defesa dentro de ±10% da média da liga.</div>
+        <div><span class="text-red-400">Abaixo</span> — defesa permite menos de 10% que a média da liga.</div>
+        <div>Referência geral: total cedido à posição por partida, sem corte mínimo de minutos. No modal, análise complementar de jogadores da mesma posição com minutagem ±5 min.</div>
       </div>
 
       <div id="resultado"></div>
@@ -470,6 +387,11 @@
 
   <!-- ==================== TAB 2: AUDITORIA INDEPENDENTE ==================== -->
   <section id="tab-history" class="space-y-3 hidden">
+
+    <div class="glass-panel p-3 border-l-4 border-l-emerald-500 space-y-1">
+      <h2 class="text-xs font-bold text-white uppercase tracking-wide">Auditoria independente</h2>
+      <p class="text-[10px] text-gray-400">Acompanhe a qualidade dos dados e das métricas usando somente os registros da auditoria independente, a partir de 16/11/2026. O histórico operacional anterior permanece preservado, mas não compõe estes indicadores.</p>
+    </div>
 
     <div class="glass-panel p-3 space-y-3">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -487,21 +409,21 @@
         <div>
           <label for="audit-mode-select" class="block text-[10px] font-semibold text-gray-300 mb-1">2. Visão da auditoria</label>
           <select id="audit-mode-select" onchange="setAuditMode(this.value)" class="bg-darkbg border border-gray-700 rounded-lg px-3 py-2 text-xs text-white w-full h-9">
-            <option value="all">Histórico acumulado</option>
             <option value="daily">Visão diária</option>
             <option value="range">Comparar períodos</option>
+            <option value="all">Histórico acumulado</option>
           </select>
-          <p id="audit-mode-description" class="text-[9px] text-gray-400 mt-1">Mostra o acumulado da coorte principal da auditoria independente a partir de 19/11/2026 até hoje. Os registros de 16, 17 e 18/11 permanecem preservados e disponíveis na visão diária, mas ficam fora deste acumulado. Snapshots pendentes continuam visíveis; resultados reais entram nas métricas de precisão quando a apuração é concluída.</p>
+          <p id="audit-mode-description" class="text-[9px] text-gray-400 mt-1">Analisa somente a data escolhida, sem somar outros dias.</p>
         </div>
       </div>
-      <div id="audit-daily-date" class="hidden audit-date-centered date-field">
+      <div id="audit-daily-date" class="audit-date-centered date-field">
         <label for="audit-selected-date" class="block text-[10px] font-semibold text-gray-300 mb-1">3. Data analisada</label>
-        <input id="audit-selected-date" type="date" value="2026-11-19" onchange="fetchHistoryValidation()">
+        <input id="audit-selected-date" type="date" value="2026-11-16" onchange="fetchHistoryValidation()">
       </div>
       <div id="audit-range-dates" class="hidden audit-range-centered">
         <label class="block text-[10px] font-semibold text-gray-300 mb-1">3. Intervalo da comparação</label>
         <div class="grid grid-cols-2 gap-2">
-          <div class="date-field"><label for="audit-date-from" class="block text-[9px] text-gray-500 mb-1">De</label><input id="audit-date-from" type="date" value="2026-11-19" onchange="fetchHistoryValidation()"></div>
+          <div class="date-field"><label for="audit-date-from" class="block text-[9px] text-gray-500 mb-1">De</label><input id="audit-date-from" type="date" value="2026-11-16" onchange="fetchHistoryValidation()"></div>
           <div class="date-field"><label for="audit-date-to" class="block text-[9px] text-gray-500 mb-1">Até</label><input id="audit-date-to" type="date" value="2026-11-17" onchange="fetchHistoryValidation()"></div>
         </div>
       </div>
@@ -513,17 +435,6 @@
         </div>
         <p id="audit-cohort-description" class="text-[9px] text-gray-400 mt-1">Dez candidatos mais bem classificados em cada data do período, neste mercado.</p>
       </div>
-      <div class="rounded-lg border border-gray-800 bg-gray-950/70 p-2.5 space-y-1.5">
-        <div class="flex items-center justify-between gap-2">
-          <div>
-            <div class="text-[10px] font-semibold text-white">Sincronização da Auditoria</div>
-            <div class="text-[9px] text-gray-500">Atualiza somente a data selecionada e apura suas pendências.</div>
-          </div>
-          <button type="button" id="audit-refresh-btn" onclick="atualizarAuditoriaHibrida()" class="market-button whitespace-nowrap inline-flex items-center justify-center gap-2"><span aria-hidden="true" class="text-xl leading-none font-normal">↻</span><span>Atualizar</span></button>
-        </div>
-        <div id="audit-refresh-status" class="text-[9px] text-gray-500" aria-live="polite">Pronto para sincronizar.</div>
-      </div>
-      </div>
     </div>
 
     <div class="glass-panel p-3 space-y-2">
@@ -532,51 +443,24 @@
         <span class="text-[9px] text-gray-500">Mercado e período selecionados</span>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <button type="button" onclick="toggleAuditMetricDetails('snapshots')" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-total-card">
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
           <span class="block text-[9px] text-gray-400">Snapshots capturados</span>
           <strong id="audit-total-count" class="block text-lg text-white">—</strong>
-          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver o período</span>
-        </button>
-        <button type="button" onclick="toggleAuditMetricDetails('completed')" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-completed-card">
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
           <span class="block text-[9px] text-gray-400">Com resultado real</span>
           <strong id="audit-completed-count" class="block text-lg text-emerald-400">—</strong>
-          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver o período</span>
-        </button>
-        <button type="button" onclick="toggleAuditMetricDetails('no_result')" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-noresult-card">
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
           <span class="block text-[9px] text-gray-400">Sem resultado (DNP)</span>
           <strong id="audit-noresult-count" class="block text-lg text-amber-300">—</strong>
-          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver o período</span>
-        </button>
-        <button type="button" onclick="toggleAuditPendingDetails()" class="audit-metric-card rounded-lg bg-gray-900 border border-gray-800 p-2 text-left transition-colors" aria-expanded="false" id="audit-pending-card">
+        </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
           <span class="block text-[9px] text-gray-400">Aguardando apuração</span>
           <strong id="audit-pending-count" class="block text-lg text-gray-200">—</strong>
-          <span class="block text-[8px] text-gray-500 mt-0.5">Toque para ver os motivos</span>
-        </button>
-      </div>
-      <div id="audit-metric-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
-      <p id="audit-completion-legend" class="text-[9px] text-gray-500">Apuração: <span class="text-gray-300">resolvido = —%</span> · resultado real ou DNP já conferido; <span class="text-gray-300">pendente</span> = ainda aguardando apuração. Essa informação mede o andamento da coleta, não a qualidade das projeções.</p>
-      <div id="audit-pending-details" class="hidden rounded-lg bg-gray-950/70 border border-gray-800 p-2"></div>
-    </div>
-
-    <div class="glass-panel p-2 border-l-4 border-l-emerald-500">
-      <details class="group">
-        <summary class="flex items-center justify-between gap-2 cursor-pointer list-none">
-          <span class="text-xs font-semibold text-white">ⓘ Como ler a auditoria</span>
-          <span class="text-[10px] text-gray-500 group-open:hidden">Clique para saber mais</span>
-          <span class="text-[10px] text-gray-500 hidden group-open:inline">Recolher</span>
-        </summary>
-        <div class="mt-2 pt-2 border-t border-gray-800 space-y-2 text-[10px] leading-relaxed text-gray-400">
-          <p class="font-semibold text-gray-200">Legenda dos indicadores de desempenho</p>
-          <div class="space-y-1.5">
-            <p><span class="font-semibold text-emerald-400">Erro L5 (MAE):</span> erro médio entre a projeção e o resultado real, usando os últimos 5 jogos. <span class="text-gray-300">Quanto menor, melhor; 0 é o ideal.</span></p>
-            <p><span class="font-semibold text-teal-400">Erro L10 (MAE):</span> mesma medida usando os últimos 10 jogos, dando uma referência mais ampla do desempenho. <span class="text-gray-300">Quanto menor, melhor; 0 é o ideal.</span></p>
-            <p><span class="font-semibold text-indigo-400">Pearson:</span> indica a força da relação linear entre a referência e o resultado real. <span class="text-gray-300">Quanto mais próximo de +1, melhor; perto de 0 indica pouca associação.</span></p>
-            <p><span class="font-semibold text-violet-400">Spearman:</span> indica o quanto a ordem das referências acompanha a ordem dos resultados reais. <span class="text-gray-300">Quanto mais próximo de +1, melhor; perto de 0 indica pouca associação de ordem.</span></p>
-            <p><span class="font-semibold text-emerald-300">MAE / média prevista L5:</span> mostra o erro L5 proporcional à média prevista. <span class="text-gray-300">Quanto menor, melhor; 0% significa erro médio nulo.</span></p>
-            <p><span class="font-semibold text-teal-300">MAE / média prevista L10:</span> mesma proporção usando a janela L10. <span class="text-gray-300">Quanto menor, melhor; 0% significa erro médio nulo.</span></p>
-          </div>
         </div>
-      </details>
+      </div>
+      <p id="audit-sample-explanation" class="text-[9px] text-gray-500">Aguardando os dados do mercado selecionado.</p>
     </div>
 
     <div id="audit-independent-content">
@@ -587,7 +471,7 @@
     </div>
 
     <!-- KPIs de precisão e cobertura -->
-    <div id="audit-kpi-grid">
+    <div class="grid grid-cols-2 gap-2">
       <div class="glass-panel p-2.5">
         <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro L5 (MAE)</span>
         <div class="text-base font-bold text-emerald-400 mt-0.5" id="kpi-l5-mae">--</div>
@@ -597,89 +481,32 @@
         <div class="text-base font-bold text-teal-400 mt-0.5" id="kpi-l10-mae">--</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">Pearson · associação</span>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Pearson</span>
         <div class="text-base font-bold text-indigo-400 mt-0.5" id="kpi-pearson">--</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">Spearman</span>
-        <div class="text-base font-bold text-violet-400 mt-0.5" id="kpi-spearman">--</div>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Apuração concluída</span>
+        <div class="text-base font-bold text-gray-200 mt-0.5" id="kpi-completion">--%</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">MAE / média prevista L5</span>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro relativo L5</span>
         <div class="text-base font-bold text-emerald-300 mt-0.5" id="kpi-l5-relative">--%</div>
       </div>
       <div class="glass-panel p-2.5">
-        <span class="text-[9px] font-medium text-gray-400 uppercase block">MAE / média prevista L10</span>
+        <span class="text-[9px] font-medium text-gray-400 uppercase block">Erro relativo L10</span>
         <div class="text-base font-bold text-teal-300 mt-0.5" id="kpi-l10-relative">--%</div>
       </div>
     </div>
-
-    <div class="glass-panel p-3 space-y-2">
-      <div class="flex items-center justify-between gap-2">
-        <h3 class="text-xs font-semibold text-white">📌 Status da evidência</h3>
-        <span class="text-[9px] text-gray-500">Leitura rápida</span>
-      </div>
-      <div class="evidence-status-grid">
-        <div class="evidence-status-card">
-          <div class="evidence-status-label"><span>Precisão L5/L10</span><span id="evidence-status-accuracy-badge" class="evidence-badge evidence-descriptive">DESCRITIVO</span></div>
-          <div id="evidence-status-accuracy" class="evidence-status-value text-gray-200">Desempenho observado</div>
-          <div id="evidence-status-accuracy-detail" class="evidence-status-detail">MAE e viés no histórico disponível.</div>
-        </div>
-        <div class="evidence-status-card">
-          <div class="evidence-status-label"><span>Modelos</span><span id="evidence-status-model-badge" class="evidence-badge evidence-collecting">COLETA</span></div>
-          <div id="evidence-status-model" class="evidence-status-value text-blue-200">Aguardando holdout</div>
-          <div id="evidence-status-model-detail" class="evidence-status-detail">Comparação temporal exige 14 datas compartilhadas.</div>
-        </div>
-        <div class="evidence-status-card">
-          <div class="evidence-status-label"><span>Contextos pré-jogo</span><span id="evidence-status-context-badge" class="evidence-badge evidence-exploratory">EXPLORATÓRIO</span></div>
-          <div id="evidence-status-context" class="evidence-status-value text-amber-200">Sem validação temporal</div>
-          <div id="evidence-status-context-detail" class="evidence-status-detail">Defesa, minutos e jogo equivalente não alteram o Score.</div>
-        </div>
-        
-      </div>
-      <p id="evidence-status-note" class="text-[9px] text-gray-500 border-t border-gray-800 pt-2">Nenhum bloco é marcado como validado apenas por ter amostra histórica. Validação exige comparação temporal fora da amostra.</p>
-    </div>
-
-
-
-
-
-    <div class="space-y-3">
-    <!-- Comparação de referências estatísticas na mesma amostra -->
-    <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">⚖️ Comparação de referências pré-jogo</h3>
-      <p class="text-[10px] text-gray-400">A primeira tabela usa todos os registros com L5/L10 disponíveis, inclusive janelas parciais. A segunda restringe a comparação a L5 5/5 e L10 10/10. O Score é índice de triagem; seu MAE é apenas diagnóstico numérico, não uma projeção. A fórmula original permanece inalterada.</p>
-      <div class="tablewrap">
-        <table>
-          <thead><tr><th>Referência</th><th>Amostra</th><th>MAE</th><th>Viés</th></tr></thead>
-          <tbody id="model-comparison-table" class="text-gray-300">
-            <tr><td colspan="4" class="text-gray-400">Comparação será carregada com os dados da auditoria.</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p id="model-comparison-note" class="text-[9px] text-gray-500">Amostras disponíveis: podem incluir janelas parciais. Viés = média da referência menos média real; negativo indica subestimação.</p>
-      <div class="pt-2 border-t border-gray-800 space-y-2">
-        <h4 class="text-[10px] font-semibold text-white">Janelas completas · L5 5/5 + L10 10/10</h4>
-        <div class="tablewrap">
-          <table>
-            <thead><tr><th>Referência</th><th>Amostra</th><th>MAE</th><th>Viés</th></tr></thead>
-            <tbody id="model-comparison-full-table" class="text-gray-300">
-              <tr><td colspan="4" class="text-gray-400">Aguardando dados de janelas completas.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p id="model-comparison-full-note" class="text-[9px] text-gray-500">O holdout temporal será calculado somente com janelas completas e exige pelo menos 14 datas distintas.</p>
-      </div>
-    </div>
+    <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro médio absoluto em unidades da estatística; menor é melhor. Erro relativo = MAE dividido pela média prevista. Pearson mede a associação linear entre Score e resultado real (de -1 a +1), não uma taxa de acerto.</p>
 
     <!-- Tabela de Calibração e qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">📊 Desempenho observado por faixa de Score</h3>
+      <h3 class="text-xs font-semibold text-white">📊 Calibração por faixa de Score</h3>
       <div class="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Faixa relativa ao mercado</th>
+              <th>Faixa score</th>
               <th>Amostra</th>
               <th>Score médio</th>
               <th>Média real</th>
@@ -694,7 +521,6 @@
           </tbody>
         </table>
       </div>
-      <p id="score-band-distribution-note" class="text-[9px] text-gray-500">As faixas são quintis da distribuição observada do Score neste mercado e neste recorte. “Muito alto” = parte superior da distribuição; “Muito baixo” = parte inferior. Isso não representa probabilidade, confiança calibrada ou mudança na fórmula do Score.</p>
     </div>
 
 
@@ -713,7 +539,7 @@
           </select>
         </div>
         <div>
-          <label for="gap-score-band-select" class="block text-[10px] text-gray-400 mb-1">Faixa absoluta do Score (Gap)</label>
+          <label for="gap-score-band-select" class="block text-[10px] text-gray-400 mb-1">Faixa de Score</label>
           <select id="gap-score-band-select" onchange="fetchGapValidation(document.getElementById('hist-market').value)" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
             <option value="all" selected>Todas</option>
             <option value="7+">7+</option>
@@ -726,59 +552,34 @@
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Perfil defensivo</th><th>Registros</th><th>Total cedido/jogo</th><th>Média da liga</th><th>Média real jogador</th><th>Δ vs média pessoal</th></tr></thead>
+          <thead><tr><th>Perfil defensivo</th><th>Registros</th><th>Total cedido/jogo</th><th>Média da liga</th><th>Média real jogador</th></tr></thead>
           <tbody id="gap-summary-table" class="text-gray-300">
-            <tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>
+            <tr><td colspan="5" class="text-gray-400">Carregando auditoria defensiva...</td></tr>
           </tbody>
         </table>
       </div>
       <p id="gap-audit-note" class="text-[10px] text-gray-400">Aguardando dados concluídos...</p>
-      <p class="text-[9px] text-gray-500">No Gap, as faixas abaixo continuam absolutas (7+, 6–6,99 etc.) porque esta classificação é uma regra contextual separada. Margem de classificação: ±10% da média da liga para a mesma posição. Δ vs média pessoal = resultado real menos a média pré-jogo L5/L10 do próprio jogador; valor positivo indica produção acima do histórico recente, negativo indica abaixo. É uma comparação descritiva, não uma previsão. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
-    </div>
-
-      </div>
-
-    <!-- Validação dos contextos pré-jogo capturados no snapshot -->
-    <div class="glass-panel p-3 space-y-3">
-      <div>
-        <h3 class="text-xs font-semibold text-white">🔬 Validação dos contextos pré-jogo</h3>
-        <p class="text-[10px] text-gray-400 mt-1">Compara referências contextuais capturadas antes da partida com o resultado real. <strong class="text-gray-300">É exploratório, não causal e não altera o Score.</strong> “Validado” só será usado após teste temporal fora da amostra.</p>
-      </div>
-      <div id="context-validation-grid" class="grid grid-cols-2 gap-2">
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Defesa filtrada por minutos</span>
-          <strong id="context-validation-filtered" class="text-sm text-white">—</strong>
-          <span id="context-validation-filtered-sample" class="block text-[9px] text-gray-500">Aguardando...</span>
-        </div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Faixa de minutos</span>
-          <strong id="context-validation-minute-band" class="text-sm text-white">—</strong>
-          <span id="context-validation-minute-band-sample" class="block text-[9px] text-gray-500">Aguardando...</span>
-        </div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Jogo equivalente</span>
-          <strong id="context-validation-equal-game" class="text-sm text-white">—</strong>
-          <span id="context-validation-equal-game-sample" class="block text-[9px] text-gray-500">Aguardando...</span>
-        </div>
-        
-      </div>
-      <p id="context-validation-note" class="text-[9px] text-gray-500">Aguardando dados históricos suficientes.</p>
+      <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da média da liga para a mesma posição. A média real é a produção individual dos jogadores agrupados pelo perfil defensivo enfrentado; não representa taxa de acerto de apostas nem rentabilidade. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
     </div>
 
     <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
-    <div class="glass-panel p-3 space-y-2 hidden">
+    <div class="glass-panel p-3 space-y-2">
       <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
-      <p class="text-[10px] text-gray-400">Selecione uma faixa relativa ao próprio mercado para comparar registros concluídos com até três referências de outros jogadores da mesma posição, usando apenas datas anteriores ao registro analisado. As faixas seguem os quintis da distribuição observada. É uma análise exploratória, não uma previsão.</p>
+      <p class="text-[10px] text-gray-400">Selecione uma faixa de score para comparar seus registros concluídos com até três registros de outros jogadores da mesma posição e com L5, L10 e minutos médios mais próximos.</p>
       <div class="flex flex-wrap items-center gap-2">
         <label for="similarity-band-select" class="text-[10px] text-gray-400">Faixa analisada</label>
         <select id="similarity-band-select" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white">
-          <option value="" selected>Aguardando dados...</option>
+          <option value="7+" selected>7+</option>
+          <option value="6-6.99">6–6,99</option>
+          <option value="5-5.99">5–5,99</option>
+          <option value="4-4.99">4–4,99</option>
+          <option value="<4">Abaixo de 4</option>
         </select>
         <span id="similar-sample-status" class="text-[9px] text-gray-400">Amostra reduzida</span>
       </div>
       <div class="grid grid-cols-2 gap-2 text-center">
         <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span id="similar-target-label" class="block text-[9px] text-gray-400 uppercase">Faixa relativa · média real</span>
+          <span id="similar-target-label" class="block text-[9px] text-gray-400 uppercase">Faixa 6–6,99 · média real</span>
           <strong id="similar-target-average" class="text-lg text-emerald-400">—</strong>
           <span id="similar-target-count" class="block text-[9px] text-gray-500">0 registros · 0 jogadores</span>
         </div>
@@ -809,23 +610,23 @@
       <p class="text-[9px] text-gray-500">A similaridade considera L5, L10 e minutos padronizados; pares distantes são descartados. O volume considera registros e jogadores distintos, não é um teste de significância. A análise não altera o score nem a classificação.</p>
     </div>
 
-    <!-- Avaliação do ranking por posição diária -->
+    <!-- Comparação direta da qualidade do ranking -->
     <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">🎯 Top 10 versus demais candidatos</h3>
+      <h3 class="text-xs font-semibold text-white">🎯 Comparação entre faixas de Score</h3>
       <div class="grid grid-cols-2 gap-2 text-center">
         <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Média real · Top 10</span>
-          <strong id="ranking-top10-average" class="text-lg text-emerald-400">—</strong>
-          <span id="ranking-top10-count" class="block text-[9px] text-gray-500">0 registros</span>
+          <span class="block text-[9px] text-gray-400 uppercase">Média real · Score 7+</span>
+          <strong id="ranking-high-average" class="text-lg text-emerald-400">—</strong>
+          <span id="ranking-high-count" class="block text-[9px] text-gray-500">0 registros</span>
         </div>
         <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Média real · Demais</span>
-          <strong id="ranking-rest-average" class="text-lg text-gray-200">—</strong>
-          <span id="ranking-rest-count" class="block text-[9px] text-gray-500">0 registros</span>
+          <span class="block text-[9px] text-gray-400 uppercase">Média real · Score abaixo de 4</span>
+          <strong id="ranking-low-average" class="text-lg text-gray-200">—</strong>
+          <span id="ranking-low-count" class="block text-[9px] text-gray-500">0 registros</span>
         </div>
       </div>
-      <p id="ranking-separation" class="text-[10px] text-gray-400">Diferença ajustada: —</p>
-      <p class="text-[9px] text-gray-500">Δ ajustada = resultado real menos média pré-jogo L10 completa (10/10). Exige ao menos 30 registros com L10 completo, 15 jogadores distintos em cada grupo e 14 datas com ambos os grupos para validação temporal; é análise descritiva, não taxa de acerto.</p>
+      <p id="ranking-separation" class="text-[10px] text-gray-400">Diferença entre as faixas: —</p>
+      <p class="text-[9px] text-gray-500">A comparação mostra separação estatística observada, não taxa de acerto de apostas.</p>
     </div>
 
     <!-- Comparação diária do intervalo -->
@@ -865,11 +666,9 @@
 
     <div class="glass-panel p-3 space-y-3">
       <div class="context-secondary-grid">
-        <div class="filter-group">
-          <label>Referência</label>
-          <div class="h-9 flex items-center rounded-md border border-gray-700 bg-gray-950 px-2 text-[11px] text-emerald-300">
-            Hoje · São Paulo
-          </div>
+        <div class="filter-group date-field">
+          <label for="context-date">Data de referência</label>
+          <input type="date" id="context-date">
         </div>
         <div class="filter-group">
           <label for="context-venue">Local</label>
@@ -906,12 +705,11 @@
           </select>
         </div>
       </div>
-      <p class="text-[9px] text-gray-500">L5/L10 considera os últimos 5/10 jogos totais da equipe. Ao filtrar Casa/Fora, entram somente as partidas daquele mando dentro dessa janela; a coluna Jogos mostra a amostra efetivamente disponível para cada posição e estatística.</p>
       <div class="flex flex-col sm:flex-row gap-2">
         <button type="button" onclick="carregarRankingContexto()" class="market-button flex-1">Consultar ranking</button>
         <button type="button" onclick="atualizarBaseContexto()" id="context-refresh-btn" class="secondary flex-1">Atualizar base contextual</button>
       </div>
-      <p class="text-[9px] text-gray-500">A base contextual usa automaticamente a data de hoje em São Paulo. Ao abrir esta área, se o snapshot de hoje ainda não existir, a atualização é iniciada automaticamente. Depois, o ranking lê o snapshot salvo no Neon.</p>
+      <p class="text-[9px] text-gray-500">A atualização consulta a ESPN para as 30 equipes e pode demorar na primeira execução. Depois, as consultas desta data usam o banco Neon e não repetem a coleta. Atualizar novamente substitui somente o snapshot contextual da mesma data.</p>
       <div id="context-status" class="text-[10px] text-gray-400" aria-live="polite">Selecione os filtros e consulte o ranking. Se ainda não houver dados, atualize a base contextual.</div>
     </div>
 
@@ -982,9 +780,11 @@ data.value = todayLocal;
 const auditSelectedDate = document.getElementById('audit-selected-date');
 const auditDateFrom = document.getElementById('audit-date-from');
 const auditDateTo = document.getElementById('audit-date-to');
+const contextDate = document.getElementById('context-date');
 if (auditSelectedDate) auditSelectedDate.value = todayLocal;
-if (auditDateFrom) auditDateFrom.value = '2026-11-19';
+if (auditDateFrom) auditDateFrom.value = '2026-11-16';
 if (auditDateTo) auditDateTo.value = todayLocal;
+if (contextDate) contextDate.value = todayLocal;
 
 let candidatosAtuais = [];
 let mercadoAtual = '';
@@ -994,19 +794,15 @@ let historyValidationRequestId = 0;
 let gapValidationRequestId = 0;
 let gapAuditData = null;
 let auditCohort = 'all';
-let auditMode = 'all';
-let auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
-let contextValidationRequestId = 0;
-let contextValidationData = null;
-let teammateValidationData = null;
+let auditMode = 'daily';
 
 function setAuditMode(mode) {
   if (!['daily', 'range', 'all'].includes(mode)) return;
   auditMode = mode;
   const descriptions = {
-    daily: 'Mostra somente os registros do mercado e da data escolhidos. Métricas que dependem de vários jogos, comparações entre cenários ou datas distintas podem aparecer como “—” ou amostra insuficiente. Isso não significa, por si só, falha na coleta.',
-    range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária. Ainda assim, métricas contextuais e temporais podem exigir mais jogos, comparações válidas ou datas distintas do que o intervalo oferece.',
-    all: 'Mostra o acumulado da coorte principal da auditoria independente a partir de 19/11/2026 até hoje. Os registros de 16, 17 e 18/11 permanecem preservados e disponíveis na visão diária, mas ficam fora deste acumulado. Snapshots pendentes continuam visíveis; resultados reais entram nas métricas de precisão quando a apuração é concluída.'
+    daily: 'Mostra somente os registros do mercado e da data escolhidos. Nenhum outro dia é somado.',
+    range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária dentro desse intervalo.',
+    all: 'Mostra o acumulado da auditoria independente desde 16/11 até hoje. Soma os snapshots já capturados em cada data, mesmo quando ainda estão pendentes; resultados reais entram assim que a apuração é concluída. Não inclui o histórico antigo.'
   };
   const modeSelect = document.getElementById('audit-mode-select');
   if (modeSelect) modeSelect.value = mode;
@@ -1211,9 +1007,8 @@ async function carregarJogos(){
         ? '<span class="game-team-logo-box" style="--team-color:' + color + '"><img src="' + rawLogo +
           '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentElement.remove()"></span>'
         : '';
-      return '<div class="game-team-identity">' +
-        '<span class="game-team-abbr" style="--team-color:' + color + '">' + abbr + '</span>' +
-        logoBox + '</div>';
+      return '<div class="game-team-identity">' + logoBox +
+        '<span class="game-team-abbr" style="--team-color:' + color + '">' + abbr + '</span></div>';
     };
     const renderTeamForm = team => {
       const results = Array.isArray(team?.last5) ? team.last5 : [];
@@ -1427,13 +1222,13 @@ function renderizarResultados(){
     html += '<td>' + escapeHtml(p.team || '—') + '</td>';
     html += '<td>' + escapeHtml(p.position || '—') + '</td>';
     html += '<td>' + escapeHtml(p.opponent || '—') + '</td>';
-    html += '<td><div>' + numero(p.last5_avg) + '</div><div class="text-[9px] text-gray-500">' + (p.games_last5 ?? '—') + '/5 jogos</div></td>';
-    html += '<td><div>' + numero(p.last10_avg) + '</div><div class="text-[9px] text-gray-500">' + (p.games_last10 ?? '—') + '/10 jogos</div></td>';
+    html += '<td>' + numero(p.last5_avg) + '</td>';
+    html += '<td>' + numero(p.last10_avg) + '</td>';
     html += '<td>' + numero(p.minutes_last5_avg, 1) + '</td>';
     html += celulaParticipacaoEquipe(p);
     html += '<td class="metric">' + numero(p.triage_score) + '</td>';
     html += '<td class="new-metric"><div class="split-metric">' + blocoPeriodo(proj5, 'L5') + blocoPeriodo(proj10, 'L10') + '</div></td>';
-    html += celulaDiferenca(p.opponent_position_allowed_l5_avg, p.league_position_allowed_l5_avg, p.opponent_position_allowed_l10_avg, p.league_position_allowed_l10_avg);
+    html += celulaDiferenca(proj5, p.league_position_allowed_l5_avg, proj10, p.league_position_allowed_l10_avg);
     html += '<td><button class="analisar" onclick="abrirAnalise(' + candidatosAtuais.indexOf(p) + ')">Analisar</button></td>';
     html += '</tr>';
   });
@@ -1511,7 +1306,7 @@ function abrirAnalise(indice){
     '<tr><td>Verificado</td><td colspan="2">' + escapeHtml(availabilityVerifiedAt) + '</td></tr></table>' +
     '<div class="analysis-note">A disponibilidade representa a fotografia consultada no momento da análise. O status pode mudar posteriormente.</div></div>';
 
-  html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b><div class="text-[9px] text-gray-500">' + (p.games_last5 ?? '—') + '/5 jogos</div></td><td><b>' + numero(p.last10_avg) + '</b><div class="text-[9px] text-gray-500">' + (p.games_last10 ?? '—') + '/10 jogos</div></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
+  html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table></div>';
 
   html += '<div class="analysis-card"><h3>🏠 Produção por local</h3><table class="analysis-table"><tr><th></th><th>Casa</th><th>Fora</th></tr><tr><td>Temporada</td><td><b>' + venueAverage('home', 'season') + '</b></td><td><b>' + venueAverage('away', 'season') + '</b></td></tr><tr><td>Jogos · temporada</td><td>' + participacoes(venueGames('home', 'season')) + '</td><td>' + participacoes(venueGames('away', 'season')) + '</td></tr><tr><td>Últimos 10 por local</td><td><b>' + venueAverage('home', 'last10') + '</b></td><td><b>' + venueAverage('away', 'last10') + '</b></td></tr><tr><td>Jogos · recorte</td><td>' + participacoes(venueGames('home', 'last10')) + '</td><td>' + participacoes(venueGames('away', 'last10')) + '</td></tr><tr><td>Minutos · últimos 10</td><td>' + venueMinutes('home', 'last10') + '</td><td>' + venueMinutes('away', 'last10') + '</td></tr></table><div class="analysis-note">L10 calculado separadamente para jogos em casa e fora. Partidas sem mando identificado pela ESPN não entram nesta comparação. Não altera o Score.</div></div>';
   html += '<div class="analysis-card"><h3>🏟️ Participação</h3><table class="analysis-table"><tr><th>Período</th><th>Jogos</th><th>Taxa</th></tr><tr><td>L5</td><td><b>' + participacoes(p.team_games_last5_played) + '/' + participacoes(p.team_games_last5_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</b></td></tr><tr><td>L10</td><td><b>' + participacoes(p.team_games_last10_played) + '/' + participacoes(p.team_games_last10_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</b></td></tr></table></div>';
@@ -1519,86 +1314,10 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Total cedido por jogo</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Média da liga</td><td><b>' + numero(league5) + '</b></td><td><b>' + numero(league10) + '</b></td></tr><tr><td>Desvio vs liga</td><td><b>' + (deviation5 == null ? '—' : (deviation5 > 0 ? '+' : '') + deviation5.toFixed(1) + '%') + '</b></td><td><b>' + (deviation10 == null ? '—' : (deviation10 > 0 ? '+' : '') + deviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Classificação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos da defesa</td><td>' + participacoes(p.opponent_position_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_defense_games_l10) + '</td></tr><tr><td>Jogos da liga</td><td>' + participacoes(p.league_position_allowed_l5_games) + '</td><td>' + participacoes(p.league_position_allowed_l10_games) + '</td></tr></table><div class="analysis-note">Total cedido à posição por jogo, comparado à média da liga. Classificação: diferença acima de +10%, abaixo de -10% ou dentro de ±10%.</div></div>';
 
   html += '<div class="analysis-card"><h3>🎯 Minutagem semelhante · ±5 min</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Faixa</td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td></tr><tr><td>Defesa · média/jogador</td><td><b>' + numero(bandDefense5) + '</b></td><td><b>' + numero(bandDefense10) + '</b></td></tr><tr><td>Liga · média/jogador</td><td><b>' + numero(bandLeague5) + '</b></td><td><b>' + numero(bandLeague10) + '</b></td></tr><tr><td>Diferença vs liga</td><td><b>' + (bandDeviation5 == null ? '—' : (bandDeviation5 > 0 ? '+' : '') + bandDeviation5.toFixed(1) + '%') + '</b></td><td><b>' + (bandDeviation10 == null ? '—' : (bandDeviation10 > 0 ? '+' : '') + bandDeviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Amostra da defesa</td><td>' + participacoes(p.opponent_position_minute_band_defense_l5_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l5_games) + ' jg</td><td>' + participacoes(p.opponent_position_minute_band_defense_l10_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l10_games) + ' jg</td></tr><tr><td>Amostra liga</td><td>' + participacoes(p.league_position_minute_band_l5_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l5_games) + ' jg</td><td>' + participacoes(p.league_position_minute_band_l10_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l10_games) + ' jg</td></tr></table><div class="analysis-note">Média individual de atletas da posição na faixa de minutos indicada. Comparação contextual; não altera o Score.</div></div>';
-  const filteredAvg5 = p.opponent_position_minutes_filtered_defense_l5_avg;
-  const filteredAvg10 = p.opponent_position_minutes_filtered_defense_l10_avg;
-  const filteredProjected5 = p.opponent_position_minutes_filtered_defense_l5_projected;
-  const filteredProjected10 = p.opponent_position_minutes_filtered_defense_l10_projected;
-  const equalGame5 = p.opponent_position_equal_game_defense_l5_avg;
-  const equalGame10 = p.opponent_position_equal_game_defense_l10_avg;
-  const showContextValue = value => value == null ? '—' : numero(value, 2);
-  const showSignedValue = value => value == null ? '—' : (value > 0 ? '+' : '') + numero(value, 2);
-
-  let complementaryHtml = '<details class="analysis-card" style="grid-column:1/-1">' +
-    '<summary class="cursor-pointer font-semibold">🔎 Análises complementares · minutagem e companheiros</summary>' +
-    '<div class="mt-3 space-y-3">' +
-    '<div><h4 class="text-[10px] font-bold text-white mb-1">Minutagem filtrada</h4>' +
-    '<table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr>' +
-    '<tr><td>Defesa · média/jogador</td><td>' + showContextValue(filteredAvg5) + '</td><td>' + showContextValue(filteredAvg10) + '</td></tr>' +
-    '<tr><td>Projeção na minutagem do candidato</td><td>' + showContextValue(filteredProjected5) + '</td><td>' + showContextValue(filteredProjected10) + '</td></tr>' +
-    '<tr><td>Amostra · jogos</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_games_l10) + '</td></tr>' +
-    '<tr><td>Amostra · aparições</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_player_games_l5) + '</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_player_games_l10) + '</td></tr>' +
-    '<tr><td>Minutos somados</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_minutes_l5) + '</td><td>' + participacoes(p.opponent_position_minutes_filtered_defense_minutes_l10) + '</td></tr></table>' +
-    '<div class="analysis-note">Inclui jogadores da mesma posição que atuaram em minutos iguais ou superiores à média L5 do candidato. A projeção usa a taxa por minuto desse grupo multiplicada pelos minutos do candidato; não é uma projeção individual calibrada.</div></div>' +
-    '<div><h4 class="text-[10px] font-bold text-white mb-1">Referência por jogo equivalente</h4>' +
-    '<table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr>' +
-    '<tr><td>Média por jogador/aparição</td><td>' + showContextValue(equalGame5) + '</td><td>' + showContextValue(equalGame10) + '</td></tr>' +
-    '<tr><td>Jogos analisados</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_games) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_games) + '</td></tr>' +
-    '<tr><td>Aparições</td><td>' + participacoes(p.opponent_position_equal_game_defense_l5_appearances) + '</td><td>' + participacoes(p.opponent_position_equal_game_defense_l10_appearances) + '</td></tr></table>' +
-    '<div class="analysis-note">Calcula a média individual dentro de cada partida e depois dá o mesmo peso a cada jogo. Reduz o efeito de partidas com mais jogadores da posição; continua sendo contexto descritivo.</div></div>';
-
-  const teammateContext = p.teammate_context || {};
-  const teammateStatKey = {
-    points: 'points', assists: 'assists', rebounds: 'rebounds',
-    threes: 'three_pa', two_pa: 'two_pa', fgm: 'fgm'
-  }[mercadoAtual];
-  const teammateShortlist = Array.isArray(teammateContext.shortlist) ? teammateContext.shortlist : [];
-  complementaryHtml += '<div><h4 class="text-[10px] font-bold text-white mb-1">Splits de companheiros · últimos 10 jogos da equipe</h4>';
-  if (!teammateStatKey) {
-    complementaryHtml += '<div class="analysis-note">Split não disponível para este mercado.</div>';
-  } else if (!teammateShortlist.length) {
-    complementaryHtml += '<div class="analysis-note">Nenhum companheiro atingiu os critérios mínimos da lista automática.</div>';
-  } else {
-    complementaryHtml += '<div class="space-y-2">';
-    teammateShortlist.forEach(teammate => {
-      const split = teammateContext.comparisons?.[String(teammate.player_id)]?.[teammateStatKey] || {};
-      const withTeammate = split.with_teammate || {};
-      const withoutTeammate = split.confirmed_absent || {};
-      const enoughSample = Number(withTeammate.games || 0) >= 3 && Number(withoutTeammate.games || 0) >= 3;
-      complementaryHtml += '<div class="rounded-lg border border-gray-800 bg-gray-900 p-2">' +
-        '<div class="flex items-center justify-between gap-2"><b class="text-[10px] text-white">' + escapeHtml(teammate.player || 'Companheiro') + '</b>' +
-        '<span class="text-[9px] text-gray-500">' + participacoes(teammate.games_in_window) + '/' + participacoes(teammate.window_games) + ' jogos · ' + numero(teammate.average_minutes, 1) + ' min</span></div>' +
-        '<table class="analysis-table"><tr><th></th><th>Com ele</th><th>Sem ele</th></tr>' +
-        '<tr><td>Média do candidato</td><td>' + showContextValue(withTeammate.average) + '</td><td>' + showContextValue(withoutTeammate.average) + '</td></tr>' +
-        '<tr><td>Jogos</td><td>' + participacoes(withTeammate.games) + '</td><td>' + participacoes(withoutTeammate.games) + '</td></tr>' +
-        '<tr><td>Minutos médios</td><td>' + showContextValue(withTeammate.minutes_average) + '</td><td>' + showContextValue(withoutTeammate.minutes_average) + '</td></tr></table>' +
-        '<div class="flex items-center justify-between gap-2 text-[9px] mt-1"><span class="text-gray-500">Diferença sem − com</span><b class="' + (enoughSample ? 'text-white' : 'text-amber-300') + '">' + showSignedValue(split.difference_absent_minus_played) + ' · ' + (enoughSample ? 'amostra exploratória' : 'amostra reduzida') + '</b></div>' +
-        '<div class="text-[9px] text-gray-600">Jogos com status desconhecido excluídos: ' + participacoes(split.unknown_games_excluded) + '</div></div>';
-    });
-    complementaryHtml += '</div>';
-  }
-  complementaryHtml += '<div class="analysis-note">A lista automática seleciona até 3 companheiros por presença, minutos e envolvimento ofensivo, exigindo pelo menos 5 aparições e média de 20+ minutos na janela. “Sem ele” só inclui ausência confirmada por minutos zerados ou status explícito de DNP; casos desconhecidos são excluídos. Diferença observacional, não causal. Score não é alterado.</div></div></div>';
-  html += complementaryHtml;
-
   html += '</div>';
 
-  const modalBody = document.getElementById('modalBody');
-  modalBody.innerHTML = html;
-
-  // Cada nova análise deve começar no topo, sem herdar a posição
-  // de rolagem da análise do jogador anterior. O elemento rolável externo
-  // é o overlay; o modal em si usa overflow hidden.
-  const modalOverlay = document.getElementById('analysisModal');
-  modalBody.scrollTop = 0;
-  modalOverlay.scrollTop = 0;
-
+  document.getElementById('modalBody').innerHTML = html;
   modal.classList.add('active');
-
-  // Garante o reset também após a abertura, quando o navegador recalcula
-  // o layout e a altura do conteúdo do modal.
-  requestAnimationFrame(() => {
-    modalBody.scrollTop = 0;
-    modalOverlay.scrollTop = 0;
-  });
   document.body.style.overflow = 'hidden';
 }
 
@@ -1701,7 +1420,7 @@ async function buscar(mercado){
     let html = '<div class="space-y-2 mt-2">';
     html += '<div class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">' + escapeHtml(r.market_label) + ' — ' + escapeHtml(r.date) + '</div>';
     html += renderizarResumoSelecao(r.selection_summary);
-    html += '<div class="glass-panel p-2.5 space-y-2">' + filtrosHtml() + '</div>';
+    html += '<div class="glass-panel p-2.5">' + filtrosHtml() + '</div>';
     html += '<div id="resultadosLista"></div>';
     html += '</div>';
 
@@ -1741,17 +1460,12 @@ async function carregarStatusColetaAuditoria(selectedDate) {
       const audit = data.audit || { snapshots_total: 0, completed_results: 0, no_results: 0, pending_results: 0 };
       const operational = data.operational || { snapshots_total: 0, completed_results: 0, no_results: 0, pending_results: 0 };
 
-      const pendingReasons = (audit.pending_reasons || []).map(item =>
-        escapeHtml(item.reason) + ' (' + item.count + ')'
-      ).join(' · ');
-
       return '<div class="space-y-0.5">' +
         '<div class="font-medium text-gray-300">' + label + '</div>' +
         '<div class="pl-2 text-[9px] text-gray-500">' +
         'Auditoria: ' + audit.completed_results + ' resultados · ' + audit.no_results + ' sem resultado · ' + audit.pending_results + ' pendentes' +
         ' &nbsp;|&nbsp; Operacional: ' + operational.completed_results + ' resultados · ' + operational.pending_results + ' pendentes' +
         '</div>' +
-        (pendingReasons ? '<div class="pl-2 text-[9px] text-amber-300">Motivo das pendências: ' + pendingReasons + '</div>' : '') +
         '</div>';
     }).join('');
 
@@ -1882,17 +1596,17 @@ async function fetchMarketComparison() {
 }
 
 function limparIndicadoresAuditoria() {
-  // A faixa exploratória passa a acompanhar as faixas relativas do mercado.
+  // Ao trocar o mercado, reinicia a faixa exploratória no padrão 7+.
   const similarityBandSelect = document.getElementById('similarity-band-select');
-  if (similarityBandSelect) similarityBandSelect.innerHTML = '<option value="">Aguardando dados...</option>';
+  if (similarityBandSelect) similarityBandSelect.value = '7+';
 
   [
-    'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson', 'kpi-spearman',
-    'kpi-l5-relative', 'kpi-l10-relative',
+    'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson',
+    'kpi-completion', 'kpi-l5-relative', 'kpi-l10-relative',
     'audit-total-count', 'audit-completed-count', 'audit-noresult-count', 'audit-pending-count',
-    'audit-completion-legend',
-    'ranking-top10-average', 'ranking-top10-count',
-    'ranking-rest-average', 'ranking-rest-count',
+    'audit-sample-explanation', 'audit-metric-sample-note',
+    'ranking-high-average', 'ranking-high-count',
+    'ranking-low-average', 'ranking-low-count',
     'similar-target-average', 'similar-target-count',
     'similar-peer-average', 'similar-peer-count',
     'similar-sample-status', 'similar-difference', 'ranking-separation',
@@ -1902,49 +1616,7 @@ function limparIndicadoresAuditoria() {
     if (element) element.innerText = '—';
   });
 
-  ['model-comparison-table', 'model-comparison-full-table'].forEach(id => {
-    const table = document.getElementById(id);
-    if (table) table.innerHTML = '<tr><td colspan="4" class="text-gray-400">Aguardando dados da auditoria...</td></tr>';
-  });
-  const comparisonNote = document.getElementById('model-comparison-note');
-  if (comparisonNote) comparisonNote.innerText = 'Aguardando dados do mercado selecionado.';
-  const fullComparisonNote = document.getElementById('model-comparison-full-note');
-  if (fullComparisonNote) fullComparisonNote.innerText = 'Aguardando dados de janelas completas.';
-
   gapAuditData = null;
-  contextValidationData = null;
-  auditMetricPeriods = { snapshots: null, completed: null, no_result: null, pending: null };
-  ['context-validation-filtered', 'context-validation-minute-band', 'context-validation-equal-game', 'teammate-validation-effect'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerText = '—';
-  });
-  ['context-validation-filtered-sample', 'context-validation-minute-band-sample', 'context-validation-equal-game-sample', 'teammate-validation-sample'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerText = 'Aguardando...';
-  });
-  const metricDetails = document.getElementById('audit-metric-details');
-  if (metricDetails) {
-    metricDetails.classList.add('hidden');
-    metricDetails.innerHTML = '';
-  }
-  ['audit-total-card', 'audit-completed-card', 'audit-noresult-card', 'audit-pending-card'].forEach(id => {
-    const card = document.getElementById(id);
-    if (card) card.setAttribute('aria-expanded', 'false');
-  });
-
-
-  // Ao trocar mercado/data/visão, nunca mantém o detalhe de pendências da
-  // consulta anterior. O contador e a lista serão preenchidos pela nova consulta.
-  const pendingPanel = document.getElementById('audit-pending-details');
-  const pendingCard = document.getElementById('audit-pending-card');
-  if (pendingPanel) {
-    pendingPanel.classList.add('hidden');
-    pendingPanel.innerHTML = '';
-  }
-  if (pendingCard) {
-    pendingCard.setAttribute('aria-expanded', 'false');
-  }
-
   const gapScoreBand = document.getElementById('gap-score-band-select');
   if (gapScoreBand) gapScoreBand.value = 'all';
   const gapSummary = document.getElementById('gap-summary-table');
@@ -1975,7 +1647,7 @@ function renderGapAudit() {
   const note = document.getElementById('gap-audit-note');
   const periodSelect = document.getElementById('gap-period-select');
   if(!summaryTable || !periodSelect) return;
-  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="6" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
+  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
   const periodKey = periodSelect.value || 'l5';
   const groups = gapAuditData.periods?.[periodKey] || {};
   const rows = [
@@ -1990,13 +1662,12 @@ function renderGapAudit() {
       '<td class="font-bold text-white">' + Number(group.count || 0) + '</td>' +
       '<td>' + (group.defense_allowed_average == null ? '—' : numero(group.defense_allowed_average)) + '</td>' +
       '<td>' + (group.league_average == null ? '—' : numero(group.league_average)) + '</td>' +
-      '<td class="font-bold text-white">' + (group.actual_player_average == null ? '—' : numero(group.actual_player_average)) + '</td>' +
-      '<td>' + (group.actual_minus_player_baseline_average == null ? '—' : ((group.actual_minus_player_baseline_average > 0 ? '+' : '') + numero(group.actual_minus_player_baseline_average) + ' · n=' + Number(group.baseline_sample || 0))) + '</td></tr>';
+      '<td class="font-bold text-white">' + (group.actual_player_average == null ? '—' : numero(group.actual_player_average)) + '</td></tr>';
   }).join('');
   const scoreBand = gapAuditData.score_band || 'all';
   note.innerText = (gapAuditData.completed_records || 0) + ' resultados concluídos · População: ' +
     (gapAuditData.cohort_label || 'Todos os elegíveis') + ' · Score: ' + (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
-    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Δ = resultado real menos média pré-jogo do próprio jogador. ' +
+    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Média real individual agrupada pela classificação da defesa. ' +
     Number(gapAuditData.legacy_records_without_new_reference || 0) + ' registros antigos sem benchmark da liga.';
 }
 async function fetchGapValidation(market, dateFrom, dateTo) {
@@ -2018,202 +1689,23 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
   } catch(error) {
     if(requestId !== gapValidationRequestId) return;
     gapAuditData = null;
-    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
+    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
-function setEvidenceStatus(id, kind, title, detail) {
-  const badge = document.getElementById(id + '-badge');
-  const value = document.getElementById(id);
-  const detailEl = document.getElementById(id + '-detail');
-  if (!badge || !value || !detailEl) return;
-  const labels = {
-    descriptive: 'DESCRITIVO',
-    exploratory: 'EXPLORATÓRIO',
-    collecting: 'COLETA',
-    ready: 'PRONTO',
-    validated: 'VALIDADO'
-  };
-  badge.className = 'evidence-badge evidence-' + kind;
-  badge.innerText = labels[kind] || kind.toUpperCase();
-  value.innerText = title;
-  detailEl.innerText = detail;
-}
-
-function updateEvidenceStatusFromComparison(comparison) {
-  const holdout = comparison?.temporal_holdout || {};
-  const dates = Number(holdout.dates_available ?? comparison?.full_window_distinct_dates ?? 0);
-  const minimum = 7;
-  if (holdout.status === 'ready' || dates >= minimum) {
-    setEvidenceStatus(
-      'evidence-status-model',
-      'ready',
-      'Holdout disponível',
-      dates + '/' + minimum + ' datas compartilhadas; a comparação temporal pode ser executada.'
-    );
-  } else {
-    setEvidenceStatus(
-      'evidence-status-model',
-      'collecting',
-      'Em coleta temporal',
-      dates + '/' + minimum + ' datas compartilhadas; ainda não há validação fora da amostra.'
-    );
-  }
-}
-
-function updateEvidenceContextStatus(data, teammateData) {
-  const contextDates = Number(data?.metrics?.distinct_dates ?? data?.coverage?.distinct_dates ?? 0);
-  const teammateDates = Number(teammateData?.distinct_dates ?? 0);
-  const minimum = 7;
-  const setStatus = (id, dates, label) => {
-    const ready = dates >= minimum;
-    setEvidenceStatus(
-      id,
-      ready ? 'ready' : 'exploratory',
-      ready ? 'Holdout disponível' : 'Exploratório',
-      dates + '/' + minimum + ' datas; ' + label + (ready
-        ? ' Resultado ainda é exploratório até a comparação temporal.'
-        : ' Sem efeito automático no Score.')
-    );
-  };
-  setStatus('evidence-status-context', contextDates, 'Defesa, minutagem e jogo equivalente.');
-  setStatus('evidence-status-teammate', teammateDates, 'Split de companheiros.');
-}
-function renderTeammateValidation(teammate) {
-  const data = teammate || {};
-  const positive = data.groups?.positive?.effect_average;
-  const negative = data.groups?.negative?.effect_average;
-  const valueEl = document.getElementById('teammate-validation-effect');
-  const sampleEl = document.getElementById('teammate-validation-sample');
-  const insufficient = Number(data.groups?.insufficient?.records || 0);
-  if (valueEl) valueEl.innerText =
-    (positive == null && negative == null)
-      ? (insufficient > 0 ? 'Sem amostra pareada' : 'Sem amostra válida')
-      : 'Pos ' + (positive == null ? '—' : '+' + numero(positive, 2)) +
-        ' · Neg ' + (negative == null ? '—' : numero(negative, 2));
-  if (sampleEl) sampleEl.innerText =
-    (data.completed_records || 0) + ' snapshots · cobertura ' +
-    numero(data.context_coverage_pct || 0, 1) + '% · ' + insufficient + ' sem comparação';
-}
-
-function renderContextValidation() {
-  const data = contextValidationData || {};
-  const metrics = data.metrics || {};
-  const refs = [
-    ['opponent_position_minutes_filtered_defense_l10_avg','context-validation-filtered','context-validation-filtered-sample'],
-    ['opponent_position_minute_band_defense_l10_avg','context-validation-minute-band','context-validation-minute-band-sample'],
-    ['opponent_position_equal_game_defense_l10_avg','context-validation-equal-game','context-validation-equal-game-sample']
-  ];
-  refs.forEach(([field, valueId, sampleId]) => {
-    const metric = (metrics.references || {})[field] || {};
-    const value = metric.context_mae_delta_vs_l10;
-    const valueEl = document.getElementById(valueId);
-    const sampleEl = document.getElementById(sampleId);
-    if (valueEl) valueEl.innerText = value == null
-      ? ((metric.sample || 0) > 0 ? 'Sem diferença calculável' : 'Sem amostra válida')
-      : ((value > 0 ? '+' : '') + numero(value, 3) + ' MAE');
-    if (sampleEl) sampleEl.innerText =
-      (metric.sample || 0) + ' registros · cobertura ' + numero(metric.coverage_pct || 0, 1) + '%';
-  });
-
-  updateEvidenceContextStatus(data, teammateValidationData);
-  const note = document.getElementById('context-validation-note');
-  if (note) {
-    const dates = data.metrics?.distinct_dates ?? data.coverage?.distinct_dates ?? 0;
-    note.innerText = 'Mercado ' + (data.market_label || data.market || 'selecionado') +
-      ' · ' + dates + '/7 datas para validação temporal. ' +
-      (dates >= 7 ? 'Holdout temporal disponível.' : 'Ainda em coleta; nenhum efeito será incorporado ao Score.');
-  }
-}
-
-async function requisicaoContextual(caminho, timeoutMs = 45000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(endereco() + caminho, { signal: controller.signal });
-    if (!response.ok) throw new Error('Erro HTTP ' + response.status);
-    return await response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function fetchContextValidation(market, dateFrom, dateTo) {
-  const requestId = ++contextValidationRequestId;
-  contextValidationData = null;
-  const note = document.getElementById('context-validation-note');
-  if (note) note.innerText = 'Consultando referências contextuais imutáveis...';
-  const dateParams = (dateFrom ? '&date_from=' + encodeURIComponent(dateFrom) : '') +
-    (dateTo ? '&date_to=' + encodeURIComponent(dateTo) : '');
-  const cohortParams = '&market=' + encodeURIComponent(market) +
-    '&cohort=' + encodeURIComponent(auditCohort) + dateParams;
-
-  const contextTask = requisicaoContextual('/context-validation?' + cohortParams)
-    .then(data => {
-      if (requestId !== contextValidationRequestId) return;
-      if (data.status !== 'ok') throw new Error('Resposta inválida da validação defensiva');
-      contextValidationData = {
-        ...(contextValidationData || {}),
-        ...data,
-        market_label: data.market_label || market
-      };
-      renderContextValidation();
-    })
-    .catch(error => {
-      if (requestId !== contextValidationRequestId) return;
-      ['context-validation-filtered-sample','context-validation-minute-band-sample','context-validation-equal-game-sample']
-        .forEach(id => { const el = document.getElementById(id); if (el) el.innerText = 'Falha ao consultar defesa/minutagem'; });
-      if (note) note.innerText = 'Falha na consulta de defesa/minutagem: ' +
-        (error.name === 'AbortError' ? 'tempo limite excedido (45s).' : (error.message || 'erro de conexão.'));
-    });
-
-  // A validação de Split de companheiros foi desativada: não consultar endpoint
-  // nem calcular métricas que não fazem parte da auditoria exibida.
-  await contextTask;
-}
-
-async function atualizarAuditoriaHibrida() {
-  const btn = document.getElementById('audit-refresh-btn');
-  const statusEl = document.getElementById('audit-refresh-status');
-
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add('opacity-60');
-  }
-  if (statusEl) statusEl.innerText = 'Recarregando indicadores e métricas...';
-
-  try {
-    const loaded = await fetchHistoryValidation();
-    await fetchMarketComparison();
-    if (loaded === false) throw new Error('Falha ao consultar os indicadores principais.');
-    if (statusEl) {
-      statusEl.innerText = '✓ Indicadores recarregados. A captura de snapshots e a apuração dos resultados continuam nas rotinas internas protegidas.';
-    }
-  } catch (error) {
-    console.error('Erro ao recarregar auditoria:', error);
-    if (statusEl) statusEl.innerText = '❌ Não foi possível recarregar os indicadores. Tente novamente em instantes.';
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove('opacity-60');
-    }
-  }
-}
-
 async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
   let dateFrom = null, dateTo = null;
   if (auditMode === 'daily') {
-    const selected = document.getElementById('audit-selected-date')?.value || '2026-11-19';
+    const selected = document.getElementById('audit-selected-date')?.value || '2026-11-16';
     dateFrom = selected; dateTo = selected;
   } else if (auditMode === 'range') {
-    dateFrom = document.getElementById('audit-date-from')?.value || '2026-11-19';
+    dateFrom = document.getElementById('audit-date-from')?.value || '2026-11-16';
     dateTo = document.getElementById('audit-date-to')?.value || '';
   }
   const requestId = ++historyValidationRequestId;
   limparIndicadoresAuditoria();
   fetchGapValidation(market, dateFrom || '', dateTo || '');
-  fetchContextValidation(market, dateFrom || '', dateTo || '');
 
   const sampleCount = document.getElementById('hist-sample-count');
   if (sampleCount) sampleCount.innerText = '...';
@@ -2233,12 +1725,6 @@ async function fetchHistoryValidation() {
     document.getElementById('audit-pending-count').innerText = summary.pending_results ?? 0;
     const firstDate = res.period?.first_date || null;
     const lastDate = res.period?.last_date || null;
-    auditMetricPeriods = res.periods || {
-      snapshots: { first_date: firstDate, last_date: lastDate },
-      completed: null,
-      no_result: null,
-      pending: null
-    };
     const dateCoverage = firstDate && lastDate
       ? ' Período efetivamente encontrado: ' + firstDate + ' a ' + lastDate + '.'
       : ' Não há datas com snapshots nesta consulta.';
@@ -2247,75 +1733,28 @@ async function fetchHistoryValidation() {
       : auditMode === 'range'
         ? 'Comparação do intervalo selecionado.'
         : 'Consolidação de todo o histórico independente disponível até hoje.';
-    const completionPct = summary.completion_rate_pct == null ? '—' : numero(summary.completion_rate_pct, 1);
-    document.getElementById('audit-completion-legend').innerHTML =
-      'Apuração: <span class="text-gray-300">resolvido = ' + completionPct + '%</span> · resultado real ou DNP já conferido; <span class="text-gray-300">pendente</span> = ainda aguardando apuração. Essa informação mede o andamento da coleta, não a qualidade das projeções.';
+    document.getElementById('audit-sample-explanation').innerText =
+      modeLabel + dateCoverage + ' ' +
+      (summary.snapshots_total ?? 0) + ' snapshots = ' +
+      (summary.completed_results ?? 0) + ' resultados reais + ' +
+      (summary.no_result_results ?? 0) + ' sem resultado + ' +
+      (summary.pending_results ?? 0) + ' aguardando apuração. DNPs e pendências não entram nas métricas de precisão.';
+    document.getElementById('audit-metric-sample-note').innerText =
+      'Amostras usadas: MAE L5 = ' + (summary.l5_sample ?? summary.completed_results ?? 0) +
+      ' registros; MAE L10 = ' + (summary.l10_sample ?? summary.completed_results ?? 0) +
+      ' registros; Pearson = ' + (summary.pearson_sample ?? summary.completed_results ?? 0) +
+      ' pares Score/resultado. MAE menor indica menor erro; Pearson mede associação, não taxa de acerto.';
     document.getElementById('kpi-l5-mae').innerText = summary.l5_mae ?? '--';
     document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
     document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
-    document.getElementById('kpi-spearman').innerText = summary.score_actual_spearman ?? '--';
-    // A taxa de apuração permanece na Conferência da amostra; não é indicador de desempenho.
+    document.getElementById('kpi-completion').innerText = (summary.completion_rate_pct || 0) + '%';
     document.getElementById('kpi-l5-relative').innerText = summary.l5_relative_error_pct == null ? '--%' : numero(summary.l5_relative_error_pct, 1) + '%';
     document.getElementById('kpi-l10-relative').innerText = summary.l10_relative_error_pct == null ? '--%' : numero(summary.l10_relative_error_pct, 1) + '%';
-    setEvidenceStatus(
-      'evidence-status-accuracy',
-      'descriptive',
-      'Desempenho observado',
-      'L5/L10, MAE, viés e associações no histórico selecionado; não são taxa de acerto.'
-    );
-
-
-    const comparison = res.model_comparison;
-    const comparisonBody = document.getElementById('model-comparison-table');
-    const comparisonLabels = {
-      l5: 'L5',
-      l10: 'L10',
-      blend_60_40: 'Média 60/40 sem ajuste',
-      score_current: 'Score atual (diagnóstico)'
-    };
-    if (comparison && comparison.models && comparisonBody) {
-      comparisonBody.innerHTML = Object.entries(comparisonLabels).map(([key, label]) => {
-        const metric = comparison.models[key] || {};
-        return '<tr><td class="font-semibold">' + label + '</td>' +
-          '<td>' + (metric.sample ?? 0) + '</td>' +
-          '<td>' + (metric.mae == null ? '—' : numero(metric.mae, 3)) + '</td>' +
-          '<td>' + (metric.bias == null ? '—' : numero(metric.bias, 3)) + '</td></tr>';
-      }).join('');
-      const holdout = comparison.temporal_holdout || {};
-      updateEvidenceStatusFromComparison(comparison);
-      document.getElementById('model-comparison-note').innerText =
-        'Comparação descritiva: ' + (comparison.sample ?? 0) +
-        ' registros com janelas disponíveis. O Score é índice de triagem, não projeção; seu MAE é apenas diagnóstico numérico.';
-      const fullBody = document.getElementById('model-comparison-full-table');
-      if (fullBody) {
-        fullBody.innerHTML = Object.entries(comparisonLabels).map(([key, label]) => {
-          const metric = comparison.full_window_models?.[key] || {};
-          return '<tr><td class="font-semibold">' + label + '</td>' +
-            '<td>' + (metric.sample ?? 0) + '</td>' +
-            '<td>' + (metric.mae == null ? '—' : numero(metric.mae, 3)) + '</td>' +
-            '<td>' + (metric.bias == null ? '—' : numero(metric.bias, 3)) + '</td></tr>';
-        }).join('');
-      }
-      document.getElementById('model-comparison-full-note').innerText =
-        'Janelas completas: ' + (comparison.full_window_sample ?? 0) +
-        ' registros · ' + (comparison.full_window_distinct_dates ?? 0) +
-        ' datas distintas. ' +
-        (holdout.status === 'ready'
-          ? 'Holdout temporal: ' + holdout.test_start_date + ' a ' + holdout.test_end_date +
-            ' (' + holdout.test_dates + ' datas). MAE no holdout: ' +
-            Object.entries(comparisonLabels).map(([key, label]) =>
-              label + ' ' + (holdout.models?.[key]?.mae == null ? '—' : numero(holdout.models[key].mae, 3))
-            ).join(' · ') + '.'
-          : 'Holdout temporal aguardando: ' + (holdout.dates_available ?? 0) +
-            '/' + (holdout.minimum_dates ?? 14) + ' datas distintas; ainda insuficiente.');
-    } else if (comparisonBody) {
-      comparisonBody.innerHTML = '<tr><td colspan="4" class="text-gray-400">Aguardando a versão da API com comparação de modelos.</td></tr>';
-    }
 
     const tableBody = document.getElementById('score-bands-table');
     tableBody.innerHTML = res.score_bands.map(b => `
       <tr>
-        <td class="font-semibold text-emerald-400">${b.band}<div class="text-[8px] text-gray-500">Score observado: ${b.score_min_observed == null ? '—' : numero(b.score_min_observed, 2)}–${b.score_max_observed == null ? '—' : numero(b.score_max_observed, 2)}</div></td>
+        <td class="font-semibold text-emerald-400">${b.band}</td>
         <td>${b.games}</td>
         <td>${b.score_average ?? '--'}</td>
         <td class="font-bold text-white">${b.actual_average ?? '--'}</td>
@@ -2326,30 +1765,8 @@ async function fetchHistoryValidation() {
       </tr>
     `).join('');
 
-    const bandTotal = (res.score_bands || []).reduce((sum, band) => sum + (band.games || 0), 0);
-    const dominantBand = (res.score_bands || []).reduce(
-      (best, band) => !best || (band.games || 0) > (best.games || 0) ? band : best,
-      null
-    );
-    const bandNote = document.getElementById('score-band-distribution-note');
-    if (bandNote) {
-      const share = bandTotal && dominantBand ? (dominantBand.games / bandTotal) * 100 : 0;
-      const marketBandMethod = res.score_band_reference?.method || 'quintis da distribuição observada do mercado';
-      bandNote.innerText = dominantBand && share >= 70
-        ? 'Atenção: ' + numero(share, 1) + '% dos resultados estão concentrados em ' +
-          dominantBand.band + '. Mesmo sendo uma faixa relativa ao mercado, a concentração reduz a utilidade discriminativa deste recorte.'
-        : 'Método: ' + marketBandMethod + '. As faixas são recalculadas para o mercado/recorte consultado e servem para comparação descritiva dentro dele.';
-    }
-
-    const similarityAnalyses = res.similarity_analyses || {};
+    const similarityAnalyses = res.similarity_analyses || { '6-6.99': res.similarity_analysis || {} };
     const similarityBandSelect = document.getElementById('similarity-band-select');
-    if (similarityBandSelect) {
-      const currentSimilarityBand = similarityBandSelect.value;
-      similarityBandSelect.innerHTML = Object.keys(similarityAnalyses).map((label, index) =>
-        '<option value="' + escapeHtml(label) + '"' + (index === 0 || label === currentSimilarityBand ? ' selected' : '') + '>' +
-        escapeHtml(label) + '</option>'
-      ).join('');
-    }
     const renderSimilarityAnalysis = () => {
       const selectedBand = similarityBandSelect.value;
       const similarity = similarityAnalyses[selectedBand] || {};
@@ -2396,24 +1813,16 @@ async function fetchHistoryValidation() {
     renderSimilarityAnalysis();
 
     const ranking = res.ranking_quality || {};
-    const top10 = ranking.top10 || {};
-    const rest = ranking.rest || {};
-    document.getElementById('ranking-top10-average').innerText = top10.actual_average == null ? '—' : numero(top10.actual_average);
-    document.getElementById('ranking-top10-count').innerText =
-      (top10.records ?? 0) + ' registros · ' + (top10.players ?? 0) + ' jogadores · L10 10/10: ' + (top10.l10_residual_sample ?? 0);
-    document.getElementById('ranking-rest-average').innerText = rest.actual_average == null ? '—' : numero(rest.actual_average);
-    document.getElementById('ranking-rest-count').innerText =
-      (rest.records ?? 0) + ' registros · ' + (rest.players ?? 0) + ' jogadores · L10 10/10: ' + (rest.l10_residual_sample ?? 0);
+    const high = res.score_bands.find(b => b.band === '7+') || {};
+    const low = res.score_bands.find(b => b.band === '<4') || {};
+    document.getElementById('ranking-high-average').innerText = high.actual_average ?? '—';
+    document.getElementById('ranking-high-count').innerText = (high.games ?? 0) + ' registros';
+    document.getElementById('ranking-low-average').innerText = low.actual_average ?? '—';
+    document.getElementById('ranking-low-count').innerText = (low.games ?? 0) + ' registros';
     document.getElementById('ranking-separation').innerText =
-      ranking.sample_status === 'insufficient' || ranking.l10_residual_difference == null
-        ? 'Diferença ajustada indisponível: amostra insuficiente em um dos grupos.'
-        : 'Δ ajustada Top 10 − demais: ' +
-          (ranking.l10_residual_difference > 0 ? '+' : '') +
-          numero(ranking.l10_residual_difference) + ' unidades (resultado real − L10). ' +
-          (ranking.sample_status === 'collecting'
-            ? 'Provisório: ' + (ranking.distinct_dates ?? 0) + '/' +
-              (ranking.minimum_dates_for_validation ?? 14) + ' datas com ambos os grupos.'
-            : 'Validação temporal mínima atingida.');
+      ranking.actual_average_difference == null
+        ? 'Diferença entre as faixas: amostra insuficiente.'
+        : 'Diferença: ' + ranking.actual_average_difference + ' unidades (' + ranking.high_vs_low_pct + '% acima da faixa abaixo de 4).';
 
     renderDailyBreakdown(res.daily || []);
     const breakdownPanel = document.getElementById('daily-breakdown-panel');
@@ -2421,7 +1830,6 @@ async function fetchHistoryValidation() {
     if (breakdownPanel) breakdownPanel.classList.toggle('hidden', auditMode !== 'range');
     if (evolutionPanel) evolutionPanel.classList.toggle('hidden', auditMode === 'daily' || (res.daily || []).length < 2);
     renderDailyChart(res.daily || []);
-    return true;
   } catch (e) {
     if (requestId !== historyValidationRequestId) return;
     console.error('Erro na auditoria:', e);
@@ -2430,145 +1838,11 @@ async function fetchHistoryValidation() {
       const el = document.getElementById(id);
       if (el) el.innerText = '—';
     });
-    document.getElementById('audit-completion-legend').innerText = 'Não foi possível carregar o percentual de apuração. Verifique a conexão e tente novamente.';
+    document.getElementById('audit-sample-explanation').innerText = 'Falha ao carregar a amostra. Verifique a conexão e tente novamente.';
     document.getElementById('score-bands-table').innerHTML =
       '<tr><td colspan="8" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
     document.getElementById('similar-profiles-table').innerHTML =
       '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
-    return false;
-  }
-}
-
-function formatAuditPeriod(period) {
-  if (!period || !period.first_date || !period.last_date) return null;
-  const fmt = value => value.split('-').reverse().join('/');
-  return period.first_date === period.last_date
-    ? fmt(period.first_date)
-    : fmt(period.first_date) + ' → ' + fmt(period.last_date);
-}
-
-function auditMetricLabel(kind) {
-  return {
-    snapshots: 'Snapshots capturados',
-    completed: 'Resultados reais',
-    no_result: 'DNP / sem resultado',
-    pending: 'Pendências abertas'
-  }[kind] || 'Dados da auditoria';
-}
-
-function toggleAuditMetricDetails(kind) {
-  const panel = document.getElementById('audit-metric-details');
-  if (!panel) return;
-  const card = document.getElementById({
-    snapshots: 'audit-total-card',
-    completed: 'audit-completed-card',
-    no_result: 'audit-noresult-card',
-    pending: 'audit-pending-card'
-  }[kind]);
-  if (!card) return;
-
-  const alreadyOpen = !panel.classList.contains('hidden') && card.getAttribute('aria-expanded') === 'true';
-  const pendingPanel = document.getElementById('audit-pending-details');
-  if (pendingPanel) {
-    pendingPanel.classList.add('hidden');
-    pendingPanel.innerHTML = '';
-  }
-  const pendingCard = document.getElementById('audit-pending-card');
-  if (pendingCard) pendingCard.setAttribute('aria-expanded', 'false');
-
-  ['audit-total-card', 'audit-completed-card', 'audit-noresult-card', 'audit-pending-card'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.setAttribute('aria-expanded', 'false');
-  });
-  if (alreadyOpen) {
-    panel.classList.add('hidden');
-    panel.innerHTML = '';
-    return;
-  }
-
-  const period = auditMetricPeriods[kind];
-  const count = document.getElementById({
-    snapshots: 'audit-total-count',
-    completed: 'audit-completed-count',
-    no_result: 'audit-noresult-count',
-    pending: 'audit-pending-count'
-  }[kind])?.innerText || '—';
-  const periodText = formatAuditPeriod(period);
-  card.setAttribute('aria-expanded', 'true');
-  panel.innerHTML = periodText
-    ? '<div class="text-[9px] font-semibold text-gray-300">' + auditMetricLabel(kind) + '</div>' +
-      '<div class="mt-0.5 text-[10px] text-white">Período: <span class="font-semibold text-emerald-300">' + escapeHtml(periodText) + '</span></div>' +
-      '<div class="mt-0.5 text-[9px] text-gray-500">' + escapeHtml(count) + ' registro(s) neste recorte.</div>'
-    : '<div class="text-[9px] text-gray-500">' + auditMetricLabel(kind) + ': não há registros neste recorte.</div>';
-  panel.classList.remove('hidden');
-}
-
-async function toggleAuditPendingDetails() {
-  const panel = document.getElementById('audit-pending-details');
-  const card = document.getElementById('audit-pending-card');
-  if (!panel || !card) return;
-
-  const metricPanel = document.getElementById('audit-metric-details');
-  const metricCards = ['audit-total-card', 'audit-completed-card', 'audit-noresult-card'];
-
-  if (!panel.classList.contains('hidden')) {
-    panel.classList.add('hidden');
-    card.setAttribute('aria-expanded', 'false');
-    return;
-  }
-
-  if (metricPanel) {
-    metricPanel.classList.add('hidden');
-    metricPanel.innerHTML = '';
-  }
-  metricCards.forEach(id => {
-    const metricCard = document.getElementById(id);
-    if (metricCard) metricCard.setAttribute('aria-expanded', 'false');
-  });
-
-  const mode = document.getElementById('audit-mode-select')?.value || 'daily';
-  if (mode !== 'daily') {
-    panel.innerHTML = '<div class="text-[9px] text-gray-500">Os detalhes de pendências são exibidos na Visão diária, para uma data e mercado específicos.</div>';
-    panel.classList.remove('hidden');
-    card.setAttribute('aria-expanded', 'true');
-    return;
-  }
-
-  const selectedDate = document.getElementById('audit-selected-date')?.value;
-  const market = document.getElementById('hist-market')?.value;
-  if (!selectedDate || !market) return;
-
-  panel.innerHTML = '<div class="text-[9px] text-gray-400">Consultando pendências...</div>';
-  panel.classList.remove('hidden');
-  card.setAttribute('aria-expanded', 'true');
-
-  try {
-    const res = await requisicao('/audit-pending-details?date=' +
-      encodeURIComponent(selectedDate) + '&market=' + encodeURIComponent(market));
-
-    const items = res.pending || [];
-    if (!items.length) {
-      panel.innerHTML = '<div class="text-[9px] text-emerald-300">Nenhuma pendência aberta para este mercado.</div>';
-      return;
-    }
-
-    panel.innerHTML =
-      '<div class="text-[9px] font-semibold text-gray-300 mb-1.5">Pendências · ' +
-      escapeHtml(selectedDate.split('-').reverse().join('/')) + '</div>' +
-      '<div class="space-y-1.5">' +
-      items.map(item =>
-        '<div class="rounded-md border border-gray-800 bg-gray-900/70 px-2 py-1.5">' +
-          '<div class="flex items-center justify-between gap-2">' +
-            '<span class="text-[9px] font-semibold text-white">' + escapeHtml(item.player_name || 'Jogador') + '</span>' +
-            '<span class="text-[8px] text-gray-500">' + escapeHtml((item.team || '') + ' × ' + (item.opponent || '')) + '</span>' +
-          '</div>' +
-          '<div class="text-[8px] text-amber-300 mt-0.5">' + escapeHtml(item.reason || 'Motivo não informado') + '</div>' +
-          (item.detail ? '<div class="text-[8px] text-gray-500 mt-0.5">' + escapeHtml(item.detail) + '</div>' : '') +
-        '</div>'
-      ).join('') +
-      '</div>';
-  } catch (error) {
-    panel.innerHTML = '<div class="text-[9px] text-red-400">Não foi possível carregar os detalhes das pendências.</div>';
   }
 }
 
@@ -2596,18 +1870,7 @@ function renderDailyBreakdown(dailyData) {
 }
 
 function renderDailyChart(dailyData) {
-  const canvas = document.getElementById('dailyErrorChart');
-  // O gráfico é complementar: se a CDN do Chart.js falhar no navegador,
-  // isso não pode invalidar nem apagar os indicadores e tabelas da Auditoria.
-  if (!canvas || typeof Chart === 'undefined') {
-    console.warn('Gráfico da auditoria indisponível; mantendo os indicadores carregados.');
-    return;
-  }
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    console.warn('Canvas do gráfico da auditoria indisponível; mantendo os indicadores carregados.');
-    return;
-  }
+  const ctx = document.getElementById('dailyErrorChart').getContext('2d');
   const labels = dailyData.map(d => d.date);
   const l5Data = dailyData.map(d => d.l5_mae);
   const l10Data = dailyData.map(d => d.l10_mae);
@@ -2675,7 +1938,7 @@ function nomeEquipeContexto(team) {
 }
 
 function contextoParams() {
-  const date = todayLocal;
+  const date = document.getElementById('context-date').value || data.value;
   const venue = document.getElementById('context-venue').value;
   const position = document.getElementById('context-position').value;
   const stat = document.getElementById('context-stat').value;
@@ -2695,10 +1958,9 @@ async function carregarRankingContexto() {
       '&venue=' + p.venue;
     const result = await requisicao(query);
     if(result.status === 'not_ready') {
-      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">A base contextual de hoje ainda não está pronta. Atualização automática iniciada...</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">Ainda não há dados para esta data. Use “Atualizar base contextual”.</td></tr>';
       document.getElementById('context-ranking-count').innerText = '0 equipes';
-      status.innerText = 'Atualizando automaticamente a base contextual de hoje...';
-      atualizarBaseContexto(true);
+      status.innerText = result.message;
       return;
     }
     body.innerHTML = (result.ranking || []).map(item => {
@@ -2722,17 +1984,15 @@ async function carregarRankingContexto() {
   }
 }
 
-async function atualizarBaseContexto(autoRefresh = false) {
+async function atualizarBaseContexto() {
   const p = contextoParams();
   const button = document.getElementById('context-refresh-btn');
   const status = document.getElementById('context-status');
   button.disabled = true;
   button.classList.add('opacity-60', 'cursor-not-allowed');
-  status.innerText = autoRefresh
-    ? 'Atualizando automaticamente as 30 equipes pela ESPN. Isso acontece somente quando o snapshot de hoje ainda não existe...'
-    : 'Atualizando as 30 equipes pela ESPN. A coleta pode demorar...';
+  status.innerText = 'Atualizando as 30 equipes pela ESPN. A primeira coleta pode demorar...';
   try {
-    const response = await fetch(endereco() + '/context/defense/refresh', { method: 'POST' });
+    const response = await fetch(endereco() + '/context/defense/refresh?date=' + encodeURIComponent(p.date), { method: 'POST' });
     const result = await response.json();
     if(!response.ok) throw new Error(result.detail || 'Falha HTTP ' + response.status);
     const collected = result.teams_collected ?? result.teams_saved ?? 0;
@@ -2747,9 +2007,7 @@ async function atualizarBaseContexto(autoRefresh = false) {
     } else {
       updateMessage = 'Falha total: nenhuma equipe foi salva. Snapshot anterior preservado, se existente.';
     }
-    if (result.status === 'ok') {
-      await carregarRankingContexto();
-    }
+    await carregarRankingContexto();
     status.innerText = updateMessage;
   } catch(error) {
     status.innerText = 'Não foi possível atualizar a base: ' + error.message;
@@ -2763,13 +2021,7 @@ async function carregarDetalheContexto(team) {
   const p = contextoParams();
   const box = document.getElementById('context-team-detail');
   const teamLabel = nomeEquipeContexto(team);
-
-  // O usuário recebe feedback e é levado imediatamente ao ponto onde o detalhe será exibido.
-  box.innerHTML = '<div class="context-loading" aria-live="polite"><span class="context-loading-dot"></span><span>Carregando análise da equipe ' + escapeHtml(teamLabel) + '...</span></div>' +
-    '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3>' +
-    '<p class="text-[10px] text-gray-400">Consultando histórico da equipe...</p>';
-  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
+  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><p class="text-[10px] text-gray-400">Carregando histórico...</p>';
   try {
     const result = await requisicao('/context/defense/team/' + encodeURIComponent(team) + '?date=' + encodeURIComponent(p.date));
     const history = result.history || {};
@@ -2792,10 +2044,6 @@ async function carregarDetalheContexto(team) {
     });
     html += '</div><p class="text-[9px] text-gray-500">Valores representam totais cedidos aos jogadores da posição por partida; a amostra de jogos de cada estatística pode variar.</p>';
     box.innerHTML = html;
-
-    // O scroll já foi iniciado no clique; mantém o detalhe no ponto correto
-    // após a resposta, sem introduzir uma segunda animação.
-    box.scrollIntoView({ behavior: 'auto', block: 'start' });
   } catch(error) {
     box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
   }
