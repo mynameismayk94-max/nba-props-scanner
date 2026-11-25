@@ -92,10 +92,9 @@ def create_context_router(
     router = APIRouter(tags=["Central de Contexto NBA"])
     context_timezone = ZoneInfo("America/Sao_Paulo")
     teams = tuple(sorted(set(team_abbreviations)))
-    # A Central de Contexto NBA possui atualização explícita pelo próprio módulo.
-    # A autenticação administrativa continua sendo usada pelas rotinas internas
-    # da Auditoria, mas não deve bloquear o refresh contextual iniciado pela UI.
-    route_dependencies = []
+    # O refresh altera snapshots persistidos e consome chamadas externas;
+    # exige a mesma chave administrativa das demais rotinas de escrita.
+    route_dependencies = [Depends(admin_dependency)] if admin_dependency else []
     def ensure_table():
         with get_database_connection() as connection:
             with connection.cursor() as cursor:
