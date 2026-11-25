@@ -4772,11 +4772,12 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    # A agenda responde sem iniciar prewarms concorrentes.
-    # Histórico e contexto defensivo são carregados sob demanda pelo Scanner.
+    # Mantém o retrospecto L5/L10 das equipes visível na agenda, mas sem
+    # iniciar prewarms pesados. O histórico individual e o contexto defensivo
+    # continuam sendo carregados sob demanda pelo Scanner.
     return fetch_espn_games(
         selected_date,
-        enrich_context=False
+        enrich_context=True
     )
 
 
