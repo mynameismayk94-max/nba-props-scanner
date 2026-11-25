@@ -3909,59 +3909,61 @@ def build_player_result(
             .get("games", [])
         )
 
-        position_filtered_l5 = (
-            calculate_minutes_filtered_position_defense(
+        if league_baseline:
+            position_filtered_l5 = (
+                calculate_minutes_filtered_position_defense(
+                    defense_games_sample_l5,
+                    position,
+                    position_stat_key,
+                    minutes_avg
+                )
+            )
+
+            position_filtered_l10 = (
+                calculate_minutes_filtered_position_defense(
+                    defense_games_sample_l10,
+                    position,
+                    position_stat_key,
+                    minutes_avg
+                )
+            )
+
+            # Nova leitura contextual: jogadores da mesma posição em uma faixa
+            # simétrica de ±5 minutos do candidato, usando os mesmos boxscores.
+            position_minute_band_l5 = calculate_minutes_band_position_defense(
                 defense_games_sample_l5,
                 position,
                 position_stat_key,
-                minutes_avg
+                minutes_avg,
+                5.0
             )
-        )
-
-        position_filtered_l10 = (
-            calculate_minutes_filtered_position_defense(
+            position_minute_band_l10 = calculate_minutes_band_position_defense(
                 defense_games_sample_l10,
                 position,
                 position_stat_key,
-                minutes_avg
+                minutes_avg,
+                5.0
             )
-        )
 
-        # Nova leitura contextual: jogadores da mesma posição em uma faixa
-        # simétrica de ±5 minutos do candidato, usando os mesmos boxscores.
-        position_minute_band_l5 = calculate_minutes_band_position_defense(
-            defense_games_sample_l5,
-            position,
-            position_stat_key,
-            minutes_avg,
-            5.0
-        )
-        position_minute_band_l10 = calculate_minutes_band_position_defense(
-            defense_games_sample_l10,
-            position,
-            position_stat_key,
-            minutes_avg,
-            5.0
-        )
+            league_minute_samples = (
+                league_baseline.get("minute_player_samples", {})
+                if league_baseline else {}
+            )
+            league_minute_band_l5 = calculate_minutes_band_position_defense(
+                league_minute_samples.get(5, {}).get(position, []),
+                position,
+                position_stat_key,
+                minutes_avg,
+                5.0
+            )
+            league_minute_band_l10 = calculate_minutes_band_position_defense(
+                league_minute_samples.get(10, {}).get(position, []),
+                position,
+                position_stat_key,
+                minutes_avg,
+                5.0
+            )
 
-        league_minute_samples = (
-            league_baseline.get("minute_player_samples", {})
-            if league_baseline else {}
-        )
-        league_minute_band_l5 = calculate_minutes_band_position_defense(
-            league_minute_samples.get(5, {}).get(position, []),
-            position,
-            position_stat_key,
-            minutes_avg,
-            5.0
-        )
-        league_minute_band_l10 = calculate_minutes_band_position_defense(
-            league_minute_samples.get(10, {}).get(position, []),
-            position,
-            position_stat_key,
-            minutes_avg,
-            5.0
-        )
 
         position_equal_game_l5 = calculate_equal_game_position_defense(
             defense_games_sample_l5, position, position_stat_key
@@ -4478,7 +4480,7 @@ def collect_candidates(
                 year,
                 target_date.isoformat()
             )
-            if eligible_players else None
+            if eligible_players and not persist_operational else None
         )
 
         for future in as_completed(futures):
@@ -4539,14 +4541,15 @@ def collect_candidates(
         summary_cache_after["misses"] - summary_cache_before["misses"],
         summary_cache_after["currsize"]
     )
-    logger.info(
-        "Candidatos cache: data=%s mercado=%s cache=league_position_defense_baseline hits_delta=%s misses_delta=%s size=%s",
-        selected_date,
-        market,
-        league_cache_after["hits"] - league_cache_before["hits"],
-        league_cache_after["misses"] - league_cache_before["misses"],
-        league_cache_after["currsize"]
-    )
+    if not persist_operational:
+        logger.info(
+            "Candidatos cache: data=%s mercado=%s cache=league_position_defense_baseline hits_delta=%s misses_delta=%s size=%s",
+            selected_date,
+            market,
+            league_cache_after["hits"] - league_cache_before["hits"],
+            league_cache_after["misses"] - league_cache_before["misses"],
+            league_cache_after["currsize"]
+        )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s tempo=%.2fs",
         selected_date,
@@ -4695,61 +4698,9 @@ def collect_candidates(
             availability_report_status
         )
 
-    # O contexto é anexado somente à resposta, depois do snapshot imutável.
-    # Assim não altera candidate_snapshots, Auditoria nem triage_score.
-    context_start = time.perf_counter()
-    if persist_operational and league_baseline and league_baseline.get("player_status_by_game"):
-        player_logs_by_id = player_logs
-        roster_by_team = {}
-        for roster_player in players:
-            roster_by_team.setdefault(
-                str(roster_player.get("team") or "").upper(), []
-            ).append(roster_player)
-
-        candidate_lookup = {
-            str(player.get("id")): (player, logs)
-            for player, logs in eligible_players
-        }
-        status_index = league_baseline["player_status_by_game"]
-
-        for result in displayed_results:
-            if result.get("teammate_context"):
-                continue
-            candidate_id = str(result.get("player_id") or "")
-            candidate_entry = candidate_lookup.get(candidate_id)
-            if not candidate_entry:
-                continue
-            candidate_player, candidate_logs = candidate_entry
-            team = str(candidate_player.get("team") or "").upper()
-            team_games = [
-                game for game in get_team_regular_season_schedule(team, year)
-                if (game.get("date") or "")[:10] < target_date.isoformat()
-            ]
-            team_games.sort(
-                key=lambda game: game.get("date") or "", reverse=True
-            )
-            team_games = team_games[:10]
-
-            # Garante que o próprio histórico do candidato seja a fonte
-            # usada no split, sem uma segunda consulta de atleta.
-            player_logs_by_id[candidate_id] = (candidate_player, candidate_logs)
-            result["teammate_context"] = build_candidate_teammate_context(
-                candidate_id=candidate_id,
-                team=team,
-                roster=roster_by_team.get(team, []),
-                player_logs_by_id=player_logs_by_id,
-                team_games=team_games,
-                teammate_status_by_game=status_index
-            )
-    context_elapsed = time.perf_counter() - context_start
-    logger.info(
-        "Candidatos timing: data=%s mercado=%s etapa=contexto_companheiros candidatos=%s jogos_boxscore=%s tempo=%.2fs",
-        selected_date,
-        market,
-        sum(1 for item in displayed_results if item.get("teammate_context")),
-        len(league_baseline.get("player_status_by_game", {})) if league_baseline else 0,
-        context_elapsed
-    )
+    # O Scanner operacional mantém apenas as métricas centrais.
+    # Splits de companheiros permanecem exclusivos da captura explícita da Auditoria.
+    context_elapsed = 0.0
 
     return {
         "date": selected_date,
