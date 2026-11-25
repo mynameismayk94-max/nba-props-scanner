@@ -995,7 +995,8 @@ def extract_team_defense_stats(
         for stat in opponent_stats
     }
 
-    fga_allowed = parse_attempts(stats.get("fieldGoalsMade-fieldGoalsAttempted"))    three_pa_allowed = parse_attempts(stats.get("threePointFieldGoalsMade-threePointFieldGoalsAttempted"))
+    fga_allowed = parse_attempts(stats.get("fieldGoalsMade-fieldGoalsAttempted"))
+    three_pa_allowed = parse_attempts(stats.get("threePointFieldGoalsMade-threePointFieldGoalsAttempted"))
     return {
         "fga_allowed": fga_allowed,
         "three_pa_allowed": three_pa_allowed,
