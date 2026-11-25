@@ -4404,9 +4404,12 @@ def collect_candidates(
 
     league_baseline = None
 
-    # Mantém no máximo 12 consultas de boxscore simultâneas:
-    # 6 equipes x 2 boxscores internos. O objetivo é reduzir o tempo total
-    # sem repetir o pico de concorrência que poderia pressionar a memória.
+    # Primeiro concluímos o histórico defensivo dos adversários.
+    # O benchmark da liga é calculado em seguida, fora dessa janela de
+    # concorrência. Antes, ele era executado ao mesmo tempo que as consultas
+    # de defesa e criava um pico combinado de boxscores em uma instância
+    # limitada a 512 MB. A separação preserva as mesmas métricas e reduz
+    # o pico de memória, mesmo que possa acrescentar algum tempo à etapa.
     with ThreadPoolExecutor(
         max_workers=6
     ) as executor:
@@ -4415,15 +4418,6 @@ def collect_candidates(
             executor.submit(fetch_team_defense, team)
             for team in eligible_opponents
         ]
-        league_future = (
-            executor.submit(
-                get_league_position_defense_baseline_singleflight,
-                year,
-                target_date.isoformat(),
-                not persist_operational
-            )
-            if eligible_players else None
-        )
 
         for future in as_completed(futures):
             try:
@@ -4435,21 +4429,25 @@ def collect_candidates(
                     error
                 )
 
-        if league_future:
-            try:
-                baseline_wait_started = time.perf_counter()
-                league_baseline = league_future.result()
-                logger.info(
-                    "Defense benchmark wait: data=%s mercado=%s wait=%.2fs",
-                    selected_date,
-                    market,
-                    time.perf_counter() - baseline_wait_started
-                )
-            except Exception as error:
-                logger.warning(
-                    "Falha ao calcular benchmark defensivo da liga: %s",
-                    error
-                )
+    if eligible_players:
+        try:
+            baseline_wait_started = time.perf_counter()
+            league_baseline = get_league_position_defense_baseline_singleflight(
+                year,
+                target_date.isoformat(),
+                not persist_operational
+            )
+            logger.info(
+                "Defense benchmark wait: data=%s mercado=%s wait=%.2fs",
+                selected_date,
+                market,
+                time.perf_counter() - baseline_wait_started
+            )
+        except Exception as error:
+            logger.warning(
+                "Falha ao calcular benchmark defensivo da liga: %s",
+                error
+            )
 
     defense_elapsed = time.perf_counter() - stage_start
 
