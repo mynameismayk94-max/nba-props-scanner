@@ -4260,7 +4260,11 @@ def collect_candidates(
         )
         return player, logs, fetch_elapsed, http_elapsed, error
 
-    player_history_workers = 16
+    # Aumenta moderadamente a concorrência apenas no histórico individual.
+    # O limite anterior de 16 deixou ~24s de latência na primeira consulta;
+    # 20 mantém um aumento controlado de pressão sobre a ESPN sem saltar
+    # para uma concorrência agressiva que poderia reintroduzir OOM.
+    player_history_workers = 20
     with ThreadPoolExecutor(
         max_workers=player_history_workers
     ) as executor:
