@@ -764,6 +764,10 @@ def season_year(selected_date: date) -> int:
 # sem compartilhar requests.Session entre threads.
 _http_local = threading.local()
 
+# Limite global de chamadas simultâneas à ESPN. Permite sobrepor histórico
+# individual e defesa sem multiplicar indefinidamente a pressão externa.
+_ESPN_REQUEST_SEMAPHORE = threading.BoundedSemaphore(16)
+
 
 def _cache_metrics(cache):
     """Retorna métricas simples do cache para observabilidade de performance."""
@@ -789,15 +793,16 @@ def request_json(
 
     try:
 
-        response = get_http_session().get(
-            url,
-            params=params,
-            timeout=(8, 25)
-        )
+        with _ESPN_REQUEST_SEMAPHORE:
+            response = get_http_session().get(
+                url,
+                params=params,
+                timeout=(8, 25)
+            )
 
-        response.raise_for_status()
+            response.raise_for_status()
 
-        return response.json()
+            return response.json()
 
     except requests.RequestException as error:
 
@@ -1691,7 +1696,7 @@ def get_completed_team_games(
     return games[:limit]
 
 
-@lru_cache(maxsize=100)
+@lru_cache(maxsize=180)
 def _get_cached_game_summary(
     event_id: str
 ) -> dict:
@@ -4227,9 +4232,66 @@ def collect_candidates(
         roster_elapsed
     )
 
-    # Primeiro buscamos os históricos dos jogadores. Isso permite
-    # identificar quem realmente pode virar candidato antes de
-    # consultar o histórico defensivo dos adversários.
+    # Inicia a coleta defensiva em paralelo ao histórico individual.
+    # As duas frentes compartilham um semáforo global de 16 chamadas ESPN,
+    # evitando que a concorrência combinada sobrecarregue o serviço.
+    defense_stage_start = time.perf_counter()
+    defense_cache_before = _cache_metrics(get_team_defense_history)
+    schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
+    summary_cache_before = _cache_metrics(_get_cached_game_summary)
+    league_cache_before = _cache_metrics(get_league_position_defense_baseline)
+
+    all_opponents = sorted(set(opponents.values()))
+
+    def fetch_team_defense(team):
+        team_start = time.perf_counter()
+        defense = get_team_defense_history(
+            team,
+            10,
+            target_date
+        )
+        elapsed = time.perf_counter() - team_start
+        logger.info(
+            "Defesa timing: data=%s equipe=%s jogos=%s tempo=%.2fs",
+            selected_date,
+            team,
+            len(defense),
+            elapsed
+        )
+        return team, defense
+
+    def fetch_defense_batch():
+        results = {}
+        with ThreadPoolExecutor(max_workers=6) as defense_executor:
+            futures = [
+                defense_executor.submit(fetch_team_defense, team)
+                for team in all_opponents
+            ]
+            for defense_future in as_completed(futures):
+                try:
+                    team, defense = defense_future.result()
+                    results[team] = defense
+                except Exception as error:
+                    logger.warning(
+                        "Falha ao consultar histórico defensivo: %s",
+                        error
+                    )
+        return results
+
+    with _DEFENSE_PREWARM_LOCK:
+        prewarm_state = dict(_DEFENSE_PREWARM_STATE.get(selected_date, {}))
+    logger.info(
+        "Defense prewarm status at candidates start: data=%s status=%s elapsed=%.2fs",
+        selected_date,
+        prewarm_state.get("status", "not_started"),
+        prewarm_state.get("elapsed") or 0.0
+    )
+
+    defense_executor = ThreadPoolExecutor(max_workers=1)
+    defense_batch_future = defense_executor.submit(fetch_defense_batch)
+
+    # O histórico individual e a defesa agora avançam simultaneamente.
+    # O limite global em request_json mantém no máximo 16 chamadas HTTP ativas.
     stage_start = time.perf_counter()
     player_logs = {}
     successful_logs = 0
@@ -4404,92 +4466,26 @@ def collect_candidates(
         player_logs_elapsed
     )
 
-    # Só consultamos defesa para adversários que realmente possuem
-    # pelo menos um jogador elegível para este mercado/data.
-    stage_start = time.perf_counter()
-    defense_cache_before = _cache_metrics(get_team_defense_history)
-    schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
-    summary_cache_before = _cache_metrics(_get_cached_game_summary)
-    league_cache_before = _cache_metrics(get_league_position_defense_baseline)
-
+    # Mantém no resultado apenas os adversários com jogadores elegíveis.
+    # A busca já ocorreu em paralelo ao histórico individual.
     eligible_opponents = {
         opponents.get(player["team"])
         for player, _ in eligible_players
         if opponents.get(player["team"])
     }
 
-    defense_cache = {}
-
-    def fetch_team_defense(team):
-        team_start = time.perf_counter()
-        defense = get_team_defense_history(
-            team,
-            10,
-            target_date
-        )
-        elapsed = time.perf_counter() - team_start
-        logger.info(
-            "Defesa timing: data=%s equipe=%s jogos=%s tempo=%.2fs",
-            selected_date,
-            team,
-            len(defense),
-            elapsed
-        )
-        return team, defense
-
-    with _DEFENSE_PREWARM_LOCK:
-        prewarm_state = dict(_DEFENSE_PREWARM_STATE.get(selected_date, {}))
-    logger.info(
-        "Defense prewarm status at candidates start: data=%s status=%s elapsed=%.2fs",
-        selected_date,
-        prewarm_state.get("status", "not_started"),
-        prewarm_state.get("elapsed") or 0.0
-    )
-
     league_baseline = None
-
-    with ThreadPoolExecutor(
-        max_workers=6
-    ) as executor:
-
-        futures = [
-            executor.submit(fetch_team_defense, team)
+    try:
+        all_defense_cache = defense_batch_future.result()
+        defense_cache = {
+            team: all_defense_cache[team]
             for team in eligible_opponents
-        ]
-        # O benchmark completo da liga é pesado (até 30 equipes e centenas
-        # de boxscores). Ele pertence à Auditoria/contexto aprofundado, não ao
-        # caminho crítico do Scanner. Mantemos a defesa recente do adversário,
-        # que alimenta as métricas posicionais exibidas no Scanner.
-        league_future = None
+            if team in all_defense_cache
+        }
+    finally:
+        defense_executor.shutdown(wait=False)
 
-        for future in as_completed(futures):
-            try:
-                team, defense = future.result()
-                defense_cache[team] = defense
-            except Exception as error:
-                logger.warning(
-                    "Falha ao consultar histórico defensivo: %s",
-                    error
-                )
-
-        if league_future:
-            try:
-                baseline_wait_started = time.perf_counter()
-                league_baseline = league_future.result()
-                logger.info(
-                    "Defense benchmark wait: data=%s mercado=%s prewarm_status_at_start=%s wait=%.2fs",
-                    selected_date,
-                    market,
-                    prewarm_state.get("status", "not_started"),
-                    time.perf_counter() - baseline_wait_started
-                )
-            except Exception as error:
-                logger.warning(
-                    "Falha ao calcular benchmark defensivo da liga: %s",
-                    error
-                )
-
-    defense_elapsed = time.perf_counter() - stage_start
+    defense_elapsed = time.perf_counter() - defense_stage_start
 
     defense_cache_after = _cache_metrics(get_team_defense_history)
     schedule_cache_after = _cache_metrics(get_team_regular_season_schedule)
