@@ -4751,12 +4751,12 @@ def games(
             detail="Data inválida. Utilize AAAA-MM-DD."
         )
 
-    # Mantém o retrospecto L5/L10 das equipes visível na agenda.
-    # Não inicia prewarm de históricos: o Scanner carrega os dados sob demanda,
-    # evitando retenção adicional de memória na instância de 512 MB.
+    # O endpoint /games precisa responder rápido: o contexto recente das equipes
+    # não deve bloquear a abertura da agenda nem competir com o Scanner.
+    # O Scanner carrega os dados necessários sob demanda em /candidates.
     return fetch_espn_games(
         selected_date,
-        enrich_context=True
+        enrich_context=False
     )
 
 
