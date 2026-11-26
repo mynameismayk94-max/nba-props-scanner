@@ -3503,7 +3503,7 @@ def build_shared_boxscore_context(
                 schedule_errors += 1
                 logger.warning(
                     "Falha ao montar jogos compartilhados de %s: %s",
-                    teams,
+                    team,
                     error
                 )
 
@@ -3588,8 +3588,6 @@ def build_shared_boxscore_context(
     ]
 
     fallback_errors = 0
-    fallback_start = time.perf_counter()
-
     def fetch_fallback(player):
         return player, get_athlete_logs(player["id"], year)
 
