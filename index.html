@@ -272,6 +272,12 @@
   .close-modal { background: transparent; border: 1px solid #4b5563; color: white; font-size: 16px; padding: 2px 6px; border-radius: 4px; height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; }
   .modal-body { min-height: 0; flex: 1 1 auto; padding: 12px; background: #0b0f19; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
   /* No modal de análise, os cabeçalhos das tabelas acompanham o conteúdo. */
+  /* Histórico L10: manter o cabeçalho de adversário em uma única linha no mobile. */
+  .recent-history-table th:nth-child(2),
+  .recent-history-table td:nth-child(2) {
+    white-space: nowrap;
+  }
+
   .analysis-table th { position: static; top: auto; z-index: auto; }
   .scanner-loading { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid #1f2937; border-radius: 8px; background: #111827; }
   .scanner-loading-track { height: 4px; overflow: hidden; border-radius: 999px; background: #1f2937; }
@@ -1374,7 +1380,7 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Jogos considerados</td><td>' + participacoes(p.games_last5) + '/5</td><td>' + participacoes(p.games_last10) + '/10</td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table><div class="analysis-note">L5 e L10 representam os últimos jogos disponíveis do jogador. A quantidade acima mostra o tamanho real de cada amostra; recortes incompletos devem ser interpretados com cautela.</div></div>';
 
   html += '<div class="analysis-card"><h3>📈 Histórico jogo a jogo · L10</h3>' +
-    '<table class="analysis-table"><tr><th>Data</th><th>Adversário</th><th>Local</th><th>Min</th><th>Valor</th></tr>' +
+    '<table class="analysis-table recent-history-table"><tr><th>Data</th><th>Adversário</th><th>Local</th><th>Min</th><th>Valor</th></tr>' +
     recentGames.map(game => '<tr><td>' + escapeHtml(formatGameDate(game.date)) + '</td><td>' + escapeHtml(game.opponent || '—') + '</td><td>' + formatVenue(game.home_away) + '</td><td><b>' + numero(game.minutes, 1) + '</b></td><td><b>' + numero(game.value) + '</b></td></tr>').join('') +
     '</table>' +
     '<div class="analysis-note">L10 em ordem do jogo mais recente para o mais antigo. Mediana: <b>' + (valueMedian == null ? '—' : numero(valueMedian, 2)) + '</b> · faixa: <b>' + (valueMinMax[0] == null ? '—' : numero(valueMinMax[0], 2) + '–' + numero(valueMinMax[1], 2)) + '</b> · mediana de minutos: <b>' + (minutesMedian == null ? '—' : numero(minutesMedian, 1)) + '</b>. Nos 5 jogos mais recentes, ' + gamesAtOrAboveL5 + '/' + Math.min(5, recentValues.length) + ' atingiram ou superaram a média L5. Estes indicadores são descritivos e não alteram o Score.</div>' +
