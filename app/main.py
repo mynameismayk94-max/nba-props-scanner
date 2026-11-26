@@ -4882,38 +4882,12 @@ def collect_candidates(
     # Mantém o benchmark leve do Scanner usando somente as equipes já consultadas.
     league_baseline = build_scanner_league_baseline_from_defense_cache(defense_cache)
 
-    defense_cache_after = _cache_metrics(get_team_defense_history)
-    schedule_cache_after = _cache_metrics(get_team_regular_season_schedule)
-    summary_cache_after = _cache_metrics(_get_cached_game_summary)
-    league_cache_after = _cache_metrics(get_league_position_defense_baseline)
-
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=get_team_defense_history "
         "shared_games=%s summaries=%s",
         selected_date, market,
         shared_context["games_unique"],
         shared_context["summaries_ok"]
-    )
-    logger.info(
-        "Candidatos cache: data=%s mercado=%s cache=get_team_regular_season_schedule hits_delta=%s misses_delta=%s size=%s",
-        selected_date, market,
-        schedule_cache_after["hits"] - schedule_cache_before["hits"],
-        schedule_cache_after["misses"] - schedule_cache_before["misses"],
-        schedule_cache_after["currsize"]
-    )
-    logger.info(
-        "Candidatos cache: data=%s mercado=%s cache=get_game_summary hits_delta=%s misses_delta=%s size=%s",
-        selected_date, market,
-        summary_cache_after["hits"] - summary_cache_before["hits"],
-        summary_cache_after["misses"] - summary_cache_before["misses"],
-        summary_cache_after["currsize"]
-    )
-    logger.info(
-        "Candidatos cache: data=%s mercado=%s cache=league_position_defense_baseline hits_delta=%s misses_delta=%s size=%s",
-        selected_date, market,
-        league_cache_after["hits"] - league_cache_before["hits"],
-        league_cache_after["misses"] - league_cache_before["misses"],
-        league_cache_after["currsize"]
     )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s tempo=%.2fs",
