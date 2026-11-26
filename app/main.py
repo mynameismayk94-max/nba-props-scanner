@@ -3460,6 +3460,10 @@ def build_shared_boxscore_context(
 
     O Scanner não usa game logs e boxscores em paralelo: primeiro constrói
     uma base compartilhada de partidas e depois apenas transforma os dados.
+
+    Importante para o Render Free: os summaries ESPN são processados conforme
+    chegam. Não mantemos um dicionário com dezenas/centenas de respostas
+    completas em memória enquanto também mantemos player_logs e defesa.
     """
     started = time.perf_counter()
 
@@ -3507,20 +3511,43 @@ def build_shared_boxscore_context(
                     error
                 )
 
+    # Mapeia cada boxscore para as equipes que realmente o utilizam.
+    # Isso evita percorrer todas as equipes para cada summary recebido.
     game_ids = {}
-    for games in team_games.values():
+    game_teams = {}
+    for team, games in team_games.items():
         for game in games:
             game_id = str(game.get("game_id") or "")
-            if game_id:
-                game_ids[game_id] = game
+            if not game_id:
+                continue
+            game_ids[game_id] = game
+            game_teams.setdefault(game_id, set()).add(team)
 
-    summaries = {}
+    player_logs = {
+        str(player.get("id")): []
+        for player in players
+        if player.get("id")
+    }
+
+    defense_teams = {
+        str(team or "").upper()
+        for team in opponent_teams
+        if team
+    }
+    defense_results = {
+        team: []
+        for team in defense_teams
+    }
+
     summary_errors = 0
+    summaries_ok = 0
+    summary_stage_start = time.perf_counter()
 
     def fetch_summary(game_id):
         return game_id, get_game_summary(game_id)
 
-    summary_stage_start = time.perf_counter()
+    # O limite permanece baixo para não reproduzir o pico de memória/requisições
+    # do desenho anterior. Cada summary é transformado e liberado imediatamente.
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [
             executor.submit(fetch_summary, game_id)
@@ -3529,42 +3556,50 @@ def build_shared_boxscore_context(
         for future in as_completed(futures):
             try:
                 game_id, summary = future.result()
-                summaries[game_id] = summary
+                if not summary:
+                    continue
+
+                summaries_ok += 1
+
+                # Deriva o histórico individual diretamente deste boxscore.
+                # O resumo deixa de ser guardado em um dicionário global.
+                for team in game_teams.get(str(game_id), ()):
+                    team_players = _extract_team_players_from_summary(
+                        summary,
+                        team
+                    )
+
+                    for player_id, player_game in team_players.items():
+                        player_logs.setdefault(player_id, []).append({
+                            **player_game,
+                            "event_id": str(game_id),
+                            "date": (game_ids[str(game_id)].get("date") or "")[:10],
+                            "opponent": game_ids[str(game_id)].get("opponent"),
+                            "home_away": game_ids[str(game_id)].get("home_away")
+                        })
+
+                # Deriva a defesa somente para as equipes que realmente são
+                # adversárias na consulta atual.
+                for team in defense_teams.intersection(
+                    game_teams.get(str(game_id), set())
+                ):
+                    stats = extract_team_defense_stats(summary, team)
+                    if not stats:
+                        continue
+
+                    position_data = aggregate_position_game(summary, team)
+                    defense_results.setdefault(team, []).append({
+                        **game_ids[str(game_id)],
+                        **stats,
+                        "positions": position_data["positions"]
+                    })
+
             except Exception as error:
                 summary_errors += 1
                 logger.warning(
-                    "Falha ao consultar boxscore compartilhado %s: %s",
+                    "Falha ao processar boxscore compartilhado: %s",
                     error
                 )
-
-    player_logs = {
-        str(player.get("id")): []
-        for player in players
-        if player.get("id")
-    }
-
-    # Cada resumo é percorrido uma única vez por equipe. Isso substitui
-    # centenas de consultas individuais ao endpoint /gamelog.
-    for team, games in team_games.items():
-        for game in games:
-            game_id = str(game.get("game_id") or "")
-            summary = summaries.get(game_id)
-            if not summary:
-                continue
-
-            team_players = _extract_team_players_from_summary(
-                summary,
-                team
-            )
-
-            for player_id, player_game in team_players.items():
-                player_logs.setdefault(player_id, []).append({
-                    **player_game,
-                    "event_id": game_id,
-                    "date": (game.get("date") or "")[:10],
-                    "opponent": game.get("opponent"),
-                    "home_away": game.get("home_away")
-                })
 
     for player_id in player_logs:
         player_logs[player_id].sort(
@@ -3575,22 +3610,19 @@ def build_shared_boxscore_context(
     # Se já existem pelo menos 10 partidas da equipe, um atleta com menos
     # de 10 aparições nos 10 boxscores pode ter jogos mais antigos. Nesses
     # poucos casos usamos o endpoint individual como fallback para preservar
-    # exatamente a semântica histórica do L10. No início da temporada, quando
-    # a equipe ainda tem menos de 10 partidas, o conjunto compartilhado já é
-    # a fotografia completa disponível e nenhum fallback é necessário.
+    # exatamente a semântica histórica do L10.
     fallback_players = []
     for player in players:
         player_id = str(player.get("id") or "")
         team = str(player.get("team") or "").upper()
         logs = player_logs.get(player_id, [])
+
         if len(team_games.get(team, [])) < 10 or len(logs) >= 10:
             continue
 
-        # Só precisamos completar o histórico de quem já passa pelo
-        # filtro mínimo do Scanner. Evita disparar centenas de gamelogs
-        # para atletas que serão descartados de qualquer forma.
         previous_games = [
-            game for game in logs
+            game
+            for game in logs
             if (game.get("date") or "") < target_date.isoformat()
         ]
         if len(previous_games) < 3:
@@ -3612,6 +3644,7 @@ def build_shared_boxscore_context(
         fallback_players.append(player)
 
     fallback_errors = 0
+
     def fetch_fallback(player):
         return player, get_athlete_logs(player["id"], year)
 
@@ -3634,31 +3667,8 @@ def build_shared_boxscore_context(
                     )
 
     defense_cache = {}
-    defense_teams = {
-        str(team or "").upper()
-        for team in opponent_teams
-        if team
-    }
 
-    for team in defense_teams:
-        results = []
-        for game in team_games.get(team, []):
-            game_id = str(game.get("game_id") or "")
-            summary = summaries.get(game_id)
-            if not summary:
-                continue
-
-            stats = extract_team_defense_stats(summary, team)
-            if not stats:
-                continue
-
-            position_data = aggregate_position_game(summary, team)
-            results.append({
-                **game,
-                **stats,
-                "positions": position_data["positions"]
-            })
-
+    for team, results in defense_results.items():
         results.sort(
             key=lambda game: game.get("date") or "",
             reverse=True
@@ -3790,32 +3800,32 @@ def build_shared_boxscore_context(
 
         defense_cache[team] = history
 
+    elapsed = time.perf_counter() - started
     logger.info(
         "Shared boxscore context: data=%s equipes=%s jogos_unicos=%s summaries_ok=%s "
         "summary_errors=%s fallback_players=%s fallback_errors=%s tempo_summaries=%.2fs total=%.2fs",
         target_date.isoformat(),
         len(teams),
         len(game_ids),
-        len(summaries),
+        summaries_ok,
         summary_errors,
         len(fallback_players),
         fallback_errors,
         time.perf_counter() - summary_stage_start,
-        time.perf_counter() - started
+        elapsed
     )
 
     return {
         "player_logs": player_logs,
         "defense_cache": defense_cache,
         "team_games": team_games,
-        "summaries": summaries,
         "games_unique": len(game_ids),
-        "summaries_ok": len(summaries),
+        "summaries_ok": summaries_ok,
         "summary_errors": summary_errors,
         "fallback_players": len(fallback_players),
         "fallback_errors": fallback_errors,
         "schedule_errors": schedule_errors,
-        "elapsed": time.perf_counter() - started
+        "elapsed": elapsed
     }
 
 
