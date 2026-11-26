@@ -3321,6 +3321,482 @@ def get_team_regular_season_schedule(
     return tuple(games)
 
 
+
+
+def _extract_team_players_from_summary(summary, team_abbr):
+    """Extrai todos os jogadores de uma equipe de um boxscore já carregado."""
+    result = {}
+    expected_team = str(team_abbr or "").upper()
+
+    players_blocks = (
+        summary.get("boxscore", {})
+        .get("players", [])
+    )
+    if not isinstance(players_blocks, list):
+        return result
+
+    for team_block in players_blocks:
+        if not isinstance(team_block, dict):
+            continue
+
+        block_team = (
+            team_block.get("team", {})
+            .get("abbreviation")
+            or ""
+        ).upper()
+
+        if block_team != expected_team:
+            continue
+
+        statistics_blocks = team_block.get("statistics", [])
+        if isinstance(statistics_blocks, dict):
+            statistics_blocks = [statistics_blocks]
+        if not isinstance(statistics_blocks, list):
+            continue
+
+        for statistics_block in statistics_blocks:
+            if not isinstance(statistics_block, dict):
+                continue
+
+            keys = (
+                statistics_block.get("keys")
+                or statistics_block.get("names")
+                or statistics_block.get("labels")
+                or []
+            )
+            key_indexes = {}
+            for index, key in enumerate(keys):
+                normalized_key = normalize_stat_key(key)
+                if normalized_key:
+                    key_indexes[normalized_key] = index
+
+            athletes = statistics_block.get("athletes", [])
+            if not isinstance(athletes, list):
+                continue
+
+            for athlete_entry in athletes:
+                if not isinstance(athlete_entry, dict):
+                    continue
+
+                athlete = athlete_entry.get("athlete", {})
+                if not isinstance(athlete, dict):
+                    continue
+
+                athlete_id = str(athlete.get("id", "")).strip()
+                if not athlete_id:
+                    continue
+
+                raw_stats = (
+                    athlete_entry.get("stats")
+                    or athlete_entry.get("statistics")
+                )
+
+                if raw_stats is None:
+                    continue
+
+                minutes = get_player_stat_value(
+                    raw_stats, key_indexes, "minutes"
+                )
+                assists = get_player_stat_value(
+                    raw_stats, key_indexes, "assists"
+                )
+                rebounds = get_player_stat_value(
+                    raw_stats, key_indexes, "rebounds"
+                )
+                points = get_player_stat_value(
+                    raw_stats, key_indexes, "points"
+                )
+                fga = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "fieldGoalsMade-fieldGoalsAttempted",
+                    attempt_stat=True
+                )
+                three_pa = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+                    attempt_stat=True
+                )
+                two_pa = subtract_stats(fga, three_pa)
+                fgm = get_player_stat_value(
+                    raw_stats,
+                    key_indexes,
+                    "fieldGoalsMade-fieldGoalsAttempted",
+                    made_stat=True
+                )
+
+                result[athlete_id] = {
+                    "player_id": athlete_id,
+                    "player": (
+                        athlete.get("displayName")
+                        or athlete.get("fullName")
+                        or athlete.get("shortName")
+                        or ""
+                    ),
+                    "team": expected_team,
+                    "minutes": minutes,
+                    "assists": assists,
+                    "rebounds": rebounds,
+                    "points": points,
+                    "fga": fga,
+                    "three_pa": three_pa,
+                    "two_pa": two_pa,
+                    "fgm": fgm
+                }
+
+    return result
+
+
+def build_shared_boxscore_context(
+    players,
+    target_date,
+    year,
+    opponent_teams
+):
+    """
+    Busca uma única fotografia de boxscores recentes e deriva dela tanto
+    histórico individual quanto contexto defensivo.
+
+    O Scanner não usa game logs e boxscores em paralelo: primeiro constrói
+    uma base compartilhada de partidas e depois apenas transforma os dados.
+    """
+    started = time.perf_counter()
+
+    teams = {
+        str(player.get("team") or "").upper()
+        for player in players
+        if player.get("team")
+    }
+    teams.update(
+        str(team or "").upper()
+        for team in opponent_teams
+        if team
+    )
+
+    team_games = {}
+    schedule_errors = 0
+
+    def fetch_team_games(team):
+        schedule = get_team_regular_season_schedule(team, year)
+        games = [
+            game
+            for game in schedule
+            if (game.get("date") or "")[:10] < target_date.isoformat()
+        ]
+        games.sort(
+            key=lambda game: game.get("date") or "",
+            reverse=True
+        )
+        return team, games[:10]
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = [
+            executor.submit(fetch_team_games, team)
+            for team in sorted(teams)
+        ]
+        for future in as_completed(futures):
+            try:
+                team, games = future.result()
+                team_games[team] = games
+            except Exception as error:
+                schedule_errors += 1
+                logger.warning(
+                    "Falha ao montar jogos compartilhados de %s: %s",
+                    teams,
+                    error
+                )
+
+    game_ids = {}
+    for games in team_games.values():
+        for game in games:
+            game_id = str(game.get("game_id") or "")
+            if game_id:
+                game_ids[game_id] = game
+
+    summaries = {}
+    summary_errors = 0
+
+    def fetch_summary(game_id):
+        return game_id, get_game_summary(game_id)
+
+    summary_stage_start = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(fetch_summary, game_id)
+            for game_id in game_ids
+        ]
+        for future in as_completed(futures):
+            try:
+                game_id, summary = future.result()
+                summaries[game_id] = summary
+            except Exception as error:
+                summary_errors += 1
+                logger.warning(
+                    "Falha ao consultar boxscore compartilhado %s: %s",
+                    error
+                )
+
+    player_logs = {
+        str(player.get("id")): []
+        for player in players
+        if player.get("id")
+    }
+
+    # Cada resumo é percorrido uma única vez por equipe. Isso substitui
+    # centenas de consultas individuais ao endpoint /gamelog.
+    for team, games in team_games.items():
+        for game in games:
+            game_id = str(game.get("game_id") or "")
+            summary = summaries.get(game_id)
+            if not summary:
+                continue
+
+            team_players = _extract_team_players_from_summary(
+                summary,
+                team
+            )
+
+            for player_id, player_game in team_players.items():
+                player_logs.setdefault(player_id, []).append({
+                    **player_game,
+                    "event_id": game_id,
+                    "date": (game.get("date") or "")[:10],
+                    "opponent": game.get("opponent"),
+                    "home_away": game.get("home_away")
+                })
+
+    for player_id in player_logs:
+        player_logs[player_id].sort(
+            key=lambda game: game.get("date") or "",
+            reverse=True
+        )
+
+    # Se já existem pelo menos 10 partidas da equipe, um atleta com menos
+    # de 10 aparições nos 10 boxscores pode ter jogos mais antigos. Nesses
+    # poucos casos usamos o endpoint individual como fallback para preservar
+    # exatamente a semântica histórica do L10. No início da temporada, quando
+    # a equipe ainda tem menos de 10 partidas, o conjunto compartilhado já é
+    # a fotografia completa disponível e nenhum fallback é necessário.
+    fallback_players = [
+        player
+        for player in players
+        if (
+            len(team_games.get(str(player.get("team") or "").upper(), [])) >= 10
+            and len(player_logs.get(str(player.get("id")), [])) < 10
+        )
+    ]
+
+    fallback_errors = 0
+    fallback_start = time.perf_counter()
+
+    def fetch_fallback(player):
+        return player, get_athlete_logs(player["id"], year)
+
+    if fallback_players:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(fetch_fallback, player)
+                for player in fallback_players
+            ]
+            for future in as_completed(futures):
+                try:
+                    player, logs = future.result()
+                    player_logs[str(player["id"])] = list(logs)
+                except Exception as error:
+                    fallback_errors += 1
+                    logger.warning(
+                        "Fallback de histórico falhou para %s: %s",
+                        player.get("player"),
+                        error
+                    )
+
+    defense_cache = {}
+    defense_teams = {
+        str(team or "").upper()
+        for team in opponent_teams
+        if team
+    }
+
+    for team in defense_teams:
+        results = []
+        for game in team_games.get(team, []):
+            game_id = str(game.get("game_id") or "")
+            summary = summaries.get(game_id)
+            if not summary:
+                continue
+
+            stats = extract_team_defense_stats(summary, team)
+            if not stats:
+                continue
+
+            position_data = aggregate_position_game(summary, team)
+            results.append({
+                **game,
+                **stats,
+                "positions": position_data["positions"]
+            })
+
+        results.sort(
+            key=lambda game: game.get("date") or "",
+            reverse=True
+        )
+
+        def calculate_averages(sample):
+            averages = {}
+            for key in (
+                "fga_allowed",
+                "three_pa_allowed",
+                "two_pa_allowed",
+                "fgm_allowed",
+                "rebounds_allowed",
+                "assists_allowed"
+            ):
+                values = [
+                    game[key]
+                    for game in sample
+                    if game.get(key) is not None
+                ]
+                averages[key] = (
+                    round(sum(values) / len(values), 1)
+                    if values else None
+                )
+            return averages
+
+        def calculate_position_averages(sample):
+            position_results = {}
+            for position in ("G", "F", "C", "OTHER"):
+                position_games = [
+                    game
+                    for game in sample
+                    if (
+                        game.get("positions", {})
+                        .get(position, {})
+                        .get("players_count", 0) > 0
+                    )
+                ]
+                averages = {}
+                individual_averages = {}
+                stat_games_analyzed = {}
+                stat_player_appearances = {}
+
+                for stat_key in (
+                    "points",
+                    "assists",
+                    "rebounds",
+                    "fga",
+                    "three_pa",
+                    "two_pa",
+                    "fgm"
+                ):
+                    game_values = []
+                    individual_total = 0.0
+                    individual_appearances = 0
+
+                    for game in position_games:
+                        position_data = (
+                            game.get("positions", {})
+                            .get(position, {})
+                        )
+                        value = position_data.get(stat_key)
+                        if value is not None:
+                            game_values.append(value)
+                            individual_total += value
+
+                        individual_appearances += (
+                            position_data
+                            .get("stat_players_count", {})
+                            .get(stat_key, 0)
+                        )
+
+                    stat_games_analyzed[stat_key] = len(game_values)
+                    averages[stat_key] = (
+                        round(sum(game_values) / len(game_values), 1)
+                        if game_values else None
+                    )
+                    stat_player_appearances[stat_key] = individual_appearances
+                    individual_averages[stat_key] = (
+                        round(
+                            individual_total / individual_appearances,
+                            2
+                        )
+                        if individual_appearances > 0
+                        else None
+                    )
+
+                players_per_game = [
+                    game.get("positions", {})
+                    .get(position, {})
+                    .get("players_count", 0)
+                    for game in position_games
+                ]
+
+                position_results[position] = {
+                    "games_analyzed": len(position_games),
+                    "players_per_game_avg": (
+                        round(
+                            sum(players_per_game) / len(players_per_game),
+                            1
+                        )
+                        if players_per_game else 0
+                    ),
+                    "stat_games_analyzed": stat_games_analyzed,
+                    "averages": averages,
+                    "individual_averages": individual_averages,
+                    "stat_player_appearances": stat_player_appearances
+                }
+
+            return position_results
+
+        history = {
+            "team": team,
+            "games_analyzed": len(results),
+            "games": results,
+            "averages": calculate_averages(results),
+            "positions": calculate_position_averages(results)
+        }
+
+        for window in (5, 10):
+            sample = results[:window]
+            history[f"L{window}"] = {
+                "team": team,
+                "games_analyzed": len(sample),
+                "games": sample,
+                "averages": calculate_averages(sample),
+                "positions": calculate_position_averages(sample)
+            }
+
+        defense_cache[team] = history
+
+    logger.info(
+        "Shared boxscore context: data=%s equipes=%s jogos_unicos=%s summaries_ok=%s "
+        "summary_errors=%s fallback_players=%s fallback_errors=%s tempo_summaries=%.2fs total=%.2fs",
+        target_date.isoformat(),
+        len(teams),
+        len(game_ids),
+        len(summaries),
+        summary_errors,
+        len(fallback_players),
+        fallback_errors,
+        time.perf_counter() - summary_stage_start,
+        time.perf_counter() - started
+    )
+
+    return {
+        "player_logs": player_logs,
+        "defense_cache": defense_cache,
+        "team_games": team_games,
+        "summaries": summaries,
+        "games_unique": len(game_ids),
+        "summaries_ok": len(summaries),
+        "summary_errors": summary_errors,
+        "fallback_players": len(fallback_players),
+        "fallback_errors": fallback_errors,
+        "schedule_errors": schedule_errors,
+        "elapsed": time.perf_counter() - started
+    }
+
+
 NBA_TEAM_ABBREVIATIONS = (
     "ATL", "BKN", "BOS", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GS",
     "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NO", "NY",
@@ -4332,111 +4808,54 @@ def collect_candidates(
         roster_elapsed
     )
 
-    # O histórico dos jogadores e o contexto defensivo são independentes entre si.
-    # Mantemos os mesmos dados/regras, mas executamos as duas aquisições em
-    # paralelo para que a latência total não seja a soma de dois gargalos.
-    # A concorrência foi deliberadamente reduzida no histórico de jogadores
-    # para evitar saturação da ESPN quando o boxscore também está sendo buscado.
-    player_logs = {}
-    successful_logs = 0
-    errors = 0
-    player_cache_before = _cache_metrics(get_athlete_logs)
+    # A aquisição do Scanner usa uma única camada de boxscores compartilhados.
+    # Dela derivamos histórico individual e contexto defensivo, evitando que
+    # centenas de endpoints de atleta e dezenas de boxscores concorram entre si.
+    shared_context = build_shared_boxscore_context(
+        players,
+        target_date,
+        year,
+        set(opponents.values())
+    )
 
-    # O confronto do dia já define todos os adversários possíveis. Buscar o
-    # histórico defensivo em paralelo com os game logs evita esperar 26s+ antes
-    # de iniciar a segunda etapa. O cálculo final continua usando somente os
-    # adversários efetivamente associados a jogadores elegíveis.
-    defense_cache_before = _cache_metrics(get_team_defense_history)
-    schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
-    summary_cache_before = _cache_metrics(_get_cached_game_summary)
-    league_cache_before = _cache_metrics(get_league_position_defense_baseline)
-    defense_cache = {}
-    defense_errors = 0
-    defense_stage_start = time.perf_counter()
+    player_logs = shared_context["player_logs"]
+    successful_logs = len(player_logs)
+    errors = shared_context["fallback_errors"] + shared_context["summary_errors"]
 
-    all_opponents = {
-        opponent
-        for opponent in opponents.values()
-        if opponent
-    }
-
-    def fetch_team_defense(team):
-        team_start = time.perf_counter()
-        defense = get_team_defense_history(team, 10, target_date)
-        elapsed = time.perf_counter() - team_start
-        logger.info(
-            "Defesa timing: data=%s equipe=%s jogos=%s tempo=%.2fs",
-            selected_date, team, len(defense), elapsed
-        )
-        return team, defense
-
-    # O executor da defesa fica vivo enquanto os game logs dos atletas são
-    # consultados. Assim as duas fontes trabalham simultaneamente sem alterar
-    # o conteúdo retornado ao Scanner.
-    with ThreadPoolExecutor(max_workers=3) as defense_executor:
-        defense_futures = [
-            defense_executor.submit(fetch_team_defense, team)
-            for team in all_opponents
+    eligible_players = []
+    for player in players:
+        logs = player_logs.get(str(player["id"]), [])
+        previous_games = [
+            game
+            for game in logs
+            if game["date"] < target_date.isoformat()
         ]
+        if len(previous_games) < 3:
+            continue
+        last5 = previous_games[:5]
+        minutes_values = [
+            game["minutes"]
+            for game in last5
+            if game.get("minutes") is not None
+        ]
+        if not minutes_values:
+            continue
+        minutes_avg = sum(minutes_values) / len(minutes_values)
+        if minutes_avg < 24:
+            continue
+        eligible_players.append((player, tuple(logs)))
 
-        player_stage_start = time.perf_counter()
-
-        def fetch_player(player):
-            logs = get_athlete_logs(player["id"], year)
-            return player, logs
-
-        player_history_workers = 8
-        with ThreadPoolExecutor(max_workers=player_history_workers) as executor:
-            futures = [executor.submit(fetch_player, player) for player in players]
-            for future in as_completed(futures):
-                try:
-                    player, logs = future.result()
-                    successful_logs += 1
-                    player_logs[player["id"]] = (player, logs)
-                except Exception as error:
-                    errors += 1
-                    logger.warning("Falha ao consultar jogador: %s", error)
-
-        player_logs_elapsed = time.perf_counter() - player_stage_start
-
-        eligible_players = []
-        for player, logs in player_logs.values():
-            previous_games = [
-                game for game in logs
-                if game["date"] < target_date.isoformat()
-            ]
-            if len(previous_games) < 3:
-                continue
-            last5 = previous_games[:5]
-            minutes_avg = sum(game["minutes"] for game in last5) / len(last5)
-            if minutes_avg < 24:
-                continue
-            eligible_players.append((player, logs))
-
-        player_cache_after = _cache_metrics(get_athlete_logs)
-        logger.info(
-            "Candidatos cache: data=%s mercado=%s cache=get_athlete_logs hits_delta=%s misses_delta=%s size=%s",
-            selected_date, market,
-            player_cache_after["hits"] - player_cache_before["hits"],
-            player_cache_after["misses"] - player_cache_before["misses"],
-            player_cache_after["currsize"]
-        )
-        logger.info(
-            "Candidatos timing: data=%s mercado=%s etapa=historico_jogadores jogadores_consultados=%s elegiveis=%s tempo=%.2fs",
-            selected_date, market, successful_logs, len(eligible_players), player_logs_elapsed
-        )
-
-        # A defesa foi iniciada junto com os game logs. Agora apenas coletamos
-        # os resultados; o cálculo abaixo continua filtrando pelos elegíveis.
-        for future in as_completed(defense_futures):
-            try:
-                team, defense = future.result()
-                defense_cache[team] = defense
-            except Exception as error:
-                defense_errors += 1
-                logger.warning("Falha ao consultar histórico defensivo: %s", error)
-
-    defense_elapsed = time.perf_counter() - defense_stage_start
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=historico_compartilhado "
+        "jogadores=%s elegiveis=%s jogos_unicos=%s summaries=%s tempo=%.2fs",
+        selected_date,
+        market,
+        successful_logs,
+        len(eligible_players),
+        shared_context["games_unique"],
+        shared_context["summaries_ok"],
+        shared_context["elapsed"]
+    )
 
     eligible_opponents = {
         opponents.get(player["team"])
@@ -4444,20 +4863,21 @@ def collect_candidates(
         if opponents.get(player["team"])
     }
 
-    # Descarta do caminho de cálculo qualquer equipe que não tenha candidato
-    # elegível, sem repetir chamadas à ESPN.
     defense_cache = {
-        team: defense_cache.get(team, [])
+        team: shared_context["defense_cache"].get(team, [])
         for team in eligible_opponents
     }
 
+    defense_elapsed = shared_context["elapsed"]
+
     logger.info(
-        "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s consultados=%s erros=%s tempo=%.2fs",
+        "Candidatos timing: data=%s mercado=%s etapa=defesa_compartilhada "
+        "adversarios=%s jogos_unicos=%s summaries=%s tempo=%.2fs",
         selected_date,
         market,
         len(eligible_opponents),
-        len(all_opponents),
-        defense_errors,
+        shared_context["games_unique"],
+        shared_context["summaries_ok"],
         defense_elapsed
     )
 
