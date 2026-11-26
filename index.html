@@ -1392,11 +1392,6 @@ function abrirAnalise(indice){
     ? 'Não há dados suficientes para medir a dispersão.'
     : 'CV ' + numero(coefficientVariation * 100, 0) + '% · desvio padrão ' + numero(standardDeviation, 2);
 
-  const distributionRows = [
-    { label: 'Abaixo da L5', count: gamesBelowL5 },
-    { label: 'Igual à L5', count: gamesEqualL5 },
-    { label: 'Acima da L5', count: gamesAboveL5 }
-  ];
   const recentFiveSequence = recentValues.slice(0, 5).map(value => numero(value)).join(' · ') || '—';
   const formatGameDate = value => {
     if(!value) return '—';
