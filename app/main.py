@@ -1696,7 +1696,7 @@ def get_completed_team_games(
     return games[:limit]
 
 
-@lru_cache(maxsize=180)
+@lru_cache(maxsize=60)
 def _get_cached_game_summary(
     event_id: str
 ) -> dict:
@@ -3578,21 +3578,45 @@ def build_shared_boxscore_context(
     # exatamente a semântica histórica do L10. No início da temporada, quando
     # a equipe ainda tem menos de 10 partidas, o conjunto compartilhado já é
     # a fotografia completa disponível e nenhum fallback é necessário.
-    fallback_players = [
-        player
-        for player in players
-        if (
-            len(team_games.get(str(player.get("team") or "").upper(), [])) >= 10
-            and len(player_logs.get(str(player.get("id")), [])) < 10
-        )
-    ]
+    fallback_players = []
+    for player in players:
+        player_id = str(player.get("id") or "")
+        team = str(player.get("team") or "").upper()
+        logs = player_logs.get(player_id, [])
+        if len(team_games.get(team, [])) < 10 or len(logs) >= 10:
+            continue
+
+        # Só precisamos completar o histórico de quem já passa pelo
+        # filtro mínimo do Scanner. Evita disparar centenas de gamelogs
+        # para atletas que serão descartados de qualquer forma.
+        previous_games = [
+            game for game in logs
+            if (game.get("date") or "") < target_date.isoformat()
+        ]
+        if len(previous_games) < 3:
+            continue
+
+        last5 = previous_games[:5]
+        minutes_values = [
+            game.get("minutes")
+            for game in last5
+            if game.get("minutes") is not None
+        ]
+        if not minutes_values:
+            continue
+
+        minutes_avg = sum(minutes_values) / len(minutes_values)
+        if minutes_avg < 24:
+            continue
+
+        fallback_players.append(player)
 
     fallback_errors = 0
     def fetch_fallback(player):
         return player, get_athlete_logs(player["id"], year)
 
     if fallback_players:
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [
                 executor.submit(fetch_fallback, player)
                 for player in fallback_players
