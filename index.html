@@ -299,6 +299,14 @@
     .analysis-table { font-size: 9px; }
     .analysis-table th, .analysis-table td { padding: 5px 3px; }
   }
+  /* Preserva o nome completo da plataforma em telas estreitas. */
+  .header-brand-name { min-width: max-content; }
+  .header-nav { max-width: 100%; }
+  @media (max-width: 420px) {
+    .header-nav { margin-left: auto; }
+    .header-nav button { padding-left: 6px !important; padding-right: 6px !important; font-size: 10px !important; }
+  }
+
 </style>
 </head>
 
@@ -306,18 +314,18 @@
 
 <!-- SaaS Top Header Proporcional -->
 <header class="glass-panel sticky top-0 z-50 border-b border-gray-800 rounded-none">
-  <div class="max-w-7xl mx-auto px-3 h-12 flex items-center justify-between gap-2">
-    <div class="flex items-center space-x-2 min-w-0">
+  <div class="max-w-7xl mx-auto px-3 min-h-12 py-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
+    <div class="flex items-center space-x-2 min-w-0 shrink-0">
       <div class="h-7 w-7 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-bold text-gray-950 text-xs shrink-0 shadow">
         🏀
       </div>
-      <div class="truncate">
-        <span class="font-bold text-xs sm:text-sm tracking-tight text-white block truncate">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
+      <div class="header-brand-name">
+        <span class="font-bold text-xs sm:text-sm tracking-tight text-white whitespace-nowrap">NBA Props <span class="text-emerald-400 font-normal">Analytics</span></span>
       </div>
     </div>
 
     <!-- Navegação por Abas Compacta -->
-    <nav class="flex space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
+    <nav class="header-nav flex space-x-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800 shrink-0">
       <button id="tab-scanner-btn" onclick="switchTab('scanner')" class="tab-button active px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-400 hover:text-white transition-all h-6 flex items-center">
         Scanner
       </button>
