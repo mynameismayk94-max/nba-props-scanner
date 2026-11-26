@@ -1412,9 +1412,10 @@ function abrirAnalise(indice){
       teammateShortlist.map(teammate => {
         const comparison = teammateComparisons[teammate.player_id] || {};
         const statComparison = comparison[teammateStatKey] || {};
+        const averageField = 'average_' + teammateStatKey;
         return '<tr><td><b>' + escapeHtml(teammate.player || 'Jogador') + '</b><br><span class="text-[10px] text-gray-500">' +
           escapeHtml(teammate.position || '—') + ' · ' + participacoes(teammate.games_in_window) + '/' + participacoes(teammate.window_games) +
-          'j · ' + numero(teammate.average_minutes, 1) + ' min</span></td><td>' + numero(teammate[teammateStatKey === 'three_pa' ? 'average_fga' : 'average_' + (teammateStatKey === 'fga' ? 'fga' : teammateStatKey)]) +
+          'j · ' + numero(teammate.average_minutes, 1) + ' min</span></td><td>' + numero(teammate[averageField]) +
           '</td><td>' + formatSplit(statComparison.with_teammate) + '</td><td>' + formatSplit(statComparison.confirmed_absent) + '</td></tr>';
       }).join('') +
       '</table>' +
