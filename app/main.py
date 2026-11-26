@@ -3704,6 +3704,104 @@ def build_player_venue_production(games, target_date, stat_key):
     return result
 
 
+
+def build_scanner_league_baseline_from_defense_cache(defense_cache):
+    """Constrói uma referência leve usando as equipes já consultadas pelo Scanner.
+
+    Não faz novas chamadas à ESPN. A referência usa exatamente os mesmos
+    boxscores defensivos já carregados para os adversários dos jogos da data,
+    preservando a mesma estrutura consumida por build_player_result().
+    """
+    stat_keys = (
+        "points",
+        "assists",
+        "rebounds",
+        "fga",
+        "three_pa",
+        "two_pa",
+        "fgm",
+    )
+    positions = ("G", "F", "C")
+
+    samples = {
+        window: {
+            position: {stat: [] for stat in stat_keys}
+            for position in positions
+        }
+        for window in (5, 10)
+    }
+    minute_player_samples = {
+        window: {position: [] for position in positions}
+        for window in (5, 10)
+    }
+
+    teams_analyzed = 0
+    unique_games = set()
+
+    for team, defense in defense_cache.items():
+        if not defense:
+            continue
+        teams_analyzed += 1
+
+        for window in (5, 10):
+            games = (
+                defense.get(f"L{window}", {})
+                .get("games", [])
+            )
+
+            for game in games:
+                game_id = str(game.get("game_id") or "")
+                if game_id:
+                    unique_games.add(game_id)
+
+                for position in positions:
+                    position_data = (
+                        game.get("positions", {})
+                        .get(position, {})
+                    )
+                    players = position_data.get("players", [])
+
+                    if players:
+                        minute_player_samples[window][position].append({
+                            "positions": {
+                                position: {
+                                    "players": players
+                                }
+                            }
+                        })
+
+                    for stat_key in stat_keys:
+                        value = position_data.get(stat_key)
+                        if value is not None:
+                            samples[window][position][stat_key].append(value)
+
+    result = {
+        "positions": {},
+        "minute_player_samples": minute_player_samples,
+        "teams_analyzed": teams_analyzed,
+        "unique_games": len(unique_games),
+        "scope": "scanner_opponents",
+    }
+
+    for position in positions:
+        result["positions"][position] = {}
+        for stat_key in stat_keys:
+            result["positions"][position][stat_key] = {}
+            for window in (5, 10):
+                values = samples[window][position][stat_key]
+                result["positions"][position][stat_key][f"l{window}_avg"] = (
+                    round(sum(values) / len(values), 2)
+                    if values else None
+                )
+                result["positions"][position][stat_key][f"l{window}_games"] = len(values)
+
+    logger.info(
+        "Scanner league reference: equipes=%s jogos_unicos=%s escopo=adversarios_da_data",
+        teams_analyzed,
+        len(unique_games),
+    )
+    return result
+
 def build_player_result(
     player,
     games,
@@ -4482,6 +4580,13 @@ def collect_candidates(
             for team in eligible_opponents
             if team in all_defense_cache
         }
+
+        # O Scanner não precisa mais consultar os 30 times da liga para
+        # reconstruir o benchmark completo. Usa as equipes que já foram
+        # consultadas para os adversários da data, sem novas chamadas ESPN.
+        league_baseline = build_scanner_league_baseline_from_defense_cache(
+            defense_cache
+        )
     finally:
         defense_executor.shutdown(wait=False)
 
