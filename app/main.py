@@ -4604,6 +4604,17 @@ def build_player_result(
         season_year(target_date)
     )
 
+    recent_games = [
+        {
+            "date": game.get("date"),
+            "opponent": game.get("opponent"),
+            "home_away": game.get("home_away"),
+            "minutes": game.get("minutes"),
+            "value": game.get(stat_key)
+        }
+        for game in last10
+    ]
+
     return {
         "player_id": str(player["id"]),
         "player": player["player"],
