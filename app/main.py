@@ -3575,7 +3575,29 @@ def build_shared_boxscore_context(
                     game_status = teammate_status_by_game.setdefault(
                         str(game_id), {}
                     )
+
+                    # Reutiliza o mesmo boxscore para obter a evidência de
+                    # participação/ausência. Não faz novas chamadas à ESPN.
+                    # A função também reconhece DNP/inactive explícitos que a
+                    # extração do histórico pode não carregar quando não há
+                    # estatísticas numéricas.
+                    explicit_status = extract_team_player_status(
+                        summary,
+                        team
+                    )
+                    for player_id, status in explicit_status.items():
+                        if status.get("status") in {
+                            "played",
+                            "confirmed_absent"
+                        }:
+                            game_status[player_id] = status
+
+                    # Mantém a evidência numérica já derivada pelo histórico
+                    # como fallback para qualquer entrada que a função acima
+                    # não tenha conseguido classificar.
                     for player_id, player_game in team_players.items():
+                        if player_id in game_status:
+                            continue
                         minutes = player_game.get("minutes")
                         if minutes is not None and float(minutes) > 0:
                             game_status[player_id] = {
