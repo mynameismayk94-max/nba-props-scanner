@@ -2165,6 +2165,125 @@ def get_team_defense_history(
     return history
 
 
+
+# Prewarm do contexto defensivo do Scanner. O objetivo é aproveitar o intervalo
+# entre a abertura da agenda e a seleção do mercado sem alterar o caminho crítico
+# de /games. O cache usado é o mesmo de get_team_defense_history.
+_DEFENSE_PREWARM_LOCK = threading.Lock()
+_DEFENSE_PREWARM_STATE = {}
+
+
+def _defense_context_prewarm_worker(selected_date, team_abbreviations, event):
+    started = time.perf_counter()
+    successful = 0
+    errors = 0
+
+    try:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {
+                executor.submit(
+                    get_team_defense_history,
+                    team,
+                    10,
+                    datetime.strptime(selected_date, "%Y-%m-%d").date()
+                ): team
+                for team in team_abbreviations
+            }
+
+            for future in as_completed(futures):
+                team = futures[future]
+                try:
+                    future.result()
+                    successful += 1
+                except Exception as error:
+                    errors += 1
+                    logger.warning(
+                        "Defense prewarm falhou para %s/%s: %s",
+                        selected_date,
+                        team,
+                        error
+                    )
+
+        elapsed = time.perf_counter() - started
+
+        with _DEFENSE_PREWARM_LOCK:
+            state = _DEFENSE_PREWARM_STATE.get(selected_date)
+            if state:
+                state["status"] = "ok" if errors == 0 else "partial"
+                state["elapsed"] = elapsed
+                state["teams"] = len(team_abbreviations)
+                state["successful"] = successful
+                state["errors"] = errors
+
+        logger.info(
+            "Defense prewarm: data=%s status=%s equipes=%s sucesso=%s erros=%s tempo=%.2fs",
+            selected_date,
+            "ok" if errors == 0 else "partial",
+            len(team_abbreviations),
+            successful,
+            errors,
+            elapsed
+        )
+
+    except Exception as error:
+        elapsed = time.perf_counter() - started
+        with _DEFENSE_PREWARM_LOCK:
+            state = _DEFENSE_PREWARM_STATE.get(selected_date)
+            if state:
+                state["status"] = "error"
+                state["elapsed"] = elapsed
+                state["error"] = str(error)
+
+        logger.warning(
+            "Defense prewarm falhou para %s: %s",
+            selected_date,
+            error
+        )
+
+    finally:
+        event.set()
+
+
+def schedule_defense_context_prewarm(selected_date, team_abbreviations):
+    teams = tuple(sorted({
+        str(team).strip().upper()
+        for team in team_abbreviations
+        if str(team).strip()
+    }))
+
+    if not teams:
+        return None
+
+    with _DEFENSE_PREWARM_LOCK:
+        current = _DEFENSE_PREWARM_STATE.get(selected_date)
+        if current and current.get("status") in {"running", "ok", "partial"}:
+            return current
+
+        event = threading.Event()
+        state = {
+            "status": "running",
+            "started": time.perf_counter(),
+            "event": event,
+            "teams": len(teams),
+        }
+        _DEFENSE_PREWARM_STATE[selected_date] = state
+
+    thread = threading.Thread(
+        target=_defense_context_prewarm_worker,
+        args=(selected_date, teams, event),
+        daemon=True,
+        name=f"defense-prewarm-{selected_date}"
+    )
+    thread.start()
+
+    logger.info(
+        "Defense prewarm agendado: data=%s equipes=%s",
+        selected_date,
+        len(teams)
+    )
+    return state
+
+
 def get_team_defense_history_fresh(
     team_abbr,
     limit=10,
@@ -2449,8 +2568,14 @@ def fetch_espn_games(
                         "last5_games": 0, "last5_status": "unavailable"
                     }))
 
-        # O benchmark defensivo é carregado sob demanda pelo fluxo de
-        # candidatos. Não iniciar um prewarm paralelo durante a consulta da agenda.
+        # O prewarm defensivo começa somente depois que /games conclui
+        # seu próprio contexto. Assim, a resposta da agenda não fica bloqueada,
+        # mas o cache compartilhado já começa a ser preenchido enquanto o usuário
+        # escolhe o mercado.
+        schedule_defense_context_prewarm(
+            selected_date,
+            team_abbreviations
+        )
 
     return {
         "date": selected_date,
