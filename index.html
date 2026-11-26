@@ -1357,9 +1357,47 @@ function abrirAnalise(indice){
   const valueMedian = mediana(recentValues);
   const minutesMedian = mediana(recentMinutes);
   const valueMinMax = minMax(recentValues);
-  const gamesAtOrAboveL5 = recentValues.length
-    ? recentValues.slice(0, 5).filter(value => value >= Number(p.last5_avg)).length
+  const l5Reference = Number(p.last5_avg);
+  const gamesAboveL5 = Number.isFinite(l5Reference)
+    ? recentValues.filter(value => value > l5Reference).length
     : 0;
+  const gamesEqualL5 = Number.isFinite(l5Reference)
+    ? recentValues.filter(value => value === l5Reference).length
+    : 0;
+  const gamesBelowL5 = Number.isFinite(l5Reference)
+    ? recentValues.filter(value => value < l5Reference).length
+    : 0;
+  const gamesAtOrAboveL5 = recentValues.length
+    ? recentValues.slice(0, 5).filter(value => Number.isFinite(l5Reference) && value >= l5Reference).length
+    : 0;
+
+  const recentMean = recentValues.length
+    ? recentValues.reduce((sum, value) => sum + value, 0) / recentValues.length
+    : null;
+  const variance = recentMean == null
+    ? null
+    : recentValues.reduce((sum, value) => sum + Math.pow(value - recentMean, 2), 0) / recentValues.length;
+  const standardDeviation = variance == null ? null : Math.sqrt(variance);
+  const coefficientVariation = standardDeviation != null && recentMean != null && recentMean !== 0
+    ? standardDeviation / Math.abs(recentMean)
+    : null;
+  const consistencyLabel = coefficientVariation == null
+    ? 'Sem amostra'
+    : coefficientVariation <= 0.25
+      ? 'Alta'
+      : coefficientVariation <= 0.45
+        ? 'Moderada'
+        : 'Baixa';
+  const consistencyDetail = coefficientVariation == null
+    ? 'Não há dados suficientes para medir a dispersão.'
+    : 'CV ' + numero(coefficientVariation * 100, 0) + '% · desvio padrão ' + numero(standardDeviation, 2);
+
+  const distributionRows = [
+    { label: 'Abaixo da L5', count: gamesBelowL5 },
+    { label: 'Igual à L5', count: gamesEqualL5 },
+    { label: 'Acima da L5', count: gamesAboveL5 }
+  ];
+  const recentFiveSequence = recentValues.slice(0, 5).map(value => numero(value)).join(' · ') || '—';
   const formatGameDate = value => {
     if(!value) return '—';
     const parts = String(value).split('-');
@@ -1401,6 +1439,18 @@ function abrirAnalise(indice){
     recentGames.map(game => '<tr><td>' + escapeHtml(formatGameDate(game.date)) + '</td><td>' + escapeHtml(game.opponent || '—') + '</td><td>' + formatVenue(game.home_away) + '</td><td><b>' + numero(game.minutes, 1) + '</b></td><td><b>' + numero(game.value) + '</b></td></tr>').join('') +
     '</table>' +
     '<div class="analysis-note">L10 em ordem do jogo mais recente para o mais antigo. Mediana: <b>' + (valueMedian == null ? '—' : numero(valueMedian, 2)) + '</b> · faixa: <b>' + (valueMinMax[0] == null ? '—' : numero(valueMinMax[0], 2) + '–' + numero(valueMinMax[1], 2)) + '</b> · mediana de minutos: <b>' + (minutesMedian == null ? '—' : numero(minutesMedian, 1)) + '</b>. Nos 5 jogos mais recentes, ' + gamesAtOrAboveL5 + '/' + Math.min(5, recentValues.length) + ' atingiram ou superaram a média L5. Estes indicadores são descritivos e não alteram o Score.</div>' +
+    '</div>';
+
+  html += '<div class="analysis-card"><h3>📊 Consistência e distribuição · L10</h3>' +
+    '<table class="analysis-table">' +
+    '<tr><td>Acima da média L5</td><td><b>' + gamesAboveL5 + '/' + recentValues.length + '</b></td><td>' + (recentValues.length ? numero(gamesAboveL5 / recentValues.length * 100, 0) + '%' : '—') + '</td></tr>' +
+    '<tr><td>Igual à média L5</td><td><b>' + gamesEqualL5 + '/' + recentValues.length + '</b></td><td>' + (recentValues.length ? numero(gamesEqualL5 / recentValues.length * 100, 0) + '%' : '—') + '</td></tr>' +
+    '<tr><td>Abaixo da média L5</td><td><b>' + gamesBelowL5 + '/' + recentValues.length + '</b></td><td>' + (recentValues.length ? numero(gamesBelowL5 / recentValues.length * 100, 0) + '%' : '—') + '</td></tr>' +
+    '<tr><td>Dispersão</td><td colspan="2"><b>' + escapeHtml(consistencyLabel) + '</b> · ' + escapeHtml(consistencyDetail) + '</td></tr>' +
+    '</table>' +
+    '<div class="analysis-note"><b>Últimos 5:</b> ' + escapeHtml(recentFiveSequence) + ' · ' +
+    '<b>' + gamesAtOrAboveL5 + '/' + Math.min(5, recentValues.length) + '</b> atingiram ou superaram a L5. ' +
+    'A consistência é descritiva e usa o coeficiente de variação do L10: até 25% = alta, 25–45% = moderada, acima de 45% = baixa. Não representa probabilidade nem altera o Score.</div>' +
     '</div>';
 
   html += '<div class="analysis-card"><h3>🏠 Produção por local</h3><table class="analysis-table"><tr><th></th><th>Casa</th><th>Fora</th></tr><tr><td>Temporada</td><td><b>' + venueAverage('home', 'season') + '</b></td><td><b>' + venueAverage('away', 'season') + '</b></td></tr><tr><td>Jogos · temporada</td><td>' + participacoes(venueGames('home', 'season')) + '</td><td>' + participacoes(venueGames('away', 'season')) + '</td></tr><tr><td>Últimos 10 por local</td><td><b>' + venueAverage('home', 'last10') + '</b></td><td><b>' + venueAverage('away', 'last10') + '</b></td></tr><tr><td>Jogos · recorte</td><td>' + participacoes(venueGames('home', 'last10')) + '</td><td>' + participacoes(venueGames('away', 'last10')) + '</td></tr><tr><td>Minutos · últimos 10</td><td>' + venueMinutes('home', 'last10') + '</td><td>' + venueMinutes('away', 'last10') + '</td></tr></table><div class="analysis-note">L10 calculado separadamente para jogos em casa e fora. Partidas sem mando identificado pela ESPN não entram nesta comparação. Não altera o Score.</div></div>';
