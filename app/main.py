@@ -4888,11 +4888,11 @@ def collect_candidates(
     league_cache_after = _cache_metrics(get_league_position_defense_baseline)
 
     logger.info(
-        "Candidatos cache: data=%s mercado=%s cache=get_team_defense_history hits_delta=%s misses_delta=%s size=%s",
+        "Candidatos cache: data=%s mercado=%s cache=get_team_defense_history "
+        "shared_games=%s summaries=%s",
         selected_date, market,
-        defense_cache_after["hits"] - defense_cache_before["hits"],
-        defense_cache_after["misses"] - defense_cache_before["misses"],
-        defense_cache_after["currsize"]
+        shared_context["games_unique"],
+        shared_context["summaries_ok"]
     )
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=get_team_regular_season_schedule hits_delta=%s misses_delta=%s size=%s",
