@@ -254,14 +254,14 @@
   .status { padding: 8px; background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; border-radius: 6px; margin-top: 8px; font-size: 11px; color: #34d399; font-weight: 500; }
 
   /* Modais com proporção perfeita no celular */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.85); z-index: 1000; padding: 8px; overflow-y: auto; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3, 7, 18, 0.85); z-index: 1000; padding: 8px; overflow: hidden; }
   .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
-  .modal { width: 100%; max-width: 900px; background: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 12px; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
-  .modal-header { background: #1f2937; color: white; padding: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #374151; }
+  .modal { width: 100%; max-width: 900px; height: 90vh; max-height: 90vh; min-height: 0; background: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .modal-header { flex: 0 0 auto; background: #1f2937; color: white; padding: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #374151; }
   .modal-header h2 { margin: 0; font-size: 14px; font-weight: 700; }
   .modal-header .player-meta { color: #9ca3af; font-size: 10px; }
   .close-modal { background: transparent; border: 1px solid #4b5563; color: white; font-size: 16px; padding: 2px 6px; border-radius: 4px; height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; }
-  .modal-body { padding: 12px; background: #0b0f19; overflow-y: auto; flex-grow: 1; }
+  .modal-body { min-height: 0; flex: 1 1 auto; padding: 12px; background: #0b0f19; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
   /* No modal de análise, os cabeçalhos das tabelas acompanham o conteúdo. */
   .analysis-table th { position: static; top: auto; z-index: auto; }
   .scanner-loading { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid #1f2937; border-radius: 8px; background: #111827; }
@@ -1324,10 +1324,19 @@ function abrirAnalise(indice){
   html += '</div>';
 
   const modalBody = document.getElementById('modalBody');
+  const modalOverlay = document.getElementById('analysisModal');
   modalBody.innerHTML = html;
-  modalBody.scrollTop = 0;
   modal.classList.add('active');
   document.body.style.overflow = 'hidden';
+  // Zera a rolagem dos possíveis contêineres após o navegador recalcular o layout.
+  modalBody.scrollTop = 0;
+  modal.scrollTop = 0;
+  modalOverlay.scrollTop = 0;
+  requestAnimationFrame(() => {
+    modalBody.scrollTop = 0;
+    modal.scrollTop = 0;
+    modalOverlay.scrollTop = 0;
+  });
 }
 
 function fecharModal(){
