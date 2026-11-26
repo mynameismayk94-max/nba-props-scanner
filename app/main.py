@@ -1950,7 +1950,7 @@ def get_team_defense_history(
     # o mesmo teto de 12 consultas simultâneas à ESPN, mas distribuímos
     # melhor a carga entre equipes para reduzir a latência do primeiro scan.
     with ThreadPoolExecutor(
-        max_workers=2
+        max_workers=3
     ) as executor:
 
         futures = {
@@ -2753,42 +2753,9 @@ def get_athlete_logs(
                 )
             }
 
-    # O endpoint de game log nem sempre inclui homeAway em events.
-    # Completa o mando pela agenda oficial da equipe, que já expõe
-    # competitor.homeAway e é compartilhada em cache por equipe/temporada.
-    teams_missing_venue = {
-        game.get("team")
-        for game in games.values()
-        if not game.get("home_away") and game.get("team")
-    }
-
-    for team_abbr in teams_missing_venue:
-        try:
-            team_schedule = get_team_regular_season_schedule(
-                team_abbr.upper(),
-                year
-            )
-            venue_by_event = {
-                str(team_game.get("game_id")): team_game.get("home_away")
-                for team_game in team_schedule
-                if team_game.get("home_away") in {"home", "away"}
-            }
-
-            for game in games.values():
-                if (
-                    game.get("team", "").upper() == team_abbr.upper()
-                    and not game.get("home_away")
-                ):
-                    game["home_away"] = venue_by_event.get(
-                        str(game.get("event_id"))
-                    )
-        except Exception as error:
-            logger.warning(
-                "Não foi possível completar mando do game log para %s/%s: %s",
-                team_abbr,
-                year,
-                error
-            )
+    # Não fazemos uma consulta de agenda por atleta apenas para completar
+    # homeAway. Essa camada não fazia parte do fluxo rápido original e
+    # adiciona chamadas ESPN ao caminho crítico do Scanner.
 
     ordered = sorted(
         games.values(),
@@ -4332,267 +4299,98 @@ def collect_candidates(
         roster_elapsed
     )
 
-    # Inicia a coleta defensiva em paralelo ao histórico individual.
-    # As duas frentes compartilham um semáforo global de 16 chamadas ESPN,
-    # evitando que a concorrência combinada sobrecarregue o serviço.
-    defense_stage_start = time.perf_counter()
-    defense_cache_before = _cache_metrics(get_team_defense_history)
-    schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
-    summary_cache_before = _cache_metrics(_get_cached_game_summary)
-    league_cache_before = _cache_metrics(get_league_position_defense_baseline)
-
-    all_opponents = sorted(set(opponents.values()))
-
-    def fetch_team_defense(team):
-        team_start = time.perf_counter()
-        defense = get_team_defense_history(
-            team,
-            10,
-            target_date
-        )
-        elapsed = time.perf_counter() - team_start
-        logger.info(
-            "Defesa timing: data=%s equipe=%s jogos=%s tempo=%.2fs",
-            selected_date,
-            team,
-            len(defense),
-            elapsed
-        )
-        return team, defense
-
-    def fetch_defense_batch():
-        results = {}
-        with ThreadPoolExecutor(max_workers=6) as defense_executor:
-            futures = [
-                defense_executor.submit(fetch_team_defense, team)
-                for team in all_opponents
-            ]
-            for defense_future in as_completed(futures):
-                try:
-                    team, defense = defense_future.result()
-                    results[team] = defense
-                except Exception as error:
-                    logger.warning(
-                        "Falha ao consultar histórico defensivo: %s",
-                        error
-                    )
-        return results
-
-    with _DEFENSE_PREWARM_LOCK:
-        prewarm_state = dict(_DEFENSE_PREWARM_STATE.get(selected_date, {}))
-    logger.info(
-        "Defense prewarm status at candidates start: data=%s status=%s elapsed=%.2fs",
-        selected_date,
-        prewarm_state.get("status", "not_started"),
-        prewarm_state.get("elapsed") or 0.0
-    )
-
-    defense_executor = ThreadPoolExecutor(max_workers=1)
-    defense_batch_future = defense_executor.submit(fetch_defense_batch)
-
-    # O histórico individual e a defesa agora avançam simultaneamente.
-    # O limite global em request_json mantém no máximo 16 chamadas HTTP ativas.
+    # Primeiro buscamos os históricos dos jogadores. Isso permite
+    # identificar quem realmente pode virar candidato antes de consultar
+    # o histórico defensivo dos adversários.
     stage_start = time.perf_counter()
     player_logs = {}
     successful_logs = 0
     errors = 0
     player_cache_before = _cache_metrics(get_athlete_logs)
 
-    player_fetch_durations = []
-    player_http_durations = []
-    player_fetch_errors = 0
-
     def fetch_player(player):
-        fetch_started = time.perf_counter()
-        _http_local.last_gamelog_http_elapsed = None
-        try:
-            logs = get_athlete_logs(
-                player["id"],
-                year
-            )
-            error = None
-        except Exception as caught_error:
-            logs = None
-            error = caught_error
+        logs = get_athlete_logs(player["id"], year)
+        return player, logs
 
-        fetch_elapsed = time.perf_counter() - fetch_started
-        http_elapsed = getattr(
-            _http_local,
-            "last_gamelog_http_elapsed",
-            None
-        )
-        return player, logs, fetch_elapsed, http_elapsed, error
-
-    player_history_workers = 16
-    with ThreadPoolExecutor(
-        max_workers=player_history_workers
-    ) as executor:
-
-        futures = [
-            executor.submit(
-                fetch_player,
-                player
-            )
-            for player in players
-        ]
-
+    player_history_workers = 12
+    with ThreadPoolExecutor(max_workers=player_history_workers) as executor:
+        futures = [executor.submit(fetch_player, player) for player in players]
         for future in as_completed(futures):
-
             try:
-                player, logs, fetch_elapsed, http_elapsed, fetch_error = future.result()
-                player_fetch_durations.append(fetch_elapsed)
-                if http_elapsed is not None:
-                    player_http_durations.append(http_elapsed)
-
-                if fetch_error is not None:
-                    errors += 1
-                    player_fetch_errors += 1
-                    logger.warning(
-                        "Falha ao consultar jogador: %s",
-                        fetch_error
-                    )
-                    continue
-
+                player, logs = future.result()
                 successful_logs += 1
                 player_logs[player["id"]] = (player, logs)
-
             except Exception as error:
                 errors += 1
-                player_fetch_errors += 1
-                logger.warning(
-                    "Falha ao processar retorno de jogador: %s",
-                    error
-                )
+                logger.warning("Falha ao consultar jogador: %s", error)
 
     player_logs_elapsed = time.perf_counter() - stage_start
 
-    def latency_summary(values):
-        if not values:
-            return {
-                "count": 0,
-                "avg": 0.0,
-                "median": 0.0,
-                "p95": 0.0,
-                "max": 0.0
-            }
-
-        ordered = sorted(values)
-        count = len(ordered)
-        middle = count // 2
-        median = (
-            ordered[middle]
-            if count % 2
-            else (ordered[middle - 1] + ordered[middle]) / 2
-        )
-        p95_index = min(count - 1, int((count - 1) * 0.95))
-        return {
-            "count": count,
-            "avg": sum(ordered) / count,
-            "median": median,
-            "p95": ordered[p95_index],
-            "max": ordered[-1]
-        }
-
-    fetch_latency = latency_summary(player_fetch_durations)
-    http_latency = latency_summary(player_http_durations)
-    logger.info(
-        "Candidatos player latency: data=%s mercado=%s workers=%s "
-        "fetch_count=%s fetch_avg=%.3fs fetch_median=%.3fs fetch_p95=%.3fs fetch_max=%.3fs "
-        "http_count=%s http_avg=%.3fs http_median=%.3fs http_p95=%.3fs http_max=%.3fs erros=%s",
-        selected_date,
-        market,
-        player_history_workers,
-        fetch_latency["count"],
-        fetch_latency["avg"],
-        fetch_latency["median"],
-        fetch_latency["p95"],
-        fetch_latency["max"],
-        http_latency["count"],
-        http_latency["avg"],
-        http_latency["median"],
-        http_latency["p95"],
-        http_latency["max"],
-        player_fetch_errors
-    )
-
-    # Mantém exatamente os mesmos critérios de elegibilidade usados
-    # em build_player_result(): mínimo de 3 jogos anteriores e média
-    # de minutos L5 >= 24. Nenhuma fórmula de score é alterada aqui.
     eligible_players = []
-
     for player, logs in player_logs.values():
-
         previous_games = [
-            game
-            for game in logs
+            game for game in logs
             if game["date"] < target_date.isoformat()
         ]
-
         if len(previous_games) < 3:
             continue
-
         last5 = previous_games[:5]
-
-        minutes_avg = (
-            sum(
-                game["minutes"]
-                for game in last5
-            )
-            / len(last5)
-        )
-
+        minutes_avg = sum(game["minutes"] for game in last5) / len(last5)
         if minutes_avg < 24:
             continue
-
-        eligible_players.append(
-            (player, logs)
-        )
+        eligible_players.append((player, logs))
 
     player_cache_after = _cache_metrics(get_athlete_logs)
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=get_athlete_logs hits_delta=%s misses_delta=%s size=%s",
-        selected_date,
-        market,
+        selected_date, market,
         player_cache_after["hits"] - player_cache_before["hits"],
         player_cache_after["misses"] - player_cache_before["misses"],
         player_cache_after["currsize"]
     )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=historico_jogadores jogadores_consultados=%s elegiveis=%s tempo=%.2fs",
-        selected_date,
-        market,
-        successful_logs,
-        len(eligible_players),
-        player_logs_elapsed
+        selected_date, market, successful_logs, len(eligible_players), player_logs_elapsed
     )
 
-    # Mantém no resultado apenas os adversários com jogadores elegíveis.
-    # A busca já ocorreu em paralelo ao histórico individual.
+    # Só consultamos defesa para adversários que realmente possuem
+    # pelo menos um jogador elegível para este mercado/data.
+    stage_start = time.perf_counter()
     eligible_opponents = {
         opponents.get(player["team"])
         for player, _ in eligible_players
         if opponents.get(player["team"])
     }
 
-    league_baseline = None
-    try:
-        all_defense_cache = defense_batch_future.result()
-        defense_cache = {
-            team: all_defense_cache[team]
-            for team in eligible_opponents
-            if team in all_defense_cache
-        }
+    defense_cache_before = _cache_metrics(get_team_defense_history)
+    schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
+    summary_cache_before = _cache_metrics(_get_cached_game_summary)
+    league_cache_before = _cache_metrics(get_league_position_defense_baseline)
+    defense_cache = {}
 
-        # O Scanner não precisa mais consultar os 30 times da liga para
-        # reconstruir o benchmark completo. Usa as equipes que já foram
-        # consultadas para os adversários da data, sem novas chamadas ESPN.
-        league_baseline = build_scanner_league_baseline_from_defense_cache(
-            defense_cache
+    def fetch_team_defense(team):
+        team_start = time.perf_counter()
+        defense = get_team_defense_history(team, 10, target_date)
+        elapsed = time.perf_counter() - team_start
+        logger.info(
+            "Defesa timing: data=%s equipe=%s jogos=%s tempo=%.2fs",
+            selected_date, team, len(defense), elapsed
         )
-    finally:
-        defense_executor.shutdown(wait=False)
+        return team, defense
 
-    defense_elapsed = time.perf_counter() - defense_stage_start
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(fetch_team_defense, team) for team in eligible_opponents]
+        for future in as_completed(futures):
+            try:
+                team, defense = future.result()
+                defense_cache[team] = defense
+            except Exception as error:
+                logger.warning("Falha ao consultar histórico defensivo: %s", error)
+
+    defense_elapsed = time.perf_counter() - stage_start
+
+    # Mantém o benchmark leve do Scanner usando somente as equipes já consultadas.
+    league_baseline = build_scanner_league_baseline_from_defense_cache(defense_cache)
 
     defense_cache_after = _cache_metrics(get_team_defense_history)
     schedule_cache_after = _cache_metrics(get_team_regular_season_schedule)
@@ -4601,42 +4399,35 @@ def collect_candidates(
 
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=get_team_defense_history hits_delta=%s misses_delta=%s size=%s",
-        selected_date,
-        market,
+        selected_date, market,
         defense_cache_after["hits"] - defense_cache_before["hits"],
         defense_cache_after["misses"] - defense_cache_before["misses"],
         defense_cache_after["currsize"]
     )
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=get_team_regular_season_schedule hits_delta=%s misses_delta=%s size=%s",
-        selected_date,
-        market,
+        selected_date, market,
         schedule_cache_after["hits"] - schedule_cache_before["hits"],
         schedule_cache_after["misses"] - schedule_cache_before["misses"],
         schedule_cache_after["currsize"]
     )
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=get_game_summary hits_delta=%s misses_delta=%s size=%s",
-        selected_date,
-        market,
+        selected_date, market,
         summary_cache_after["hits"] - summary_cache_before["hits"],
         summary_cache_after["misses"] - summary_cache_before["misses"],
         summary_cache_after["currsize"]
     )
     logger.info(
         "Candidatos cache: data=%s mercado=%s cache=league_position_defense_baseline hits_delta=%s misses_delta=%s size=%s",
-        selected_date,
-        market,
+        selected_date, market,
         league_cache_after["hits"] - league_cache_before["hits"],
         league_cache_after["misses"] - league_cache_before["misses"],
         league_cache_after["currsize"]
     )
     logger.info(
         "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s tempo=%.2fs",
-        selected_date,
-        market,
-        len(eligible_opponents),
-        defense_elapsed
+        selected_date, market, len(eligible_opponents), defense_elapsed
     )
 
     stage_start = time.perf_counter()
