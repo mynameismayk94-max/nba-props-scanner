@@ -3528,6 +3528,9 @@ def build_shared_boxscore_context(
         for player in players
         if player.get("id")
     }
+    # Índice compacto de participação dos companheiros derivado dos mesmos
+    # boxscores já utilizados pelo Scanner. Não faz novas chamadas à ESPN.
+    teammate_status_by_game = {}
 
     defense_teams = {
         str(team or "").upper()
@@ -3568,6 +3571,24 @@ def build_shared_boxscore_context(
                         summary,
                         team
                     )
+
+                    game_status = teammate_status_by_game.setdefault(
+                        str(game_id), {}
+                    )
+                    for player_id, player_game in team_players.items():
+                        minutes = player_game.get("minutes")
+                        if minutes is not None and float(minutes) > 0:
+                            game_status[player_id] = {
+                                "status": "played",
+                                "minutes": float(minutes),
+                                "evidence": "positive_minutes"
+                            }
+                        elif minutes is not None and float(minutes) == 0:
+                            game_status[player_id] = {
+                                "status": "confirmed_absent",
+                                "minutes": 0.0,
+                                "evidence": "explicit_zero_minutes"
+                            }
 
                     for player_id, player_game in team_players.items():
                         player_logs.setdefault(player_id, []).append({
@@ -3817,6 +3838,7 @@ def build_shared_boxscore_context(
 
     return {
         "player_logs": player_logs,
+        "teammate_status_by_game": teammate_status_by_game,
         "defense_cache": defense_cache,
         "team_games": team_games,
         "games_unique": len(game_ids),
@@ -5033,7 +5055,8 @@ def collect_candidates(
     # O contexto é anexado somente à resposta, depois do snapshot imutável.
     # Assim não altera candidate_snapshots, Auditoria nem triage_score.
     context_start = time.perf_counter()
-    if persist_operational and league_baseline and league_baseline.get("player_status_by_game"):
+    teammate_status_by_game = shared_context.get("teammate_status_by_game", {})
+    if persist_operational and teammate_status_by_game:
         player_logs_by_id = player_logs
         roster_by_team = {}
         for roster_player in players:
@@ -5045,7 +5068,7 @@ def collect_candidates(
             str(player.get("id")): (player, logs)
             for player, logs in eligible_players
         }
-        status_index = league_baseline["player_status_by_game"]
+        status_index = teammate_status_by_game
 
         for result in displayed_results:
             candidate_id = str(result.get("player_id") or "")
@@ -5054,14 +5077,9 @@ def collect_candidates(
                 continue
             candidate_player, candidate_logs = candidate_entry
             team = str(candidate_player.get("team") or "").upper()
-            team_games = [
-                game for game in get_team_regular_season_schedule(team, year)
-                if (game.get("date") or "")[:10] < target_date.isoformat()
-            ]
-            team_games.sort(
-                key=lambda game: game.get("date") or "", reverse=True
-            )
-            team_games = team_games[:10]
+            # Reutiliza a agenda já coletada no contexto compartilhado.
+            # Evita novas consultas de schedule para cada candidato.
+            team_games = list(shared_context.get("team_games", {}).get(team, []))[:10]
 
             # Garante que o próprio histórico do candidato seja a fonte
             # usada no split, sem uma segunda consulta de atleta.
@@ -5080,7 +5098,7 @@ def collect_candidates(
         selected_date,
         market,
         sum(1 for item in displayed_results if item.get("teammate_context")),
-        len(league_baseline.get("player_status_by_game", {})) if league_baseline else 0,
+        len(teammate_status_by_game),
         context_elapsed
     )
 
