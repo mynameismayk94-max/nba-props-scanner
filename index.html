@@ -1367,6 +1367,23 @@ function abrirAnalise(indice){
   };
   const formatVenue = value => value === 'home' ? 'Casa' : value === 'away' ? 'Fora' : '—';
 
+  const teammateContext = p.teammate_context || {};
+  const teammateShortlist = Array.isArray(teammateContext.shortlist) ? teammateContext.shortlist : [];
+  const teammateComparisons = teammateContext.comparisons || {};
+  const teammateStatKey = ({
+    points: 'points',
+    assists: 'assists',
+    rebounds: 'rebounds',
+    threes: 'three_pa',
+    attempts: 'fga',
+    two_pa: 'two_pa',
+    fgm: 'fgm'
+  })[mercadoAtual] || null;
+  const formatSplit = (split) => {
+    if(!split || split.average == null) return '—';
+    return numero(split.average) + ' (' + participacoes(split.games) + 'j)';
+  };
+
   const availabilityInfo = disponibilidadeDetalhe(p);
   const availabilityVerifiedAt = resultadoAtual?.updated_at ? new Date(resultadoAtual.updated_at).toLocaleString('pt-BR') : '—';
 
@@ -1388,6 +1405,23 @@ function abrirAnalise(indice){
 
   html += '<div class="analysis-card"><h3>🏠 Produção por local</h3><table class="analysis-table"><tr><th></th><th>Casa</th><th>Fora</th></tr><tr><td>Temporada</td><td><b>' + venueAverage('home', 'season') + '</b></td><td><b>' + venueAverage('away', 'season') + '</b></td></tr><tr><td>Jogos · temporada</td><td>' + participacoes(venueGames('home', 'season')) + '</td><td>' + participacoes(venueGames('away', 'season')) + '</td></tr><tr><td>Últimos 10 por local</td><td><b>' + venueAverage('home', 'last10') + '</b></td><td><b>' + venueAverage('away', 'last10') + '</b></td></tr><tr><td>Jogos · recorte</td><td>' + participacoes(venueGames('home', 'last10')) + '</td><td>' + participacoes(venueGames('away', 'last10')) + '</td></tr><tr><td>Minutos · últimos 10</td><td>' + venueMinutes('home', 'last10') + '</td><td>' + venueMinutes('away', 'last10') + '</td></tr></table><div class="analysis-note">L10 calculado separadamente para jogos em casa e fora. Partidas sem mando identificado pela ESPN não entram nesta comparação. Não altera o Score.</div></div>';
   html += '<div class="analysis-card"><h3>🏟️ Participação</h3><table class="analysis-table"><tr><th>Período</th><th>Jogos</th><th>Taxa</th></tr><tr><td>L5</td><td><b>' + participacoes(p.team_games_last5_played) + '/' + participacoes(p.team_games_last5_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last5_played, p.team_games_last5_total, p.team_games_last5_pct) + '</b></td></tr><tr><td>L10</td><td><b>' + participacoes(p.team_games_last10_played) + '/' + participacoes(p.team_games_last10_total) + '</b></td><td><b>' + participacaoEquipe(p.team_games_last10_played, p.team_games_last10_total, p.team_games_last10_pct) + '</b></td></tr></table></div>';
+
+  if(teammateShortlist.length && teammateStatKey){
+    html += '<div class="analysis-card"><h3>👥 Contexto de companheiros</h3>' +
+      '<table class="analysis-table"><tr><th>Companheiro</th><th>Média</th><th>Com ele</th><th>Sem ele</th></tr>' +
+      teammateShortlist.map(teammate => {
+        const comparison = teammateComparisons[teammate.player_id] || {};
+        const statComparison = comparison[teammateStatKey] || {};
+        return '<tr><td><b>' + escapeHtml(teammate.player || 'Jogador') + '</b><br><span class="text-[10px] text-gray-500">' +
+          escapeHtml(teammate.position || '—') + ' · ' + participacoes(teammate.games_in_window) + '/' + participacoes(teammate.window_games) +
+          'j · ' + numero(teammate.average_minutes, 1) + ' min</span></td><td>' + numero(teammate[teammateStatKey === 'three_pa' ? 'average_fga' : 'average_' + (teammateStatKey === 'fga' ? 'fga' : teammateStatKey)]) +
+          '</td><td>' + formatSplit(statComparison.with_teammate) + '</td><td>' + formatSplit(statComparison.confirmed_absent) + '</td></tr>';
+      }).join('') +
+      '</table>' +
+      '<div class="analysis-note">Mostra até 3 companheiros com maior participação ofensiva recente. “Com ele” e “Sem ele” usam somente jogos anteriores em que a presença/ausência foi identificada no boxscore. Diferença observacional; não altera o Score.</div></div>';
+  } else if(teammateContext && teammateStatKey){
+    html += '<div class="analysis-card"><h3>👥 Contexto de companheiros</h3><div class="analysis-note">Dados insuficientes para formar uma amostra confiável de companheiros neste recorte.</div></div>';
+  }
 
   html += '<div class="analysis-card"><h3>🛡️ Contexto defensivo por posição</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Total cedido por jogo</td><td><b>' + numero(proj5) + '</b></td><td><b>' + numero(proj10) + '</b></td></tr><tr><td>Referência da amostra</td><td><b>' + numero(league5) + '</b></td><td><b>' + numero(league10) + '</b></td></tr><tr><td>Desvio vs referência</td><td><b>' + (deviation5 == null ? '—' : (deviation5 > 0 ? '+' : '') + deviation5.toFixed(1) + '%') + '</b></td><td><b>' + (deviation10 == null ? '—' : (deviation10 > 0 ? '+' : '') + deviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Classificação</td><td><span class="' + classeContextoDefensivo(status5) + '">' + status5 + '</span></td><td><span class="' + classeContextoDefensivo(status10) + '">' + status10 + '</span></td></tr><tr><td>Jogos da defesa</td><td>' + participacoes(p.opponent_position_defense_games_l5) + '</td><td>' + participacoes(p.opponent_position_defense_games_l10) + '</td></tr><tr><td>Jogos da referência</td><td>' + participacoes(p.league_position_allowed_l5_games) + '</td><td>' + participacoes(p.league_position_allowed_l10_games) + '</td></tr></table><div class="analysis-note">Total cedido à posição por jogo, comparado à referência disponível para os adversários da rodada. Essa referência não representa necessariamente as 30 equipes da NBA. Classificação: diferença acima de +10%, abaixo de -10% ou dentro de ±10%. As linhas de jogos mostram o tamanho das amostras.</div></div>';
 
