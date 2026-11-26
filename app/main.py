@@ -1696,7 +1696,7 @@ def get_completed_team_games(
     return games[:limit]
 
 
-@lru_cache(maxsize=60)
+@lru_cache(maxsize=8)
 def _get_cached_game_summary(
     event_id: str
 ) -> dict:
@@ -2634,7 +2634,7 @@ def get_players_for_date(
     }
 
 
-@lru_cache(maxsize=800)
+@lru_cache(maxsize=200)
 def get_athlete_logs(
     athlete_id: str,
     year: int
