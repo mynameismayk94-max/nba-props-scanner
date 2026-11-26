@@ -4332,74 +4332,33 @@ def collect_candidates(
         roster_elapsed
     )
 
-    # Primeiro buscamos os históricos dos jogadores. Isso permite
-    # identificar quem realmente pode virar candidato antes de consultar
-    # o histórico defensivo dos adversários.
-    stage_start = time.perf_counter()
+    # O histórico dos jogadores e o contexto defensivo são independentes entre si.
+    # Mantemos os mesmos dados/regras, mas executamos as duas aquisições em
+    # paralelo para que a latência total não seja a soma de dois gargalos.
+    # A concorrência foi deliberadamente reduzida no histórico de jogadores
+    # para evitar saturação da ESPN quando o boxscore também está sendo buscado.
     player_logs = {}
     successful_logs = 0
     errors = 0
     player_cache_before = _cache_metrics(get_athlete_logs)
 
-    def fetch_player(player):
-        logs = get_athlete_logs(player["id"], year)
-        return player, logs
-
-    player_history_workers = 12
-    with ThreadPoolExecutor(max_workers=player_history_workers) as executor:
-        futures = [executor.submit(fetch_player, player) for player in players]
-        for future in as_completed(futures):
-            try:
-                player, logs = future.result()
-                successful_logs += 1
-                player_logs[player["id"]] = (player, logs)
-            except Exception as error:
-                errors += 1
-                logger.warning("Falha ao consultar jogador: %s", error)
-
-    player_logs_elapsed = time.perf_counter() - stage_start
-
-    eligible_players = []
-    for player, logs in player_logs.values():
-        previous_games = [
-            game for game in logs
-            if game["date"] < target_date.isoformat()
-        ]
-        if len(previous_games) < 3:
-            continue
-        last5 = previous_games[:5]
-        minutes_avg = sum(game["minutes"] for game in last5) / len(last5)
-        if minutes_avg < 24:
-            continue
-        eligible_players.append((player, logs))
-
-    player_cache_after = _cache_metrics(get_athlete_logs)
-    logger.info(
-        "Candidatos cache: data=%s mercado=%s cache=get_athlete_logs hits_delta=%s misses_delta=%s size=%s",
-        selected_date, market,
-        player_cache_after["hits"] - player_cache_before["hits"],
-        player_cache_after["misses"] - player_cache_before["misses"],
-        player_cache_after["currsize"]
-    )
-    logger.info(
-        "Candidatos timing: data=%s mercado=%s etapa=historico_jogadores jogadores_consultados=%s elegiveis=%s tempo=%.2fs",
-        selected_date, market, successful_logs, len(eligible_players), player_logs_elapsed
-    )
-
-    # Só consultamos defesa para adversários que realmente possuem
-    # pelo menos um jogador elegível para este mercado/data.
-    stage_start = time.perf_counter()
-    eligible_opponents = {
-        opponents.get(player["team"])
-        for player, _ in eligible_players
-        if opponents.get(player["team"])
-    }
-
+    # O confronto do dia já define todos os adversários possíveis. Buscar o
+    # histórico defensivo em paralelo com os game logs evita esperar 26s+ antes
+    # de iniciar a segunda etapa. O cálculo final continua usando somente os
+    # adversários efetivamente associados a jogadores elegíveis.
     defense_cache_before = _cache_metrics(get_team_defense_history)
     schedule_cache_before = _cache_metrics(get_team_regular_season_schedule)
     summary_cache_before = _cache_metrics(_get_cached_game_summary)
     league_cache_before = _cache_metrics(get_league_position_defense_baseline)
     defense_cache = {}
+    defense_errors = 0
+    defense_stage_start = time.perf_counter()
+
+    all_opponents = {
+        opponent
+        for opponent in opponents.values()
+        if opponent
+    }
 
     def fetch_team_defense(team):
         team_start = time.perf_counter()
@@ -4411,16 +4370,96 @@ def collect_candidates(
         )
         return team, defense
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(fetch_team_defense, team) for team in eligible_opponents]
-        for future in as_completed(futures):
+    # O executor da defesa fica vivo enquanto os game logs dos atletas são
+    # consultados. Assim as duas fontes trabalham simultaneamente sem alterar
+    # o conteúdo retornado ao Scanner.
+    with ThreadPoolExecutor(max_workers=3) as defense_executor:
+        defense_futures = [
+            defense_executor.submit(fetch_team_defense, team)
+            for team in all_opponents
+        ]
+
+        player_stage_start = time.perf_counter()
+
+        def fetch_player(player):
+            logs = get_athlete_logs(player["id"], year)
+            return player, logs
+
+        player_history_workers = 8
+        with ThreadPoolExecutor(max_workers=player_history_workers) as executor:
+            futures = [executor.submit(fetch_player, player) for player in players]
+            for future in as_completed(futures):
+                try:
+                    player, logs = future.result()
+                    successful_logs += 1
+                    player_logs[player["id"]] = (player, logs)
+                except Exception as error:
+                    errors += 1
+                    logger.warning("Falha ao consultar jogador: %s", error)
+
+        player_logs_elapsed = time.perf_counter() - player_stage_start
+
+        eligible_players = []
+        for player, logs in player_logs.values():
+            previous_games = [
+                game for game in logs
+                if game["date"] < target_date.isoformat()
+            ]
+            if len(previous_games) < 3:
+                continue
+            last5 = previous_games[:5]
+            minutes_avg = sum(game["minutes"] for game in last5) / len(last5)
+            if minutes_avg < 24:
+                continue
+            eligible_players.append((player, logs))
+
+        player_cache_after = _cache_metrics(get_athlete_logs)
+        logger.info(
+            "Candidatos cache: data=%s mercado=%s cache=get_athlete_logs hits_delta=%s misses_delta=%s size=%s",
+            selected_date, market,
+            player_cache_after["hits"] - player_cache_before["hits"],
+            player_cache_after["misses"] - player_cache_before["misses"],
+            player_cache_after["currsize"]
+        )
+        logger.info(
+            "Candidatos timing: data=%s mercado=%s etapa=historico_jogadores jogadores_consultados=%s elegiveis=%s tempo=%.2fs",
+            selected_date, market, successful_logs, len(eligible_players), player_logs_elapsed
+        )
+
+        # A defesa foi iniciada junto com os game logs. Agora apenas coletamos
+        # os resultados; o cálculo abaixo continua filtrando pelos elegíveis.
+        for future in as_completed(defense_futures):
             try:
                 team, defense = future.result()
                 defense_cache[team] = defense
             except Exception as error:
+                defense_errors += 1
                 logger.warning("Falha ao consultar histórico defensivo: %s", error)
 
-    defense_elapsed = time.perf_counter() - stage_start
+    defense_elapsed = time.perf_counter() - defense_stage_start
+
+    eligible_opponents = {
+        opponents.get(player["team"])
+        for player, _ in eligible_players
+        if opponents.get(player["team"])
+    }
+
+    # Descarta do caminho de cálculo qualquer equipe que não tenha candidato
+    # elegível, sem repetir chamadas à ESPN.
+    defense_cache = {
+        team: defense_cache.get(team, [])
+        for team in eligible_opponents
+    }
+
+    logger.info(
+        "Candidatos timing: data=%s mercado=%s etapa=defesa adversarios=%s consultados=%s erros=%s tempo=%.2fs",
+        selected_date,
+        market,
+        len(eligible_opponents),
+        len(all_opponents),
+        defense_errors,
+        defense_elapsed
+    )
 
     # Mantém o benchmark leve do Scanner usando somente as equipes já consultadas.
     league_baseline = build_scanner_league_baseline_from_defense_cache(defense_cache)
