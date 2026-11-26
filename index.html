@@ -1347,6 +1347,22 @@ function abrirAnalise(indice){
     .map(game => Number(game.minutes))
     .filter(value => Number.isFinite(value));
 
+  // Produtividade L10: considera somente jogos com estatística e minutos válidos.
+  // Minutos zero/ausentes não entram na taxa por 36 minutos.
+  const minuteProductionGames = recentGames
+    .filter(game => game && game.value != null && game.minutes != null)
+    .map(game => ({ value: Number(game.value), minutes: Number(game.minutes) }))
+    .filter(game => Number.isFinite(game.value) && Number.isFinite(game.minutes) && game.minutes > 0);
+  const minuteProductionMinutes = minuteProductionGames.reduce((sum, game) => sum + game.minutes, 0);
+  const minuteProductionValue = minuteProductionGames.reduce((sum, game) => sum + game.value, 0);
+  const minutesAverageL10 = minuteProductionGames.length
+    ? minuteProductionMinutes / minuteProductionGames.length
+    : null;
+  const minutesMedianL10 = medianaPlaceholder;
+  const productionPer36L10 = minuteProductionMinutes > 0
+    ? minuteProductionValue / minuteProductionMinutes * 36
+    : null;
+
   const mediana = values => {
     if(!values.length) return null;
     const sorted = [...values].sort((a,b) => a-b);
@@ -1356,6 +1372,7 @@ function abrirAnalise(indice){
   const minMax = values => values.length ? [Math.min(...values), Math.max(...values)] : [null, null];
   const valueMedian = mediana(recentValues);
   const minutesMedian = mediana(recentMinutes);
+  const minutesMedianL10 = mediana(minuteProductionGames.map(game => game.minutes));
   const valueMinMax = minMax(recentValues);
   const l5Reference = Number(p.last5_avg);
   const gamesAboveL5 = Number.isFinite(l5Reference)
@@ -1427,7 +1444,7 @@ function abrirAnalise(indice){
     '<tr><td>Verificado</td><td colspan="2">' + escapeHtml(availabilityVerifiedAt) + '</td></tr></table>' +
     '<div class="analysis-note">A disponibilidade representa a fotografia consultada no momento da análise. O status pode mudar posteriormente.</div></div>';
 
-  html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Jogos considerados</td><td>' + participacoes(p.games_last5) + '/5</td><td>' + participacoes(p.games_last10) + '/10</td></tr><tr><td>Minutos</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td>—</td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table><div class="analysis-note">L5 e L10 representam os últimos jogos disponíveis do jogador. A quantidade acima mostra o tamanho real de cada amostra; recortes incompletos devem ser interpretados com cautela.</div></div>';
+  html += '<div class="analysis-card"><h3>📊 Desempenho</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Média</td><td><b>' + numero(p.last5_avg) + '</b></td><td><b>' + numero(p.last10_avg) + '</b></td></tr><tr><td>Jogos considerados</td><td>' + participacoes(p.games_last5) + '/5</td><td>' + participacoes(p.games_last10) + '/10</td></tr><tr><td>Minutos médios</td><td><b>' + numero(p.minutes_last5_avg, 1) + '</b></td><td><b>' + (minutesAverageL10 == null ? '—' : numero(minutesAverageL10, 1)) + '</b></td></tr><tr><td>Mediana de minutos · L10</td><td>—</td><td><b>' + (minutesMedianL10 == null ? '—' : numero(minutesMedianL10, 1)) + '</b></td></tr><tr><td>Produção por 36 min · L10</td><td>—</td><td><b>' + (productionPer36L10 == null ? '—' : numero(productionPer36L10, 2)) + '</b></td></tr><tr><td>Amostra válida · L10</td><td>—</td><td><b>' + minuteProductionGames.length + '/10</b></td></tr><tr><td>Score</td><td><b>' + numero(p.triage_score) + '</b></td><td>—</td></tr></table><div class="analysis-note">Minutos médios, mediana e produtividade por 36 min usam jogos do L10 com estatística válida e minutos acima de zero. Produção por 36 min = produção total ÷ minutos totais × 36; é uma taxa descritiva, não uma projeção. Amostras incompletas devem ser interpretadas com cautela. O Score não é alterado.</div></div>';
 
   html += '<div class="analysis-card"><h3>📈 Histórico jogo a jogo · L10</h3>' +
     '<table class="analysis-table recent-history-table"><tr><th>Data</th><th>Adversário</th><th>Local</th><th>Min</th><th>Valor</th></tr>' +
