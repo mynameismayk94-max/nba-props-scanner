@@ -262,6 +262,13 @@
   .modal-header .player-meta { color: #9ca3af; font-size: 10px; }
   .close-modal { background: transparent; border: 1px solid #4b5563; color: white; font-size: 16px; padding: 2px 6px; border-radius: 4px; height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; }
   .modal-body { padding: 12px; background: #0b0f19; overflow-y: auto; flex-grow: 1; }
+  /* No modal de análise, os cabeçalhos das tabelas acompanham o conteúdo. */
+  .analysis-table th { position: static; top: auto; z-index: auto; }
+  .scanner-loading { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid #1f2937; border-radius: 8px; background: #111827; }
+  .scanner-loading-track { height: 4px; overflow: hidden; border-radius: 999px; background: #1f2937; }
+  .scanner-loading-bar { width: 38%; height: 100%; border-radius: 999px; background: #10b981; animation: scanner-loading-move 1.35s ease-in-out infinite; }
+  @keyframes scanner-loading-move { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
+  @media (prefers-reduced-motion: reduce) { .scanner-loading-bar { animation: none; width: 100%; } }
   .analysis-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
   @media (min-width: 768px) {
     .analysis-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -1316,7 +1323,9 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>🎯 Minutagem semelhante · ±5 min</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Faixa</td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td></tr><tr><td>Defesa · média/jogador</td><td><b>' + numero(bandDefense5) + '</b></td><td><b>' + numero(bandDefense10) + '</b></td></tr><tr><td>Liga · média/jogador</td><td><b>' + numero(bandLeague5) + '</b></td><td><b>' + numero(bandLeague10) + '</b></td></tr><tr><td>Diferença vs liga</td><td><b>' + (bandDeviation5 == null ? '—' : (bandDeviation5 > 0 ? '+' : '') + bandDeviation5.toFixed(1) + '%') + '</b></td><td><b>' + (bandDeviation10 == null ? '—' : (bandDeviation10 > 0 ? '+' : '') + bandDeviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Amostra da defesa</td><td>' + participacoes(p.opponent_position_minute_band_defense_l5_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l5_games) + ' jg</td><td>' + participacoes(p.opponent_position_minute_band_defense_l10_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l10_games) + ' jg</td></tr><tr><td>Amostra liga</td><td>' + participacoes(p.league_position_minute_band_l5_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l5_games) + ' jg</td><td>' + participacoes(p.league_position_minute_band_l10_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l10_games) + ' jg</td></tr></table><div class="analysis-note">Média individual de atletas da posição na faixa de minutos indicada. Comparação contextual; não altera o Score.</div></div>';
   html += '</div>';
 
-  document.getElementById('modalBody').innerHTML = html;
+  const modalBody = document.getElementById('modalBody');
+  modalBody.innerHTML = html;
+  modalBody.scrollTop = 0;
   modal.classList.add('active');
   document.body.style.overflow = 'hidden';
 }
@@ -1400,7 +1409,7 @@ async function buscar(mercado){
   const box = document.getElementById('resultado');
   mercadoAtual = mercado;
   atualizarMercadoSelecionado();
-  box.innerHTML = '<div class="status">Consultando dados...</div>';
+  box.innerHTML = '<div class="scanner-loading" role="status" aria-live="polite"><div class="flex items-center justify-between gap-2"><span class="text-[11px] font-semibold text-emerald-300">Consultando dados do Scanner</span><span class="text-[9px] text-gray-500">Aguarde</span></div><div class="scanner-loading-track"><div class="scanner-loading-bar"></div></div><p class="text-[10px] text-gray-400">Carregando histórico, disponibilidade e contexto defensivo. O tempo varia conforme o cache e os jogos necessários.</p></div>';
   try{
     const r = await requisicao('/candidates?date=' + data.value + '&market=' + mercado + '&limit=20');
     if(!r.candidates || !r.candidates.length){
