@@ -4618,6 +4618,7 @@ def build_player_result(
     return {
         "player_id": str(player["id"]),
         "player": player["player"],
+        "recent_games": recent_games,
         "team": player["team"],
         "position": position,
         "opponent": opponent,
