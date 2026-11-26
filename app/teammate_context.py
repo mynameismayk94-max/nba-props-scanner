@@ -187,7 +187,11 @@ def build_teammate_shortlist(
 
         average_points = sum(float(g.get("points") or 0) for g in appearances) / len(appearances)
         average_assists = sum(float(g.get("assists") or 0) for g in appearances) / len(appearances)
+        average_rebounds = sum(float(g.get("rebounds") or 0) for g in appearances) / len(appearances)
         average_fga = sum(float(g.get("fga") or 0) for g in appearances) / len(appearances)
+        average_three_pa = sum(float(g.get("three_pa") or 0) for g in appearances) / len(appearances)
+        average_two_pa = sum(float(g.get("two_pa") or 0) for g in appearances) / len(appearances)
+        average_fgm = sum(float(g.get("fgm") or 0) for g in appearances) / len(appearances)
         appearance_rate = len(appearances) / len(game_ids)
         offensive_involvement = average_points + (1.5 * average_assists) + (0.5 * average_fga)
         importance_score = (
@@ -207,7 +211,11 @@ def build_teammate_shortlist(
             "average_minutes": round(average_minutes, 1),
             "average_points": round(average_points, 1),
             "average_assists": round(average_assists, 1),
+            "average_rebounds": round(average_rebounds, 1),
             "average_fga": round(average_fga, 1),
+            "average_three_pa": round(average_three_pa, 1),
+            "average_two_pa": round(average_two_pa, 1),
+            "average_fgm": round(average_fgm, 1),
             "importance_score": round(importance_score, 3),
             "selection_source": "automatic_shortlist"
         })
