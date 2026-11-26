@@ -272,19 +272,9 @@
   .analysis-table th, .analysis-table td { padding: 6px 4px; border-bottom: 1px solid #1f2937; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
   .analysis-table th:first-child, .analysis-table td:first-child { width: 42%; color: #9ca3af; }
   .analysis-table th:not(:first-child), .analysis-table td:not(:first-child) { width: 29%; }
-  .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; position: static; top: auto; z-index: auto; }
+  .analysis-table th { background: #1f2937; color: #9ca3af; font-size: 9px; }
   .analysis-table td b { color: #f9fafb; font-variant-numeric: tabular-nums; }
   .analysis-note { margin-top: 6px; padding: 6px 7px; background: #0b1220; border-left: 2px solid #10b981; border-radius: 4px; font-size: 9px; line-height: 1.35; color: #9ca3af; }
-  .scanner-loading { display: grid; gap: 6px; padding: 10px 11px; }
-  .scanner-loading-label { font-size: 10px; font-weight: 600; color: #d1d5db; }
-  .scanner-loading-stage { font-size: 9px; color: #9ca3af; }
-  .scanner-progress-track { width: 100%; height: 6px; overflow: hidden; border-radius: 999px; background: #1f2937; border: 1px solid #374151; }
-  .scanner-progress-bar { width: 38%; height: 100%; border-radius: 999px; background: #10b981; animation: scannerProgress 1.25s ease-in-out infinite; transform: translateX(-120%); }
-  @keyframes scannerProgress {
-    0% { transform: translateX(-120%); }
-    55% { transform: translateX(145%); }
-    100% { transform: translateX(260%); }
-  }
   .availability-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 2px 5px; border-radius: 4px; font-size: 8px; font-weight: 700; line-height: 1.1; vertical-align: middle; }
   .availability-active { color: #6ee7b7; background: rgba(16, 185, 129, .10); border: 1px solid rgba(16, 185, 129, .25); }
   .availability-uncertain { color: #fcd34d; background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .25); }
@@ -406,7 +396,8 @@
     <div class="glass-panel p-3 space-y-3">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label for="hist-market" class="block text-[10px] font-semibold text-gray-300 mb-1">1. Mercado analisado</label>          <select id="hist-market" onchange="fetchHistoryValidation()" class="bg-darkbg border border-gray-700 rounded-lg px-3 py-2 text-xs text-white w-full h-9">
+          <label for="hist-market" class="block text-[10px] font-semibold text-gray-300 mb-1">1. Mercado analisado</label>
+          <select id="hist-market" onchange="fetchHistoryValidation()" class="bg-darkbg border border-gray-700 rounded-lg px-3 py-2 text-xs text-white w-full h-9">
             <option value="assists">Assistências</option>
             <option value="points">Pontos</option>
             <option value="rebounds">Rebotes</option>
@@ -804,8 +795,6 @@ let gapValidationRequestId = 0;
 let gapAuditData = null;
 let auditCohort = 'all';
 let auditMode = 'daily';
-let scannerProgressTimer = null;
-let scannerProgressStageIndex = 0;
 
 function setAuditMode(mode) {
   if (!['daily', 'range', 'all'].includes(mode)) return;
@@ -907,7 +896,8 @@ function escapeHtml(valor){
     .replace(/&/g,'&amp;')
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;')    .replace(/'/g,'&#039;');
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
 }
 
 function blocoPeriodo(valor, periodo, jogos=null, apps=null, minutos=null, casas=2){
@@ -974,42 +964,6 @@ function celulaDiferenca(cedido5, liga5, cedido10, liga10){
     '<div class="split-item"><span class="period-label">L5</span><span class="difference-value ' + classeContextoDefensivo(status5) + '">' + status5 + '</span><span class="sample">vs liga: ' + pct(delta5) + '</span></div>' +
     '<div class="split-item"><span class="period-label">L10</span><span class="difference-value ' + classeContextoDefensivo(status10) + '">' + status10 + '</span><span class="sample">vs liga: ' + pct(delta10) + '</span></div>' +
     '</div></td>';
-}
-
-function iniciarProgressoScanner(){
-  const stages = [
-    'Consultando disponibilidade e elenco...',
-    'Analisando os últimos jogos...',
-    'Calculando contexto defensivo...',
-    'Calculando projeções e Score...',
-    'Finalizando resultados...'
-  ];
-  scannerProgressStageIndex = 0;
-  const stage = document.getElementById('scanner-progress-stage');
-  if(stage) stage.innerText = stages[0];
-  if(scannerProgressTimer) clearInterval(scannerProgressTimer);
-  scannerProgressTimer = setInterval(() => {
-    scannerProgressStageIndex = Math.min(scannerProgressStageIndex + 1, stages.length - 1);
-    const current = document.getElementById('scanner-progress-stage');
-    if(current) current.innerText = stages[scannerProgressStageIndex];
-  }, 1800);
-}
-
-function finalizarProgressoScanner(){
-  if(scannerProgressTimer){
-    clearInterval(scannerProgressTimer);
-    scannerProgressTimer = null;
-  }
-}
-
-function statusProgressoScanner(){
-  return '<div class="scanner-loading status" aria-live="polite">' +
-    '<div class="scanner-loading-label">Analisando dados do mercado...</div>' +
-    '<div id="scanner-progress-stage" class="scanner-loading-stage">Preparando consulta...</div>' +
-    '<div class="scanner-progress-track" role="progressbar" aria-label="Análise em andamento">' +
-      '<div class="scanner-progress-bar"></div>' +
-    '</div>' +
-    '</div>';
 }
 
 async function testar(){
@@ -1304,9 +1258,6 @@ function abrirAnalise(indice){
   if(!p) return;
 
   const modal = document.getElementById('analysisModal');
-  const modalBody = document.getElementById('modalBody');
-  modal.scrollTop = 0;
-  if(modalBody) modalBody.scrollTop = 0;
   document.getElementById('modalPlayer').innerText = p.player || 'Jogador';
   document.getElementById('modalMeta').innerText = (p.team || '—') + ' · ' + (p.position || '—') + ' vs ' + (p.opponent || '—');
 
@@ -1365,15 +1316,9 @@ function abrirAnalise(indice){
   html += '<div class="analysis-card"><h3>🎯 Minutagem semelhante · ±5 min</h3><table class="analysis-table"><tr><th></th><th>L5</th><th>L10</th></tr><tr><td>Faixa</td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td><td><b>' + numero(bandLower, 1) + '–' + numero(bandUpper, 1) + ' min</b></td></tr><tr><td>Defesa · média/jogador</td><td><b>' + numero(bandDefense5) + '</b></td><td><b>' + numero(bandDefense10) + '</b></td></tr><tr><td>Liga · média/jogador</td><td><b>' + numero(bandLeague5) + '</b></td><td><b>' + numero(bandLeague10) + '</b></td></tr><tr><td>Diferença vs liga</td><td><b>' + (bandDeviation5 == null ? '—' : (bandDeviation5 > 0 ? '+' : '') + bandDeviation5.toFixed(1) + '%') + '</b></td><td><b>' + (bandDeviation10 == null ? '—' : (bandDeviation10 > 0 ? '+' : '') + bandDeviation10.toFixed(1) + '%') + '</b></td></tr><tr><td>Amostra da defesa</td><td>' + participacoes(p.opponent_position_minute_band_defense_l5_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l5_games) + ' jg</td><td>' + participacoes(p.opponent_position_minute_band_defense_l10_appearances) + ' ap. · ' + participacoes(p.opponent_position_minute_band_defense_l10_games) + ' jg</td></tr><tr><td>Amostra liga</td><td>' + participacoes(p.league_position_minute_band_l5_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l5_games) + ' jg</td><td>' + participacoes(p.league_position_minute_band_l10_appearances) + ' ap. · ' + participacoes(p.league_position_minute_band_l10_games) + ' jg</td></tr></table><div class="analysis-note">Média individual de atletas da posição na faixa de minutos indicada. Comparação contextual; não altera o Score.</div></div>';
   html += '</div>';
 
-  modalBody.innerHTML = html;
+  document.getElementById('modalBody').innerHTML = html;
   modal.classList.add('active');
   document.body.style.overflow = 'hidden';
-  modal.scrollTop = 0;
-  modalBody.scrollTop = 0;
-  requestAnimationFrame(() => {
-    modal.scrollTop = 0;
-    modalBody.scrollTop = 0;
-  });
 }
 
 function fecharModal(){
@@ -1455,8 +1400,7 @@ async function buscar(mercado){
   const box = document.getElementById('resultado');
   mercadoAtual = mercado;
   atualizarMercadoSelecionado();
-  box.innerHTML = statusProgressoScanner();
-  iniciarProgressoScanner();
+  box.innerHTML = '<div class="status">Consultando dados...</div>';
   try{
     const r = await requisicao('/candidates?date=' + data.value + '&market=' + mercado + '&limit=20');
     if(!r.candidates || !r.candidates.length){
@@ -1485,8 +1429,6 @@ async function buscar(mercado){
     renderizarResultados();
   }catch(e){
     box.innerHTML = '<div class="status text-red-400">❌ Erro ao buscar.</div>';
-  }finally{
-    finalizarProgressoScanner();
   }
 }
 
@@ -1555,3 +1497,559 @@ async function coletarResultadosAuditoria() {
     { id: 'two_pa', label: 'Tentativas de 2 pts' },
     { id: 'fgm', label: 'Cestas convertidas' }
   ];
+
+  button.disabled = true;
+  button.classList.add('opacity-60', 'cursor-not-allowed');
+  statusBox.innerHTML = 'Iniciando coleta de ' + selectedDate + '...';
+
+  const outcomes = [];
+  try {
+    for(const market of markets) {
+      statusBox.innerHTML = 'Coletando ' + market.label + ' (' + (outcomes.length + 1) + '/6)...';
+      try {
+        const res = await requisicao('/collect-results?date=' + encodeURIComponent(selectedDate) + '&market=' + market.id);
+        if(res.status === 'no_snapshots') {
+          outcomes.push({ label: market.label, message: 'sem snapshots', saved: 0, pending: 0 });
+        } else {
+          outcomes.push({
+            label: market.label,
+            message: 'concluído',
+            saved: Number(res.results_saved_this_run || 0),
+            pending: Number(res.pending || 0),
+            auditSaved: Number(res.audit_results_saved || 0),
+            auditNoResults: Number(res.audit_no_results || 0),
+            auditPending: Number(res.audit_pending || 0),
+            operationalSaved: Number(res.operational_results_saved || 0),
+            operationalPending: Number(res.operational_pending || 0)
+          });
+        }
+      } catch(error) {
+        outcomes.push({ label: market.label, message: 'erro na coleta', error: true });
+      }
+    }
+
+    const lines = outcomes.map(item => {
+      if(item.error) return '<div class="text-red-400">' + item.label + ': erro na coleta</div>';
+      return '<div class="space-y-0.5">' +
+        '<div>' + item.label + ': ' + item.saved + ' novos resultados' +
+        (item.pending ? ' · ' + item.pending + ' pendentes' : '') +
+        (item.message === 'sem snapshots' ? ' · sem snapshots nesta data' : '') +
+        '</div>' +
+        '<div class="pl-2 text-[9px] text-gray-500">' +
+        'Auditoria: ' + item.auditSaved + ' novos · ' + (item.auditNoResults || 0) + ' sem resultado · ' + item.auditPending + ' pendentes' +
+        ' &nbsp;|&nbsp; Operacional: ' + item.operationalSaved + ' novos · ' + item.operationalPending + ' pendentes' +
+        '</div>' +
+        '</div>';
+    }).join('');
+
+    statusBox.innerHTML = '<div class="font-semibold text-gray-200 mb-1">Coleta finalizada para ' + selectedDate + '</div>' + lines;
+  } finally {
+    button.disabled = false;
+    button.classList.remove('opacity-60', 'cursor-not-allowed');
+    await fetchHistoryValidation();
+  }
+}
+
+async function fetchMarketComparison() {
+  const markets = [
+    { id: 'points', label: 'Pontos' },
+    { id: 'assists', label: 'Assistências' },
+    { id: 'rebounds', label: 'Rebotes' },
+    { id: 'threes', label: 'Tentativas de 3 pts' },
+    { id: 'two_pa', label: 'Tentativas de 2 pts' },
+    { id: 'fgm', label: 'Cestas convertidas' },
+  ];
+  const tableBody = document.getElementById('market-comparison-table');
+  if (!tableBody) return;
+  tableBody.innerHTML = '<tr><td colspan="7" class="text-gray-400">Carregando os mercados...</td></tr>';
+
+  // Evita disparar seis conexões ao Neon simultaneamente. A tabela continua
+  // mostrando os seis mercados, mas as consultas são feitas em sequência.
+  // Isso reduz picos de conexões e mantém a API responsiva em homologação.
+  const results = [];
+  for (const market of markets) {
+    try {
+      const res = await requisicao('/validation-history-summary?market=' + market.id + '&cohort=' + encodeURIComponent(auditCohort));
+      if(res.status !== 'ok') throw new Error('Resposta inválida');
+      results.push({ market, summary: res.summary });
+    } catch (error) {
+      console.error('Erro ao carregar comparação de ' + market.id + ':', error);
+      results.push({ market, error: true });
+    }
+  }
+
+  tableBody.innerHTML = results.map(item => {
+    if(item.error) {
+      return '<tr><td class="font-semibold">' + item.market.label + '</td><td colspan="6" class="text-red-400">Não foi possível carregar</td></tr>';
+    }
+    const s = item.summary;
+    return '<tr>' +
+      '<td class="font-semibold text-white">' + item.market.label + '</td>' +
+      '<td>' + (s.snapshots_total ?? 0) + '</td>' +
+      '<td class="font-bold text-white">' + (s.completed_results ?? 0) + '</td>' +
+      '<td>' + numero(s.completion_rate_pct, 1) + '%</td>' +
+      '<td class="text-emerald-400">' + numero(s.l5_mae) + '</td>' +
+      '<td class="text-teal-400">' + numero(s.l10_mae) + '</td>' +
+      '<td class="text-indigo-400">' + numero(s.score_actual_pearson, 4) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function limparIndicadoresAuditoria() {
+  // Ao trocar o mercado, reinicia a faixa exploratória no padrão 7+.
+  const similarityBandSelect = document.getElementById('similarity-band-select');
+  if (similarityBandSelect) similarityBandSelect.value = '7+';
+
+  [
+    'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson',
+    'kpi-completion', 'kpi-l5-relative', 'kpi-l10-relative',
+    'audit-total-count', 'audit-completed-count', 'audit-noresult-count', 'audit-pending-count',
+    'audit-sample-explanation', 'audit-metric-sample-note',
+    'ranking-high-average', 'ranking-high-count',
+    'ranking-low-average', 'ranking-low-count',
+    'similar-target-average', 'similar-target-count',
+    'similar-peer-average', 'similar-peer-count',
+    'similar-sample-status', 'similar-difference', 'ranking-separation',
+    'similar-target-label', 'gap-audit-note'
+  ].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.innerText = '—';
+  });
+
+  gapAuditData = null;
+  const gapScoreBand = document.getElementById('gap-score-band-select');
+  if (gapScoreBand) gapScoreBand.value = 'all';
+  const gapSummary = document.getElementById('gap-summary-table');
+  if (gapSummary) gapSummary.innerHTML = '<tr><td colspan="5" class="text-gray-400">Carregando auditoria defensiva...</td></tr>';
+  const gapRecords = document.getElementById('gap-records-table');
+  if (gapRecords) gapRecords.innerHTML = '<tr><td colspan="12" class="text-gray-400">Carregando registros...</td></tr>';
+
+  const bands = document.getElementById('score-bands-table');
+  if (bands) bands.innerHTML = '<tr><td colspan="8" class="text-gray-400">Carregando dados do mercado...</td></tr>';
+
+  const profiles = document.getElementById('similar-profiles-table');
+  if (profiles) profiles.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando dados do mercado...</td></tr>';
+
+  const chartCanvas = document.getElementById('dailyErrorChart');
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+  if (chartCanvas) {
+    const ctx = chartCanvas.getContext('2d');
+    ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+  }
+}
+
+
+function renderGapAudit() {
+  const summaryTable = document.getElementById('gap-summary-table');
+  const note = document.getElementById('gap-audit-note');
+  const periodSelect = document.getElementById('gap-period-select');
+  if(!summaryTable || !periodSelect) return;
+  if(!gapAuditData) { summaryTable.innerHTML = '<tr><td colspan="5" class="text-gray-400">Sem dados da auditoria defensiva.</td></tr>'; return; }
+  const periodKey = periodSelect.value || 'l5';
+  const groups = gapAuditData.periods?.[periodKey] || {};
+  const rows = [
+    {key:'Acima', color:'text-emerald-400'},
+    {key:'Próximo', color:'text-amber-300'},
+    {key:'Abaixo', color:'text-red-400'},
+    {key:'Sem referência', color:'text-gray-500'}
+  ];
+  summaryTable.innerHTML = rows.map(row => {
+    const group = groups[row.key] || {};
+    return '<tr><td class="font-semibold ' + row.color + '">' + row.key + '</td>' +
+      '<td class="font-bold text-white">' + Number(group.count || 0) + '</td>' +
+      '<td>' + (group.defense_allowed_average == null ? '—' : numero(group.defense_allowed_average)) + '</td>' +
+      '<td>' + (group.league_average == null ? '—' : numero(group.league_average)) + '</td>' +
+      '<td class="font-bold text-white">' + (group.actual_player_average == null ? '—' : numero(group.actual_player_average)) + '</td></tr>';
+  }).join('');
+  const scoreBand = gapAuditData.score_band || 'all';
+  note.innerText = (gapAuditData.completed_records || 0) + ' resultados concluídos · População: ' +
+    (gapAuditData.cohort_label || 'Todos os elegíveis') + ' · Score: ' + (scoreBand === 'all' ? 'todas as faixas' : scoreBand) +
+    ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Média real individual agrupada pela classificação da defesa. ' +
+    Number(gapAuditData.legacy_records_without_new_reference || 0) + ' registros antigos sem benchmark da liga.';
+}
+async function fetchGapValidation(market, dateFrom, dateTo) {
+  const requestId = ++gapValidationRequestId;
+  const summaryTable = document.getElementById('gap-summary-table');
+  const note = document.getElementById('gap-audit-note');
+  if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando auditoria defensiva...</td></tr>';
+  if(note) note.innerText = 'Consultando snapshots e resultados reais...';
+
+  try {
+    const scoreBand = document.getElementById('gap-score-band-select')?.value || 'all';
+    const dateParams = (dateFrom ? '&date_from=' + encodeURIComponent(dateFrom) : '') +
+      (dateTo ? '&date_to=' + encodeURIComponent(dateTo) : '');
+    const res = await requisicao('/gap-validation?market=' + encodeURIComponent(market) + '&score_band=' + encodeURIComponent(scoreBand) + '&cohort=' + encodeURIComponent(auditCohort) + dateParams);
+    if(requestId !== gapValidationRequestId) return;
+    if(res.status !== 'ok') throw new Error('Resposta inválida');
+    gapAuditData = res;
+    renderGapAudit();
+  } catch(error) {
+    if(requestId !== gapValidationRequestId) return;
+    gapAuditData = null;
+    if(summaryTable) summaryTable.innerHTML = '<tr><td colspan="5" class="text-red-400">Não foi possível carregar a auditoria defensiva.</td></tr>';
+    if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
+  }
+}
+async function fetchHistoryValidation() {
+  const market = document.getElementById('hist-market').value;
+  let dateFrom = null, dateTo = null;
+  if (auditMode === 'daily') {
+    const selected = document.getElementById('audit-selected-date')?.value || '2026-11-16';
+    dateFrom = selected; dateTo = selected;
+  } else if (auditMode === 'range') {
+    dateFrom = document.getElementById('audit-date-from')?.value || '2026-11-16';
+    dateTo = document.getElementById('audit-date-to')?.value || '';
+  }
+  const requestId = ++historyValidationRequestId;
+  limparIndicadoresAuditoria();
+  fetchGapValidation(market, dateFrom || '', dateTo || '');
+
+  const sampleCount = document.getElementById('hist-sample-count');
+  if (sampleCount) sampleCount.innerText = '...';
+
+  try {
+    const dateParams = (dateFrom ? '&date_from=' + encodeURIComponent(dateFrom) : '') +
+      (dateTo ? '&date_to=' + encodeURIComponent(dateTo) : '');
+    const res = await requisicao('/validation-history?market=' + market + '&cohort=' + encodeURIComponent(auditCohort) + dateParams);
+    if (requestId !== historyValidationRequestId) return;
+    if(res.status !== 'ok') throw new Error('Resposta inválida para a auditoria');
+
+    const summary = res.summary;
+    document.getElementById('hist-sample-count').innerText = summary.completed_results ?? 0;
+    document.getElementById('audit-total-count').innerText = summary.snapshots_total ?? 0;
+    document.getElementById('audit-completed-count').innerText = summary.completed_results ?? 0;
+    document.getElementById('audit-noresult-count').innerText = summary.no_result_results ?? 0;
+    document.getElementById('audit-pending-count').innerText = summary.pending_results ?? 0;
+    const firstDate = res.period?.first_date || null;
+    const lastDate = res.period?.last_date || null;
+    const dateCoverage = firstDate && lastDate
+      ? ' Período efetivamente encontrado: ' + firstDate + ' a ' + lastDate + '.'
+      : ' Não há datas com snapshots nesta consulta.';
+    const modeLabel = auditMode === 'daily'
+      ? 'Visão diária de ' + (document.getElementById('audit-selected-date')?.value || 'data selecionada') + '.'
+      : auditMode === 'range'
+        ? 'Comparação do intervalo selecionado.'
+        : 'Consolidação de todo o histórico independente disponível até hoje.';
+    document.getElementById('audit-sample-explanation').innerText =
+      modeLabel + dateCoverage + ' ' +
+      (summary.snapshots_total ?? 0) + ' snapshots = ' +
+      (summary.completed_results ?? 0) + ' resultados reais + ' +
+      (summary.no_result_results ?? 0) + ' sem resultado + ' +
+      (summary.pending_results ?? 0) + ' aguardando apuração. DNPs e pendências não entram nas métricas de precisão.';
+    document.getElementById('audit-metric-sample-note').innerText =
+      'Amostras usadas: MAE L5 = ' + (summary.l5_sample ?? summary.completed_results ?? 0) +
+      ' registros; MAE L10 = ' + (summary.l10_sample ?? summary.completed_results ?? 0) +
+      ' registros; Pearson = ' + (summary.pearson_sample ?? summary.completed_results ?? 0) +
+      ' pares Score/resultado. MAE menor indica menor erro; Pearson mede associação, não taxa de acerto.';
+    document.getElementById('kpi-l5-mae').innerText = summary.l5_mae ?? '--';
+    document.getElementById('kpi-l10-mae').innerText = summary.l10_mae ?? '--';
+    document.getElementById('kpi-pearson').innerText = summary.score_actual_pearson ?? '--';
+    document.getElementById('kpi-completion').innerText = (summary.completion_rate_pct || 0) + '%';
+    document.getElementById('kpi-l5-relative').innerText = summary.l5_relative_error_pct == null ? '--%' : numero(summary.l5_relative_error_pct, 1) + '%';
+    document.getElementById('kpi-l10-relative').innerText = summary.l10_relative_error_pct == null ? '--%' : numero(summary.l10_relative_error_pct, 1) + '%';
+
+    const tableBody = document.getElementById('score-bands-table');
+    tableBody.innerHTML = res.score_bands.map(b => `
+      <tr>
+        <td class="font-semibold text-emerald-400">${b.band}</td>
+        <td>${b.games}</td>
+        <td>${b.score_average ?? '--'}</td>
+        <td class="font-bold text-white">${b.actual_average ?? '--'}</td>
+        <td>${b.l5_mae ?? '--'}</td>
+        <td class="text-emerald-300">${b.l5_relative_error_pct == null ? '--' : b.l5_relative_error_pct + '%'}</td>
+        <td>${b.l10_mae ?? '--'}</td>
+        <td class="text-teal-300">${b.l10_relative_error_pct == null ? '--' : b.l10_relative_error_pct + '%'}</td>
+      </tr>
+    `).join('');
+
+    const similarityAnalyses = res.similarity_analyses || { '6-6.99': res.similarity_analysis || {} };
+    const similarityBandSelect = document.getElementById('similarity-band-select');
+    const renderSimilarityAnalysis = () => {
+      const selectedBand = similarityBandSelect.value;
+      const similarity = similarityAnalyses[selectedBand] || {};
+      const showAverage = value => value == null ? '—' : numero(value, 2);
+      const showCount = (records, players) => (records || 0) + ' registros · ' + (players || 0) + ' jogadores';
+      document.getElementById('similar-target-label').innerText = 'Faixa ' + selectedBand + ' · média real';
+      document.getElementById('similar-target-average').innerText = showAverage(similarity.target_actual_average);
+      document.getElementById('similar-target-count').innerText = showCount(similarity.target_count, similarity.target_players);
+      document.getElementById('similar-peer-average').innerText = showAverage(similarity.similar_actual_average);
+      document.getElementById('similar-peer-count').innerText = showCount(similarity.similar_count, similarity.similar_players);
+      document.getElementById('similar-sample-status').innerText = similarity.sample_status || 'Sem amostra';
+      const difference = similarity.actual_difference;
+      const differencePct = similarity.actual_difference_pct;
+      let differenceText = 'Diferença entre os grupos: dados comparáveis insuficientes.';
+      if (difference != null) {
+        const direction = difference > 0 ? 'acima' : difference < 0 ? 'abaixo' : 'igual';
+        differenceText = 'Diferença: ' + (difference > 0 ? '+' : '') + numero(difference, 2) +
+          ' unidades (' + (differencePct == null ? '—' : (differencePct > 0 ? '+' : '') + numero(differencePct, 1) + '%') +
+          ') na faixa ' + selectedBand + ' em relação aos semelhantes.';
+      }
+      document.getElementById('similar-difference').innerText = differenceText;
+
+      const table = document.getElementById('similar-profiles-table');
+      const cohorts = similarity.cohorts || [];
+      table.innerHTML = cohorts.length
+        ? cohorts.map(group => {
+            const delta = group.actual_difference;
+            const deltaPct = group.actual_difference_pct;
+            const differenceLabel = delta == null ? '—' :
+              (delta > 0 ? '+' : '') + numero(delta, 2) +
+              (deltaPct == null ? '' : ' (' + (deltaPct > 0 ? '+' : '') + numero(deltaPct, 1) + '%)');
+            return '<tr>' +
+              '<td>' + escapeHtml(group.position || '—') + '</td>' +
+              '<td>' + escapeHtml(group.minutes_band || '—') + '</td>' +
+              '<td><b>' + (group.target_records || 0) + ' reg. · ' + (group.target_players || 0) + ' jog.</b><br>' + showAverage(group.target_actual_average) + '</td>' +
+              '<td><b>' + (group.similar_records || 0) + ' reg. · ' + (group.similar_players || 0) + ' jog.</b><br>' + showAverage(group.similar_actual_average) + '</td>' +
+              '<td>' + differenceLabel + '</td>' +
+              '<td>' + escapeHtml(group.sample_status || '—') + '</td>' +
+              '</tr>';
+          }).join('')
+        : '<tr><td colspan="6" class="text-gray-400">Ainda não há pares comparáveis concluídos nesta faixa.</td></tr>';
+    };
+    similarityBandSelect.onchange = renderSimilarityAnalysis;
+    renderSimilarityAnalysis();
+
+    const ranking = res.ranking_quality || {};
+    const high = res.score_bands.find(b => b.band === '7+') || {};
+    const low = res.score_bands.find(b => b.band === '<4') || {};
+    document.getElementById('ranking-high-average').innerText = high.actual_average ?? '—';
+    document.getElementById('ranking-high-count').innerText = (high.games ?? 0) + ' registros';
+    document.getElementById('ranking-low-average').innerText = low.actual_average ?? '—';
+    document.getElementById('ranking-low-count').innerText = (low.games ?? 0) + ' registros';
+    document.getElementById('ranking-separation').innerText =
+      ranking.actual_average_difference == null
+        ? 'Diferença entre as faixas: amostra insuficiente.'
+        : 'Diferença: ' + ranking.actual_average_difference + ' unidades (' + ranking.high_vs_low_pct + '% acima da faixa abaixo de 4).';
+
+    renderDailyBreakdown(res.daily || []);
+    const breakdownPanel = document.getElementById('daily-breakdown-panel');
+    const evolutionPanel = document.getElementById('daily-evolution-panel');
+    if (breakdownPanel) breakdownPanel.classList.toggle('hidden', auditMode !== 'range');
+    if (evolutionPanel) evolutionPanel.classList.toggle('hidden', auditMode === 'daily' || (res.daily || []).length < 2);
+    renderDailyChart(res.daily || []);
+  } catch (e) {
+    if (requestId !== historyValidationRequestId) return;
+    console.error('Erro na auditoria:', e);
+    document.getElementById('hist-sample-count').innerText = '—';
+    ['audit-total-count','audit-completed-count','audit-noresult-count','audit-pending-count'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerText = '—';
+    });
+    document.getElementById('audit-sample-explanation').innerText = 'Falha ao carregar a amostra. Verifique a conexão e tente novamente.';
+    document.getElementById('score-bands-table').innerHTML =
+      '<tr><td colspan="8" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
+    document.getElementById('similar-profiles-table').innerHTML =
+      '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
+  }
+}
+
+function renderDailyBreakdown(dailyData) {
+  const table = document.getElementById('daily-breakdown-table');
+  if (!table) return;
+  if (!dailyData.length) {
+    table.innerHTML = '<tr><td colspan="8" class="text-gray-400">Não há registros nas datas selecionadas.</td></tr>';
+    return;
+  }
+  const show = value => value == null ? '—' : numero(value, 2);
+  table.innerHTML = dailyData.map(day => {
+    const dateLabel = (day.date || '').split('-').reverse().join('/');
+    return '<tr>' +
+      '<td class="font-semibold text-white">' + escapeHtml(dateLabel) + '</td>' +
+      '<td>' + (day.snapshots_total ?? 0) + '</td>' +
+      '<td class="text-emerald-300">' + (day.completed_results ?? 0) + '</td>' +
+      '<td>' + (day.no_result_results ?? 0) + '</td>' +
+      '<td>' + (day.pending_results ?? 0) + '</td>' +
+      '<td>' + show(day.l5_mae) + '</td>' +
+      '<td>' + show(day.l10_mae) + '</td>' +
+      '<td>' + show(day.score_actual_pearson) + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderDailyChart(dailyData) {
+  const ctx = document.getElementById('dailyErrorChart').getContext('2d');
+  const labels = dailyData.map(d => d.date);
+  const l5Data = dailyData.map(d => d.l5_mae);
+  const l10Data = dailyData.map(d => d.l10_mae);
+  const l5Relative = dailyData.map(d => d.l5_relative_error_pct);
+  const l10Relative = dailyData.map(d => d.l10_relative_error_pct);
+
+  if(chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'MAE L5', data: l5Data, borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', tension: 0.3, fill: false, yAxisID: 'y' },
+        { label: 'MAE L10', data: l10Data, borderColor: '#2dd4bf', borderDash: [5,5], tension: 0.3, fill: false, yAxisID: 'y' },
+        { label: 'Erro relativo L5 (%)', data: l5Relative, borderColor: '#a78bfa', tension: 0.3, fill: false, yAxisID: 'y1' },
+        { label: 'Erro relativo L10 (%)', data: l10Relative, borderColor: '#fbbf24', borderDash: [5,5], tension: 0.3, fill: false, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#9ca3af', font: { size: 9 } } } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 8 } }, grid: { color: '#1f2937' } },
+        y: { type: 'linear', position: 'left', title: { display: true, text: 'MAE (unidades)', color: '#9ca3af', font: { size: 8 } }, ticks: { color: '#6b7280', font: { size: 8 } }, grid: { color: '#1f2937' } },
+        y1: { type: 'linear', position: 'right', title: { display: true, text: 'Erro relativo (%)', color: '#9ca3af', font: { size: 8 } }, ticks: { color: '#6b7280', font: { size: 8 } }, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+}
+
+function limparResultadosAoMudarData(){
+  candidatosAtuais = [];
+  resultadoAtual = null;
+  mercadoAtual = '';
+  atualizarMercadoSelecionado();
+  const box = document.getElementById('resultado');
+  if(box){
+    box.innerHTML = '<div class="status">Selecione um mercado para consultar os dados desta data.</div>';
+  }
+}
+
+data.addEventListener('change', limparResultadosAoMudarData);
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  testar();
+});
+
+
+// ============================================================
+// CENTRAL DE CONTEXTO NBA — consultas somente ao Neon
+// ============================================================
+function nomeEquipeContexto(team) {
+  const aliases = {
+    GS: 'GSW',
+    NO: 'NOP',
+    NY: 'NYK',
+    SA: 'SAS',
+    WSH: 'WAS',
+    UTAH: 'UTA'
+  };
+  return aliases[team] || team;
+}
+
+function contextoParams() {
+  const date = document.getElementById('context-date').value || data.value;
+  const venue = document.getElementById('context-venue').value;
+  const position = document.getElementById('context-position').value;
+  const stat = document.getElementById('context-stat').value;
+  const window = document.getElementById('context-window').value;
+  return { date, venue, position, stat, window };
+}
+
+async function carregarRankingContexto() {
+  const p = contextoParams();
+  const status = document.getElementById('context-status');
+  const body = document.getElementById('context-ranking-table');
+  body.innerHTML = '<tr><td colspan="5" class="text-gray-400">Consultando dados salvos...</td></tr>';
+  status.innerText = 'Lendo snapshot contextual do Neon...';
+  try {
+    const query = '/context/defense/rankings?date=' + encodeURIComponent(p.date) +
+      '&position=' + p.position + '&stat=' + p.stat + '&window=' + p.window +
+      '&venue=' + p.venue;
+    const result = await requisicao(query);
+    if(result.status === 'not_ready') {
+      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">Ainda não há dados para esta data. Use “Atualizar base contextual”.</td></tr>';
+      document.getElementById('context-ranking-count').innerText = '0 equipes';
+      status.innerText = result.message;
+      return;
+    }
+    body.innerHTML = (result.ranking || []).map(item => {
+      const label = item.rank <= Math.max(1, Math.round(result.ranking.length * .25))
+        ? '<span class="text-emerald-400">Mais forte</span>'
+        : item.rank > Math.round(result.ranking.length * .75)
+          ? '<span class="text-red-400">Mais vulnerável</span>'
+          : '<span class="text-gray-400">Intermediária</span>';
+      return '<tr class="cursor-pointer" onclick="carregarDetalheContexto(\'' + escapeHtml(item.team) + '\')">' +
+        '<td>' + item.rank + '</td><td class="font-bold text-white">' + escapeHtml(nomeEquipeContexto(item.team)) + '</td>' +
+        '<td class="font-bold text-white">' + numero(item.allowed_per_game, 1) + '</td>' +
+        '<td>' + (item.games_analyzed || 0) + '</td><td>' + label + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="text-gray-400">Sem amostra válida para os filtros selecionados.</td></tr>';
+    document.getElementById('context-ranking-count').innerText = result.teams_available + ' equipes';
+    const venueLabel = p.venue === 'home' ? 'em casa' : p.venue === 'away' ? 'fora de casa' : 'todos os jogos';
+    status.innerText = result.stat_label + ' · posição ' + result.position + ' · ' + result.window +
+      ' · ' + venueLabel + ' · ' + result.date + ' · menor valor = defesa mais forte.';
+  } catch(error) {
+    body.innerHTML = '<tr><td colspan="5" class="text-red-400">Falha ao consultar ranking contextual.</td></tr>';
+    status.innerText = 'Erro: ' + error.message;
+  }
+}
+
+async function atualizarBaseContexto() {
+  const p = contextoParams();
+  const button = document.getElementById('context-refresh-btn');
+  const status = document.getElementById('context-status');
+  button.disabled = true;
+  button.classList.add('opacity-60', 'cursor-not-allowed');
+  status.innerText = 'Atualizando as 30 equipes pela ESPN. A primeira coleta pode demorar...';
+  try {
+    const response = await fetch(endereco() + '/context/defense/refresh?date=' + encodeURIComponent(p.date), { method: 'POST' });
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.detail || 'Falha HTTP ' + response.status);
+    const collected = result.teams_collected ?? result.teams_saved ?? 0;
+    let updateMessage;
+    if(result.status === 'ok') {
+      updateMessage = 'Atualização completa: ' + result.teams_saved + '/' + result.teams_expected +
+        ' equipes salvas na mesma captura.';
+    } else if(result.status === 'partial') {
+      updateMessage = 'Atualização parcial: ' + collected + '/' + result.teams_expected +
+        ' equipes coletadas; nenhum dado novo foi gravado para evitar misturar capturas. ' +
+        result.teams_with_errors + ' falhas. Snapshot anterior preservado.';
+    } else {
+      updateMessage = 'Falha total: nenhuma equipe foi salva. Snapshot anterior preservado, se existente.';
+    }
+    await carregarRankingContexto();
+    status.innerText = updateMessage;
+  } catch(error) {
+    status.innerText = 'Não foi possível atualizar a base: ' + error.message;
+  } finally {
+    button.disabled = false;
+    button.classList.remove('opacity-60', 'cursor-not-allowed');
+  }
+}
+
+async function carregarDetalheContexto(team) {
+  const p = contextoParams();
+  const box = document.getElementById('context-team-detail');
+  const teamLabel = nomeEquipeContexto(team);
+  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><p class="text-[10px] text-gray-400">Carregando histórico...</p>';
+  try {
+    const result = await requisicao('/context/defense/team/' + encodeURIComponent(team) + '?date=' + encodeURIComponent(p.date));
+    const history = result.history || {};
+    const statKeys = [
+      ['points','Pontos'],['assists','Assistências'],['rebounds','Rebotes'],
+      ['three_pa','Tentativas de 3 pts'],['two_pa','Tentativas de 2 pts'],['fgm','Cestas convertidas']
+    ];
+    let html = '<div class="flex items-center justify-between gap-2"><h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><span class="text-[9px] text-gray-500">Atualizado: ' + escapeHtml(result.captured_at || '—') + '</span></div>';
+    html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">';
+    ['G','F','C'].forEach(position => {
+      html += '<div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><div class="text-[10px] font-bold text-teal-300 mb-2">' +
+        (position === 'G' ? 'Armadores (G)' : position === 'F' ? 'Alas (F)' : 'Pivôs (C)') + '</div>';
+      html += '<div class="tablewrap"><table><thead><tr><th>Estatística</th><th>L5</th><th>L10</th></tr></thead><tbody>';
+      statKeys.forEach(([key,label]) => {
+        const l5 = history.L5?.positions?.[position]?.averages?.[key];
+        const l10 = history.L10?.positions?.[position]?.averages?.[key];
+        html += '<tr><td>' + label + '</td><td>' + numero(l5,1) + '</td><td>' + numero(l10,1) + '</td></tr>';
+      });
+      html += '</tbody></table></div></div>';
+    });
+    html += '</div><p class="text-[9px] text-gray-500">Valores representam totais cedidos aos jogadores da posição por partida; a amostra de jogos de cada estatística pode variar.</p>';
+    box.innerHTML = html;
+  } catch(error) {
+    box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
+  }
+}
+
+</script>
+
+</body>
+</html>
