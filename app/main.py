@@ -5057,7 +5057,11 @@ def collect_candidates(
     context_start = time.perf_counter()
     teammate_status_by_game = shared_context.get("teammate_status_by_game", {})
     if persist_operational and teammate_status_by_game:
-        player_logs_by_id = player_logs
+        player_logs_by_id = {
+            str(player.get("id")): (player, player_logs.get(str(player.get("id")), []))
+            for player in players
+            if player.get("id")
+        }
         roster_by_team = {}
         for roster_player in players:
             roster_by_team.setdefault(
