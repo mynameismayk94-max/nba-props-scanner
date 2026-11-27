@@ -553,9 +553,10 @@
     </div>
     <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro médio absoluto em unidades da estatística; menor é melhor. Erro relativo = MAE dividido pela média prevista. Pearson mede a associação linear entre Score e resultado real (de -1 a +1), não uma taxa de acerto.</p>
 
-    <!-- Tabela de Calibração e qualidade do ranking -->
+    <!-- Distribuição descritiva por quintis de Score -->
     <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">📊 Calibração por faixa de Score</h3>
+      <h3 class="text-xs font-semibold text-white">📊 Distribuição por faixa de Score</h3>
+      <p class="text-[10px] text-gray-400">As cinco faixas são quintis calculados dentro do mercado e do período selecionado. São grupos descritivos relativos à amostra, não probabilidades nem calibração de confiança.</p>
       <div class="tablewrap">
         <table>
           <thead>
