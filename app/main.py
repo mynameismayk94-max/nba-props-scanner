@@ -7240,6 +7240,8 @@ def validation_history(
                 "l10_rmse": None,
                 "l5_medae": None,
                 "l10_medae": None,
+                "l5_overestimation_pct": None,
+                "l10_overestimation_pct": None,
                 "score_actual_pearson": None,
                 "score_actual_spearman": None
             }
@@ -7355,6 +7357,18 @@ def validation_history(
         l5_medae = median(l5_errors)
         l10_medae = median(l10_errors)
 
+        # Frequência de previsões acima do resultado real. O denominador é
+        # exatamente a mesma amostra válida usada no erro de cada janela.
+        # Não representa taxa de acerto nem probabilidade.
+        l5_overestimation_pct = (
+            round(sum(error > 0 for error in l5_signed_errors) / len(l5_signed_errors) * 100, 2)
+            if l5_signed_errors else None
+        )
+        l10_overestimation_pct = (
+            round(sum(error > 0 for error in l10_signed_errors) / len(l10_signed_errors) * 100, 2)
+            if l10_signed_errors else None
+        )
+
         # Erro relativo agregado: MAE / média das previsões da mesma amostra.
         l5_relative_error = (
             round(l5_mae / l5_prediction_average * 100, 2)
@@ -7392,6 +7406,8 @@ def validation_history(
             "l10_rmse": l10_rmse,
             "l5_medae": l5_medae,
             "l10_medae": l10_medae,
+            "l5_overestimation_pct": l5_overestimation_pct,
+            "l10_overestimation_pct": l10_overestimation_pct,
             "score_actual_pearson": pearson,
             "score_actual_spearman": spearman
         }
