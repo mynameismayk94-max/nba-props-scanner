@@ -1,9 +1,6 @@
 name: Auditoria independente — captura e apuração
 
 on:
-  push:
-    paths:
-      - ".github/workflows/capture-independent-audit.yml"
   workflow_dispatch:
     inputs:
       api_base:
