@@ -817,10 +817,10 @@
       </div>
       <div class="flex flex-col sm:flex-row gap-2">
         <button type="button" onclick="carregarRankingContexto()" class="market-button flex-1">Consultar ranking</button>
-        <button type="button" onclick="atualizarBaseContexto()" id="context-refresh-btn" class="secondary flex-1">Atualizar base contextual</button>
+        <button type="button" onclick="carregarRankingContexto()" class="secondary flex-1">Atualizar consulta</button>
       </div>
-      <p class="text-[9px] text-gray-500">A atualização consulta a ESPN para as 30 equipes e pode demorar na primeira execução. Depois, as consultas desta data usam o banco Neon e não repetem a coleta. Atualizar novamente substitui somente o snapshot contextual da mesma data.</p>
-      <div id="context-status" class="text-[10px] text-gray-400" aria-live="polite">Selecione os filtros e consulte o ranking. Se ainda não houver dados, atualize a base contextual.</div>
+      <p class="text-[9px] text-gray-500">A base contextual é atualizada automaticamente. As consultas desta tela leem o snapshot salvo no Neon e não repetem a coleta na ESPN.</p>
+      <div id="context-status" class="text-[10px] text-gray-400" aria-live="polite">Selecione os filtros e consulte o ranking. A base é atualizada automaticamente.</div>
     </div>
 
     <div class="glass-panel p-3 space-y-2">
