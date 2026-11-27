@@ -481,6 +481,17 @@
     </div>
 
     <div class="glass-panel p-3 space-y-2">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h3 class="text-xs font-semibold text-white">Diagnóstico da captura</h3>
+          <p class="text-[9px] text-gray-500 mt-0.5">Consulta somente registros do banco. Não aciona ESPN, coleta ou Scanner.</p>
+        </div>
+        <button id="audit-snapshot-diagnostics-btn" type="button" onclick="consultarDiagnosticoSnapshots()" class="secondary whitespace-nowrap text-[10px] h-8 px-3">Consultar diagnóstico</button>
+      </div>
+      <div id="audit-snapshot-diagnostics-output" class="text-[10px] text-gray-400">Clique para conferir snapshots, resultados e pendências da data selecionada.</div>
+    </div>
+
+    <div class="glass-panel p-3 space-y-2">
       <div class="flex items-center justify-between gap-2">
         <h3 class="text-xs font-semibold text-white">Conferência da amostra</h3>
         <span class="text-[9px] text-gray-500">Mercado e período selecionados</span>
@@ -1896,6 +1907,67 @@ async function fetchGapValidation(market, dateFrom, dateTo) {
     if(note) note.innerText = 'Verifique a conexão com a API e tente novamente.';
   }
 }
+async function consultarDiagnosticoSnapshots() {
+  const date = document.getElementById('audit-selected-date')?.value;
+  const output = document.getElementById('audit-snapshot-diagnostics-output');
+  const button = document.getElementById('audit-snapshot-diagnostics-btn');
+  if (!date || !output || !button) return;
+
+  button.disabled = true;
+  button.classList.add('opacity-60', 'cursor-not-allowed');
+  output.innerHTML = '<span class="text-gray-400">Consultando registros persistidos...</span>';
+
+  try {
+    const res = await requisicao('/audit-snapshot-diagnostics?date=' + encodeURIComponent(date));
+    if (res.status !== 'ok' || !Array.isArray(res.markets)) {
+      throw new Error('Resposta inválida do diagnóstico');
+    }
+
+    const labels = {
+      points: 'Pontos',
+      assists: 'Assistências',
+      rebounds: 'Rebotes',
+      threes: 'Tentativas de 3 pontos',
+      two_pa: 'Tentativas de 2 pontos',
+      fgm: 'Cestas convertidas'
+    };
+
+    if (!res.markets.length) {
+      output.innerHTML = '<span class="text-amber-300">Nenhum registro de captura, snapshot ou resultado encontrado para ' + date + '.</span>';
+      return;
+    }
+
+    const rows = res.markets.map(item => {
+      const manifest = item.manifest || {};
+      const snapshots = item.snapshots || {};
+      const results = item.results || {};
+      const noResult = item.no_result || {};
+      return '<div class="rounded-lg border border-gray-800 bg-gray-900 p-2 space-y-1">' +
+        '<div class="flex justify-between gap-2"><strong class="text-gray-200">' + (labels[item.market] || item.market) + '</strong>' +
+        '<span class="' + (snapshots.count > 0 ? 'text-emerald-400' : 'text-amber-300') + '">' + (snapshots.count > 0 ? 'Com snapshots' : 'Sem snapshots') + '</span></div>' +
+        '<div class="grid grid-cols-2 sm:grid-cols-5 gap-1 text-gray-400">' +
+        '<span>Manifesto: <b class="text-gray-200">' + (manifest.exists ? 'sim' : 'não') + '</b></span>' +
+        '<span>Elegíveis: <b class="text-gray-200">' + (manifest.eligible_count ?? '—') + '</b></span>' +
+        '<span>Snapshots: <b class="text-gray-200">' + snapshots.count + '</b></span>' +
+        '<span>Apurados: <b class="text-emerald-300">' + results.completed + '</b></span>' +
+        '<span>Sem resultado: <b class="text-amber-300">' + noResult.count + '</b></span>' +
+        '</div>' +
+        '<div class="text-gray-400">Aguardando: <b class="text-white">' + item.pending + '</b> · Jogadores distintos: ' + snapshots.distinct_players + '</div>' +
+        '<div class="text-[9px] text-gray-500">Captura: ' + (snapshots.first_captured_at || 'sem registro') +
+        (snapshots.last_captured_at && snapshots.last_captured_at !== snapshots.first_captured_at ? ' até ' + snapshots.last_captured_at : '') +
+        ' · Apuração: ' + (results.last_collected_at || 'sem registro') + '</div>' +
+        '</div>';
+    }).join('');
+
+    output.innerHTML = '<div class="space-y-2"><div class="text-gray-300">Data: <b>' + res.date + '</b> · Mercados encontrados: <b>' + res.markets_found + '</b> · Somente leitura</div>' + rows + '</div>';
+  } catch (error) {
+    output.innerHTML = '<span class="text-red-400">Não foi possível consultar o diagnóstico. Confira se o servidor selecionado é o staging atualizado e tente novamente.</span>';
+  } finally {
+    button.disabled = false;
+    button.classList.remove('opacity-60', 'cursor-not-allowed');
+  }
+}
+
 async function fetchHistoryValidation() {
   const market = document.getElementById('hist-market').value;
   let dateFrom = null, dateTo = null;
