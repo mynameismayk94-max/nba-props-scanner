@@ -828,10 +828,10 @@
         <h3 class="text-xs font-semibold text-white">Ranking defensivo</h3>
         <span id="context-ranking-count" class="text-[9px] text-gray-500">— equipes</span>
       </div>
-      <p class="text-[9px] text-gray-500">Menor média cedida = defesa mais forte. Clique em uma equipe para abrir o detalhamento.</p>
+      <p class="text-[9px] text-gray-500">Ranking ordenado pelo total cedido por jogo; a média por aparição é complementar. Perfil relativo entre as equipes disponíveis. Clique em uma equipe para abrir o detalhamento.</p>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>#</th><th>Equipe</th><th>Total/jogo</th><th>Por jogador</th><th>Jogos</th><th>Participações</th><th>Perfil</th></tr></thead>
+          <thead><tr><th>#</th><th>Equipe</th><th>Total/jogo</th><th>Por aparição</th><th>Jogos</th><th>Participações</th><th>Perfil</th></tr></thead>
           <tbody id="context-ranking-table" class="text-gray-300">
             <tr><td colspan="7" class="text-gray-400">Aguardando consulta.</td></tr>
           </tbody>
@@ -2328,7 +2328,7 @@ async function carregarDetalheContexto(team) {
     ['G','F','C'].forEach(position => {
       html += '<div class="rounded-lg bg-gray-900 border border-gray-800 p-2"><div class="text-[10px] font-bold text-teal-300 mb-2">' +
         (position === 'G' ? 'Armadores (G)' : position === 'F' ? 'Alas (F)' : 'Pivôs (C)') + '</div>';
-      html += '<div class="tablewrap"><table><thead><tr><th>Estatística</th><th>L5 total/jogo</th><th>L5 por jogador</th><th>L5 amostra</th><th>L10 total/jogo</th><th>L10 por jogador</th><th>L10 amostra</th></tr></thead><tbody>';
+      html += '<div class="tablewrap"><table><thead><tr><th>Estatística</th><th>L5 total/jogo</th><th>L5 por aparição</th><th>L5 amostra</th><th>L10 total/jogo</th><th>L10 por aparição</th><th>L10 amostra</th></tr></thead><tbody>';
       statKeys.forEach(([key,label]) => {
         const d5 = getPeriod('L5')?.positions?.[position];
         const d10 = getPeriod('L10')?.positions?.[position];
@@ -2340,7 +2340,7 @@ async function carregarDetalheContexto(team) {
       });
       html += '</tbody></table></div></div>';
     });
-    html += '</div><p class="text-[9px] text-gray-500">Total/jogo = soma da produção de todos os jogadores da posição por partida. Por jogador = média por aparição de jogador com estatística válida. A amostra pode variar por estatística; em Casa/Fora, os jogos são filtrados dentro da janela geral L5/L10.</p>';
+    html += '</div><p class="text-[9px] text-gray-500">Total/jogo = soma da produção de todos os jogadores da posição por partida. Por aparição = média da estatística por participação individual com dado válido. A amostra pode variar por estatística; em Casa/Fora, os jogos são filtrados dentro da janela geral L5/L10.</p>';
     box.innerHTML = html;
   } catch(error) {
     box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
