@@ -73,7 +73,7 @@ class ContextRefreshTests(unittest.TestCase):
                     "G": {
                         "players_count": 1,
                         "points": points,
-                        "stat_players_count": {"points": 1}
+                        "stat_players_count": {"points": 2}
                     }
                 }
             })
@@ -82,9 +82,11 @@ class ContextRefreshTests(unittest.TestCase):
         self.assertEqual(windows["L5"]["team_games_window"], 5)
         self.assertEqual(windows["L5"]["venue_games_in_window"], 3)
         self.assertEqual(windows["L5"]["positions"]["G"]["averages"]["points"], 30.0)
+        self.assertEqual(windows["L5"]["positions"]["G"]["individual_averages"]["points"], 15.0)
         self.assertEqual(windows["L10"]["team_games_window"], 10)
         self.assertEqual(windows["L10"]["venue_games_in_window"], 5)
         self.assertEqual(windows["L10"]["positions"]["G"]["averages"]["points"], 50.0)
+        self.assertEqual(windows["L10"]["positions"]["G"]["individual_averages"]["points"], 25.0)
 
     def test_complete_refresh_persists_all_teams(self):
         history = {"games_analyzed": 10}
