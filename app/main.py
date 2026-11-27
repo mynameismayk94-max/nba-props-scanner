@@ -6861,8 +6861,6 @@ def validation_history_summary(
             FROM audit_snapshots
             WHERE market = %s
 
-        ),
-        filtered AS (
             SELECT *,
                 COUNT(*) FILTER (WHERE display_rank IS NULL)
                     OVER (PARTITION BY selected_date, market) AS missing_rank_count
@@ -6906,14 +6904,19 @@ def validation_history_summary(
             WHERE (%s = 'all' OR r.cohort_rank <= 10)
     """
 
-    params = [market, cohort]
+    params = [market]
 
+    # Filtra o período antes das funções de janela. Como o ranking é
+    # particionado por data/mercado, isso preserva o resultado e evita
+    # ranquear snapshots de datas que não fazem parte da consulta.
     if parsed_from:
-        query += " AND r.selected_date >= %s"
+        query += " AND selected_date >= %s"
         params.append(parsed_from)
     if parsed_to:
-        query += " AND r.selected_date <= %s"
+        query += " AND selected_date <= %s"
         params.append(parsed_to)
+
+    params.append(cohort)
 
     query += """
         )
