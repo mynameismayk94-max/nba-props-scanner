@@ -5332,143 +5332,161 @@ def refresh_audit(
                 detail="Data inválida. Utilize AAAA-MM-DD."
             )
 
-    capture_results = []
-    capture_failures = []
-
-    # Não reconstruímos uma fotografia que já existe. A Auditoria é baseada
-    # em snapshots imutáveis; recapturar uma data/mercado já capturado só
-    # desperdiça CPU/memória e pode provocar picos no serviço.
-    with get_database_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT market
-                FROM audit_snapshot_runs
-                WHERE selected_date = %s
-                """,
-                (target_date,)
-            )
-            captured_markets = {
-                str(row[0]).strip()
-                for row in cursor.fetchall()
-            }
-
-    for market in ACTIVE_MARKETS:
-        if market in captured_markets:
-            capture_results.append({
-                "market": market,
-                "status": "already_captured",
-                "snapshots_saved": 0,
-                "eligible_players": None,
-                "players_consulted": 0,
-                "players_with_errors": 0,
-            })
-            continue
-
+    # Serializa apenas a rotina de Auditoria. O lock é exclusivo deste
+    # fluxo e não participa do Scanner/candidates.
+    audit_lock_connection = get_database_connection()
+    try:
+        with audit_lock_connection.cursor() as lock_cursor:
+            lock_cursor.execute("SELECT pg_advisory_lock(481234567)")
         try:
-            result = collect_candidates(
-                selected_date,
-                market,
-                10,
-                persist_operational=False
-            )
-            capture_results.append({
-                "market": market,
-                "status": "captured",
-                "snapshots_saved": result.get("audit_snapshots_saved", 0),
-                "eligible_players": result.get("selection_summary", {}).get("eligible_candidates", 0),
-                "players_consulted": result.get("players_consulted", 0),
-                "players_with_errors": result.get("players_with_errors", 0),
-            })
-        except Exception as error:
-            logger.exception(
-                "Falha na captura híbrida da auditoria: data=%s mercado=%s",
-                selected_date,
-                market
-            )
-            capture_failures.append({
-                "market": market,
-                "error": str(error)
-            })
+        capture_results = []
+        capture_failures = []
 
-    # A captura do dia informado é separada da apuração histórica.
-    # Depois de garantir os snapshots do dia, procura combinações que já
-    # possuem snapshots pendentes em datas anteriores e tenta atualizá-las.
-    with get_database_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT DISTINCT s.selected_date, s.market
-                FROM audit_snapshots s
-                LEFT JOIN audit_results r
-                    ON r.selected_date = s.selected_date
-                    AND r.market = s.market
-                    AND r.player_id = s.player_id
-                LEFT JOIN audit_no_results nr
-                    ON nr.selected_date = s.selected_date
-                    AND nr.market = s.market
-                    AND nr.player_id = s.player_id
-                WHERE s.selected_date >= %s
-                  AND s.selected_date <= %s
-                  AND r.id IS NULL
-                  AND nr.id IS NULL
-                ORDER BY s.selected_date ASC, s.market ASC
-                """,
-                (
-                    audit_history_start_date(),
-                    target_date if history else target_date - timedelta(days=1)
+        # Não reconstruímos uma fotografia que já existe. A Auditoria é baseada
+        # em snapshots imutáveis; recapturar uma data/mercado já capturado só
+        # desperdiça CPU/memória e pode provocar picos no serviço.
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT run.market
+                    FROM audit_snapshot_runs run
+                    WHERE run.selected_date = %s
+                      AND EXISTS (
+                          SELECT 1
+                          FROM audit_snapshots snap
+                          WHERE snap.selected_date = run.selected_date
+                            AND snap.market = run.market
+                      )
+                    """,
+                    (target_date,)
                 )
-            )
-            pending_combinations = cursor.fetchall()
+                captured_markets = {
+                    str(row[0]).strip()
+                    for row in cursor.fetchall()
+                }
 
-    collection_results = []
-    collection_failures = []
+        for market in ACTIVE_MARKETS:
+            if market in captured_markets:
+                capture_results.append({
+                    "market": market,
+                    "status": "already_captured",
+                    "snapshots_saved": 0,
+                    "eligible_players": None,
+                    "players_consulted": 0,
+                    "players_with_errors": 0,
+                })
+                continue
 
-    for pending_date, market in pending_combinations:
-        try:
-            result = collect_results(
-                selected_date=pending_date.isoformat(),
-                market=market
-            )
-            collection_results.append({
-                "date": pending_date.isoformat(),
-                "market": market,
-                "status": result.get("status"),
-                "results_saved": result.get("audit_results_saved", 0),
-                "dnp": result.get("audit_no_results", 0),
-                "pending": result.get("audit_pending", 0),
-            })
-        except Exception as error:
-            logger.exception(
-                "Falha na apuração híbrida da auditoria: data=%s mercado=%s",
-                pending_date,
-                market
-            )
-            collection_failures.append({
-                "date": pending_date.isoformat(),
-                "market": market,
-                "error": str(error)
-            })
+            try:
+                result = collect_candidates(
+                    selected_date,
+                    market,
+                    10,
+                    persist_operational=False
+                )
+                capture_results.append({
+                    "market": market,
+                    "status": "captured",
+                    "snapshots_saved": result.get("audit_snapshots_saved", 0),
+                    "eligible_players": result.get("selection_summary", {}).get("eligible_candidates", 0),
+                    "players_consulted": result.get("players_consulted", 0),
+                    "players_with_errors": result.get("players_with_errors", 0),
+                })
+            except Exception as error:
+                logger.exception(
+                    "Falha na captura híbrida da auditoria: data=%s mercado=%s",
+                    selected_date,
+                    market
+                )
+                capture_failures.append({
+                    "market": market,
+                    "error": str(error)
+                })
 
-    return {
-        "status": (
-            "ok"
-            if not capture_failures and not collection_failures
-            else "partial"
-        ),
-        "date": selected_date,
-        "history": history,
-        "capture": {
-            "markets": capture_results,
-            "failures": capture_failures,
-        },
-        "collection": {
-            "combinations_found": len(pending_combinations),
-            "processed": collection_results,
-            "failures": collection_failures,
+        # A captura do dia informado é separada da apuração histórica.
+        # Depois de garantir os snapshots do dia, procura combinações que já
+        # possuem snapshots pendentes em datas anteriores e tenta atualizá-las.
+        with get_database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT s.selected_date, s.market
+                    FROM audit_snapshots s
+                    LEFT JOIN audit_results r
+                        ON r.selected_date = s.selected_date
+                        AND r.market = s.market
+                        AND r.player_id = s.player_id
+                    LEFT JOIN audit_no_results nr
+                        ON nr.selected_date = s.selected_date
+                        AND nr.market = s.market
+                        AND nr.player_id = s.player_id
+                    WHERE s.selected_date >= %s
+                      AND s.selected_date <= %s
+                      AND r.id IS NULL
+                      AND nr.id IS NULL
+                    ORDER BY s.selected_date ASC, s.market ASC
+                    """,
+                    (
+                        audit_history_start_date(),
+                        target_date if history else target_date - timedelta(days=1)
+                    )
+                )
+                pending_combinations = cursor.fetchall()
+
+        collection_results = []
+        collection_failures = []
+
+        for pending_date, market in pending_combinations:
+            try:
+                result = collect_results(
+                    selected_date=pending_date.isoformat(),
+                    market=market
+                )
+                collection_results.append({
+                    "date": pending_date.isoformat(),
+                    "market": market,
+                    "status": result.get("status"),
+                    "results_saved": result.get("audit_results_saved", 0),
+                    "dnp": result.get("audit_no_results", 0),
+                    "pending": result.get("audit_pending", 0),
+                })
+            except Exception as error:
+                logger.exception(
+                    "Falha na apuração híbrida da auditoria: data=%s mercado=%s",
+                    pending_date,
+                    market
+                )
+                collection_failures.append({
+                    "date": pending_date.isoformat(),
+                    "market": market,
+                    "error": str(error)
+                })
+
+        return {
+            "status": (
+                "ok"
+                if not capture_failures and not collection_failures
+                else "partial"
+            ),
+            "date": selected_date,
+            "history": history,
+            "capture": {
+                "markets": capture_results,
+                "failures": capture_failures,
+            },
+            "collection": {
+                "combinations_found": len(pending_combinations),
+                "processed": collection_results,
+                "failures": collection_failures,
+            }
         }
-    }
 
+        finally:
+            with audit_lock_connection.cursor() as lock_cursor:
+                lock_cursor.execute("SELECT pg_advisory_unlock(481234567)")
+    finally:
+        audit_lock_connection.close()
 
 @app.get("/collect-results", dependencies=[Depends(require_admin_api_key)])
 def collect_results(
