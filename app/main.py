@@ -6860,7 +6860,22 @@ def validation_history_summary(
                 'audit' AS snapshot_source
             FROM audit_snapshots
             WHERE market = %s
+    """
+    params = [market]
 
+    # Filtra o período antes das funções de janela. Como o ranking é
+    # particionado por data/mercado, isso preserva o resultado e evita
+    # ranquear snapshots de datas que não fazem parte da consulta.
+    if parsed_from:
+        query += " AND selected_date >= %s"
+        params.append(parsed_from)
+    if parsed_to:
+        query += " AND selected_date <= %s"
+        params.append(parsed_to)
+
+    query += """
+        ),
+        filtered AS (
             SELECT *,
                 COUNT(*) FILTER (WHERE display_rank IS NULL)
                     OVER (PARTITION BY selected_date, market) AS missing_rank_count
@@ -6902,23 +6917,6 @@ def validation_history_summary(
              AND nr.market = r.market
              AND nr.player_id = r.player_id
             WHERE (%s = 'all' OR r.cohort_rank <= 10)
-    """
-
-    params = [market]
-
-    # Filtra o período antes das funções de janela. Como o ranking é
-    # particionado por data/mercado, isso preserva o resultado e evita
-    # ranquear snapshots de datas que não fazem parte da consulta.
-    if parsed_from:
-        query += " AND selected_date >= %s"
-        params.append(parsed_from)
-    if parsed_to:
-        query += " AND selected_date <= %s"
-        params.append(parsed_to)
-
-    params.append(cohort)
-
-    query += """
         )
         SELECT
             COUNT(*) AS snapshots_total,
@@ -6946,6 +6944,7 @@ def validation_history_summary(
             MAX(selected_date) AS last_date
         FROM resolved
     """
+    params.append(cohort)
 
     with get_database_connection() as connection:
         with connection.cursor() as cursor:
