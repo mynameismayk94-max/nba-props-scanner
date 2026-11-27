@@ -1,0 +1,50 @@
+name: Diagnóstico somente leitura da Auditoria
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "Data da auditoria em YYYY-MM-DD"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-snapshot-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar diagnóstico no staging (somente leitura)
+        env:
+          TARGET_DATE: ${{ inputs.target_date }}
+          STAGING_ADMIN_API_KEY: ${{ secrets.STAGING_ADMIN_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${STAGING_ADMIN_API_KEY:-}" ]; then
+            echo "::error::Secret STAGING_ADMIN_API_KEY não configurado."
+            exit 1
+          fi
+
+          if ! [[ "$TARGET_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::Data inválida. Use YYYY-MM-DD."
+            exit 1
+          fi
+
+          API_BASE="https://nba-props-scanner-staging.onrender.com"
+          echo "Diagnóstico somente leitura da Auditoria"
+          echo "API: $API_BASE"
+          echo "Data: $TARGET_DATE"
+
+          curl --fail --show-error --silent \
+            --retry 2 \
+            --retry-delay 3 \
+            --max-time 120 \
+            --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
+            "${API_BASE}/audit-snapshot-diagnostics?date=${TARGET_DATE}"
