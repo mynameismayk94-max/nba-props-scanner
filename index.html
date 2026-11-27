@@ -2276,7 +2276,7 @@ async function carregarRankingContexto() {
       '&venue=' + p.venue;
     const result = await requisicao(query);
     if(result.status === 'not_ready') {
-      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">Ainda não há dados para esta data. Use “Atualizar base contextual”.</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="text-amber-300">Ainda não há dados para esta data. A base é atualizada automaticamente.</td></tr>';
       document.getElementById('context-ranking-count').innerText = '0 equipes';
       status.innerText = result.message;
       return;
