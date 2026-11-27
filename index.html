@@ -55,6 +55,12 @@
   .split-item { display: flex; flex-direction: column; align-items: center; }
   .split-item + .split-item { border-top: 1px solid #374151; padding-top: 4px; }
   .new-metric { background: rgba(17, 24, 39, 0.4); min-width: 90px; }
+  .context-ranking-wrap { position: relative; }
+  .context-ranking-wrap::after { content: ''; pointer-events: none; position: absolute; top: 0; right: 0; bottom: 0; width: 28px; background: linear-gradient(90deg, transparent, rgba(9,13,22,.82)); opacity: 1; transition: opacity .2s; }
+  .context-ranking-wrap.at-end::after { opacity: 0; }
+  .context-scroll-hint { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 5px; color: #9ca3af; font-size: 9px; }
+  .context-team-row-selected td { background: rgba(16,185,129,.13) !important; border-top: 1px solid rgba(16,185,129,.45); border-bottom: 1px solid rgba(16,185,129,.45); }
+  .context-team-row-selected td:first-child { box-shadow: inset 3px 0 #10b981; }
 
   .difference-value { font-size: 11px; font-weight: bold; }
   .difference-positive { color: #f87171; font-weight: 600; }
@@ -829,7 +835,7 @@
         <span id="context-ranking-count" class="text-[9px] text-gray-500">— equipes</span>
       </div>
       <p class="text-[9px] text-gray-500">Ranking ordenado pelo total cedido por jogo; a média por aparição é complementar. Perfil relativo entre as equipes disponíveis. Clique em uma equipe para abrir o detalhamento.</p>
-      <div class="tablewrap">
+      <div id="context-ranking-wrap" class="tablewrap context-ranking-wrap">
         <table>
           <thead><tr><th>#</th><th>Equipe</th><th>Total/jogo</th><th>Por aparição</th><th>Jogos</th><th>Participações</th><th>Perfil</th></tr></thead>
           <tbody id="context-ranking-table" class="text-gray-300">
@@ -837,6 +843,7 @@
           </tbody>
         </table>
       </div>
+      <div id="context-scroll-hint" class="context-scroll-hint"><span>Deslize para ver mais colunas</span><span aria-hidden="true">→</span></div>
     </div>
 
     <div id="context-team-detail" class="glass-panel p-3 space-y-2">
@@ -2255,6 +2262,27 @@ function nomeEquipeContexto(team) {
   return aliases[team] || team;
 }
 
+let contextDetailRequestId = 0;
+let contextRankingRequestId = 0;
+let contextSelectedTeam = null;
+
+function limparDetalheContexto(message = 'Selecione uma equipe no ranking para ver o contexto das três posições.') {
+  contextDetailRequestId++;
+  contextSelectedTeam = null;
+  const box = document.getElementById('context-team-detail');
+  if (box) box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento da equipe</h3><p class="text-[10px] text-gray-500">' + escapeHtml(message) + '</p>';
+  document.querySelectorAll('#context-ranking-table tr.context-team-row-selected').forEach(row => row.classList.remove('context-team-row-selected'));
+}
+
+function atualizarIndicacaoDeslizeContexto() {
+  const wrap = document.getElementById('context-ranking-wrap');
+  const hint = document.getElementById('context-scroll-hint');
+  if (!wrap || !hint) return;
+  const canScroll = wrap.scrollWidth > wrap.clientWidth + 2;
+  wrap.classList.toggle('at-end', !canScroll || wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 3);
+  hint.classList.toggle('hidden', !canScroll);
+}
+
 function contextoParams() {
   const date = document.getElementById('context-date').value || data.value;
   const venue = document.getElementById('context-venue').value;
@@ -2265,6 +2293,8 @@ function contextoParams() {
 }
 
 async function carregarRankingContexto() {
+  limparDetalheContexto();
+  const requestId = ++contextRankingRequestId;
   const p = contextoParams();
   const status = document.getElementById('context-status');
   const body = document.getElementById('context-ranking-table');
@@ -2275,6 +2305,7 @@ async function carregarRankingContexto() {
       '&position=' + p.position + '&stat=' + p.stat + '&window=' + p.window +
       '&venue=' + p.venue;
     const result = await requisicao(query);
+    if (requestId !== contextRankingRequestId) return;
     if(result.status === 'not_ready') {
       body.innerHTML = '<tr><td colspan="7" class="text-amber-300">Ainda não há dados para esta data. A base é atualizada automaticamente.</td></tr>';
       document.getElementById('context-ranking-count').innerText = '0 equipes';
@@ -2287,13 +2318,14 @@ async function carregarRankingContexto() {
         : item.rank > Math.round(result.ranking.length * .75)
           ? '<span class="text-red-400">Mais vulnerável</span>'
           : '<span class="text-gray-400">Intermediária</span>';
-      return '<tr class="cursor-pointer" onclick="carregarDetalheContexto(\'' + escapeHtml(item.team) + '\')">' +
+      return '<tr data-context-team="' + escapeHtml(item.team) + '" class="cursor-pointer" onclick="carregarDetalheContexto(\'' + escapeHtml(item.team) + '\')">' +
         '<td>' + item.rank + '</td><td class="font-bold text-white">' + escapeHtml(nomeEquipeContexto(item.team)) + '</td>' +
         '<td class="font-bold text-white">' + numero(item.allowed_per_game, 1) + '</td>' +
         '<td>' + numero(item.allowed_per_player, 2) + '</td>' +
         '<td>' + (item.games_analyzed || 0) + '</td><td>' + (item.player_appearances || 0) + '</td><td>' + label + '</td></tr>';
     }).join('') || '<tr><td colspan="7" class="text-gray-400">Sem amostra válida para os filtros selecionados.</td></tr>';
     document.getElementById('context-ranking-count').innerText = result.teams_available + ' equipes';
+    atualizarIndicacaoDeslizeContexto();
     const venueLabel = p.venue === 'home' ? 'em casa' : p.venue === 'away' ? 'fora de casa' : 'todos os jogos';
     const venueNote = p.venue === 'all'
       ? 'janela dos últimos ' + p.window.slice(1) + ' jogos'
@@ -2308,11 +2340,17 @@ async function carregarRankingContexto() {
 
 async function carregarDetalheContexto(team) {
   const p = contextoParams();
+  const requestId = ++contextDetailRequestId;
+  contextSelectedTeam = team;
+  document.querySelectorAll('#context-ranking-table tr[data-context-team]').forEach(row => {
+    row.classList.toggle('context-team-row-selected', row.dataset.contextTeam === team);
+  });
   const box = document.getElementById('context-team-detail');
   const teamLabel = nomeEquipeContexto(team);
-  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(teamLabel) + '</h3><p class="text-[10px] text-gray-400">Carregando histórico...</p>';
+  box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento — ' + escapeHtml(teamLabel) + '</h3><div class="scanner-loading"><p class="text-[10px] text-gray-300">Carregando contexto da equipe...</p><div class="scanner-loading-track"><div class="scanner-loading-bar"></div></div></div>';
   try {
     const result = await requisicao('/context/defense/team/' + encodeURIComponent(team) + '?date=' + encodeURIComponent(p.date));
+    if (requestId !== contextDetailRequestId || contextSelectedTeam !== team) return;
     const history = result.history || {};
     const statKeys = [
       ['points','Pontos'],['assists','Assistências'],['rebounds','Rebotes'],
@@ -2342,10 +2380,26 @@ async function carregarDetalheContexto(team) {
     });
     html += '</div><p class="text-[9px] text-gray-500">Total/jogo = soma da produção de todos os jogadores da posição por partida. Por aparição = média da estatística por participação individual com dado válido. A amostra pode variar por estatística; em Casa/Fora, os jogos são filtrados dentro da janela geral L5/L10.</p>';
     box.innerHTML = html;
+    requestAnimationFrame(() => box.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   } catch(error) {
-    box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento · ' + escapeHtml(team) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
+    if (requestId !== contextDetailRequestId) return;
+    box.innerHTML = '<h3 class="text-xs font-semibold text-white">Detalhamento — ' + escapeHtml(teamLabel) + '</h3><p class="text-[10px] text-red-400">Não foi possível carregar os dados desta equipe: ' + escapeHtml(error.message) + '</p>';
+    requestAnimationFrame(() => box.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 }
+
+['context-date','context-venue','context-position','context-stat','context-window'].forEach(id => {
+  const control = document.getElementById(id);
+  if (control) control.addEventListener('change', () => {
+    limparDetalheContexto('Filtros alterados. Consulte o ranking novamente para selecionar uma equipe.');
+  });
+});
+const contextRankingWrap = document.getElementById('context-ranking-wrap');
+if (contextRankingWrap) {
+  contextRankingWrap.addEventListener('scroll', atualizarIndicacaoDeslizeContexto, { passive: true });
+  window.addEventListener('resize', atualizarIndicacaoDeslizeContexto);
+}
+
 
 </script>
 
