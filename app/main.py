@@ -6917,6 +6917,19 @@ def validation_history_summary(
              AND nr.market = r.market
              AND nr.player_id = r.player_id
             WHERE (%s = 'all' OR r.cohort_rank <= 10)
+        ),
+        score_ranked AS (
+            SELECT
+                triage_score,
+                actual_value,
+                RANK() OVER (ORDER BY triage_score) AS score_rank_base,
+                COUNT(*) OVER (PARTITION BY triage_score) AS score_tie_count,
+                RANK() OVER (ORDER BY actual_value) AS actual_rank_base,
+                COUNT(*) OVER (PARTITION BY actual_value) AS actual_tie_count
+            FROM resolved
+            WHERE result_status = 'completed'
+              AND triage_score IS NOT NULL
+              AND actual_value IS NOT NULL
         )
         SELECT
             COUNT(*) AS snapshots_total,
@@ -6937,9 +6950,35 @@ def validation_history_summary(
             AVG(last10_avg) FILTER (
                 WHERE result_status = 'completed' AND last10_avg IS NOT NULL
             ) AS l10_prediction_average,
+            AVG(last5_avg - actual_value) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
+            ) AS l5_bias,
+            AVG(last10_avg - actual_value) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
+            ) AS l10_bias,
+            SQRT(AVG(POWER(actual_value - last5_avg, 2))) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
+            ) AS l5_rmse,
+            SQRT(AVG(POWER(actual_value - last10_avg, 2))) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
+            ) AS l10_rmse,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (
+                ORDER BY ABS(actual_value - last5_avg)
+            ) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
+            ) AS l5_medae,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (
+                ORDER BY ABS(actual_value - last10_avg)
+            ) FILTER (
+                WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
+            ) AS l10_medae,
             CORR(triage_score, actual_value) FILTER (
                 WHERE result_status = 'completed' AND triage_score IS NOT NULL AND actual_value IS NOT NULL
             ) AS score_actual_pearson,
+            (SELECT CORR(
+                score_rank_base + (score_tie_count - 1) / 2.0,
+                actual_rank_base + (actual_tie_count - 1) / 2.0
+            ) FROM score_ranked) AS score_actual_spearman,
             MIN(selected_date) AS first_date,
             MAX(selected_date) AS last_date
         FROM resolved
@@ -6959,6 +6998,14 @@ def validation_history_summary(
     l10_mae = float(row[7]) if row[7] is not None else None
     l5_prediction_average = float(row[8]) if row[8] is not None else None
     l10_prediction_average = float(row[9]) if row[9] is not None else None
+    l5_bias = float(row[10]) if row[10] is not None else None
+    l10_bias = float(row[11]) if row[11] is not None else None
+    l5_rmse = float(row[12]) if row[12] is not None else None
+    l10_rmse = float(row[13]) if row[13] is not None else None
+    l5_medae = float(row[14]) if row[14] is not None else None
+    l10_medae = float(row[15]) if row[15] is not None else None
+    score_actual_pearson = float(row[16]) if row[16] is not None else None
+    score_actual_spearman = float(row[17]) if row[17] is not None else None
 
     return {
         "status": "ok",
@@ -6985,7 +7032,14 @@ def validation_history_summary(
                 if l5_mae is not None and l5_prediction_average not in (None, 0) else None,
             "l10_relative_error_pct": round(l10_mae / l10_prediction_average * 100, 2)
                 if l10_mae is not None and l10_prediction_average not in (None, 0) else None,
-            "score_actual_pearson": round(float(row[10]), 4) if row[10] is not None else None
+            "l5_bias": round(l5_bias, 2) if l5_bias is not None else None,
+            "l10_bias": round(l10_bias, 2) if l10_bias is not None else None,
+            "l5_rmse": round(l5_rmse, 2) if l5_rmse is not None else None,
+            "l10_rmse": round(l10_rmse, 2) if l10_rmse is not None else None,
+            "l5_medae": round(l5_medae, 2) if l5_medae is not None else None,
+            "l10_medae": round(l10_medae, 2) if l10_medae is not None else None,
+            "score_actual_pearson": round(score_actual_pearson, 4) if score_actual_pearson is not None else None,
+            "score_actual_spearman": round(score_actual_spearman, 4) if score_actual_spearman is not None else None
         }
     }
 
