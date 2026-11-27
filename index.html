@@ -594,7 +594,7 @@
         </div>
         <div>
           <label for="gap-score-band-select" class="block text-[10px] text-gray-400 mb-1">Faixa de Score</label>
-          <select id="gap-score-band-select" onchange="fetchGapValidation(document.getElementById('hist-market').value)" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
+          <select id="gap-score-band-select" onchange="fetchGapValidationForCurrentAuditFilters()" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white w-full">
             <option value="all" selected>Todas</option>
             <option value="7+">7+</option>
             <option value="6-6.99">6–6,99</option>
@@ -616,71 +616,26 @@
       <p class="text-[9px] text-gray-500">Margem de classificação: ±10% da média da liga para a mesma posição. A média real é a produção individual dos jogadores agrupados pelo perfil defensivo enfrentado; não representa taxa de acerto de apostas nem rentabilidade. Snapshots antigos sem benchmark da liga aparecem como “Sem referência”.</p>
     </div>
 
-    <!-- Investigação exploratória de perfis semelhantes por faixa de score -->
+    <!-- Comparação da qualidade do ranking diário -->
     <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">🧩 Investigação de jogadores com perfil semelhante</h3>
-      <p class="text-[10px] text-gray-400">Selecione uma faixa de score para comparar seus registros concluídos com até três registros de outros jogadores da mesma posição e com L5, L10 e minutos médios mais próximos.</p>
-      <div class="flex flex-wrap items-center gap-2">
-        <label for="similarity-band-select" class="text-[10px] text-gray-400">Faixa analisada</label>
-        <select id="similarity-band-select" class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white">
-          <option value="7+" selected>7+</option>
-          <option value="6-6.99">6–6,99</option>
-          <option value="5-5.99">5–5,99</option>
-          <option value="4-4.99">4–4,99</option>
-          <option value="<4">Abaixo de 4</option>
-        </select>
-        <span id="similar-sample-status" class="text-[9px] text-gray-400">Amostra reduzida</span>
-      </div>
+      <h3 class="text-xs font-semibold text-white">🎯 Ranking da captura · Top 10 por dia vs demais</h3>
+      <p class="text-[10px] text-gray-400">Compara os dez primeiros candidatos de cada data com os demais elegíveis, usando a ordem registrada no snapshot. A média real é descritiva; o resíduo compara o resultado com a média pré-jogo L10.</p>
       <div class="grid grid-cols-2 gap-2 text-center">
         <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span id="similar-target-label" class="block text-[9px] text-gray-400 uppercase">Faixa 6–6,99 · média real</span>
-          <strong id="similar-target-average" class="text-lg text-emerald-400">—</strong>
-          <span id="similar-target-count" class="block text-[9px] text-gray-500">0 registros · 0 jogadores</span>
-        </div>
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Perfis semelhantes · média real</span>
-          <strong id="similar-peer-average" class="text-lg text-gray-200">—</strong>
-          <span id="similar-peer-count" class="block text-[9px] text-gray-500">0 registros · 0 jogadores</span>
-        </div>
-      </div>
-      <p id="similar-difference" class="text-[10px] text-gray-400">Diferença entre os grupos: —</p>
-      <div class="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Posição</th>
-              <th>Minutos L5</th>
-              <th>Faixa selecionada<br>registros / jogadores / média</th>
-              <th>Similares<br>registros / jogadores / média</th>
-              <th>Diferença</th>
-              <th>Volume</th>
-            </tr>
-          </thead>
-          <tbody id="similar-profiles-table" class="text-gray-300">
-            <tr><td colspan="6" class="text-gray-400">Carregando análise...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="text-[9px] text-gray-500">A similaridade considera L5, L10 e minutos padronizados; pares distantes são descartados. O volume considera registros e jogadores distintos, não é um teste de significância. A análise não altera o score nem a classificação.</p>
-    </div>
-
-    <!-- Comparação direta da qualidade do ranking -->
-    <div class="glass-panel p-3 space-y-2">
-      <h3 class="text-xs font-semibold text-white">🎯 Comparação entre faixas de Score</h3>
-      <div class="grid grid-cols-2 gap-2 text-center">
-        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Média real · Score 7+</span>
+          <span class="block text-[9px] text-gray-400 uppercase">Top 10 · média real</span>
           <strong id="ranking-high-average" class="text-lg text-emerald-400">—</strong>
           <span id="ranking-high-count" class="block text-[9px] text-gray-500">0 registros</span>
+          <span id="ranking-high-residual" class="block text-[9px] text-gray-500">Resíduo L10: —</span>
         </div>
         <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
-          <span class="block text-[9px] text-gray-400 uppercase">Média real · Score abaixo de 4</span>
+          <span class="block text-[9px] text-gray-400 uppercase">Demais · média real</span>
           <strong id="ranking-low-average" class="text-lg text-gray-200">—</strong>
           <span id="ranking-low-count" class="block text-[9px] text-gray-500">0 registros</span>
+          <span id="ranking-low-residual" class="block text-[9px] text-gray-500">Resíduo L10: —</span>
         </div>
       </div>
-      <p id="ranking-separation" class="text-[10px] text-gray-400">Diferença entre as faixas: —</p>
-      <p class="text-[9px] text-gray-500">A comparação mostra separação estatística observada, não taxa de acerto de apostas.</p>
+      <p id="ranking-separation" class="text-[10px] text-gray-400">Diferença entre os grupos: —</p>
+      <p id="ranking-sample-status" class="text-[9px] text-gray-500">Aguardando amostra.</p>
     </div>
 
     <!-- Comparação diária do intervalo -->
@@ -856,7 +811,7 @@ function setAuditMode(mode) {
   const descriptions = {
     daily: 'Mostra somente os registros do mercado e da data escolhidos. Nenhum outro dia é somado.',
     range: 'Consolida os registros entre as datas escolhidas e permite acompanhar a evolução diária dentro desse intervalo.',
-    all: 'Mostra o acumulado da auditoria independente desde 16/11 até hoje. Soma os snapshots já capturados em cada data, mesmo quando ainda estão pendentes; resultados reais entram assim que a apuração é concluída. Não inclui o histórico antigo.'
+    all: 'Mostra os indicadores acumulados da coorte estatística a partir de 19/11 até hoje. Snapshots anteriores a 19/11 permanecem preservados, mas não entram nestes indicadores.'
   };
   const modeSelect = document.getElementById('audit-mode-select');
   if (modeSelect) modeSelect.value = mode;
@@ -1810,9 +1765,6 @@ async function fetchMarketComparison() {
 }
 
 function limparIndicadoresAuditoria() {
-  // Ao trocar o mercado, reinicia a faixa exploratória no padrão 7+.
-  const similarityBandSelect = document.getElementById('similarity-band-select');
-  if (similarityBandSelect) similarityBandSelect.value = '7+';
 
   [
     'hist-sample-count', 'kpi-l5-mae', 'kpi-l10-mae', 'kpi-pearson',
@@ -1821,10 +1773,8 @@ function limparIndicadoresAuditoria() {
     'audit-sample-explanation', 'audit-metric-sample-note',
     'ranking-high-average', 'ranking-high-count',
     'ranking-low-average', 'ranking-low-count',
-    'similar-target-average', 'similar-target-count',
-    'similar-peer-average', 'similar-peer-count',
-    'similar-sample-status', 'similar-difference', 'ranking-separation',
-    'similar-target-label', 'gap-audit-note'
+    'ranking-high-residual', 'ranking-low-residual', 'ranking-sample-status',
+    'ranking-separation', 'gap-audit-note'
   ].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.innerText = '—';
@@ -1841,8 +1791,6 @@ function limparIndicadoresAuditoria() {
   const bands = document.getElementById('score-bands-table');
   if (bands) bands.innerHTML = '<tr><td colspan="8" class="text-gray-400">Carregando dados do mercado...</td></tr>';
 
-  const profiles = document.getElementById('similar-profiles-table');
-  if (profiles) profiles.innerHTML = '<tr><td colspan="6" class="text-gray-400">Carregando dados do mercado...</td></tr>';
 
   const chartCanvas = document.getElementById('dailyErrorChart');
   if (chartInstance) {
@@ -1884,6 +1832,20 @@ function renderGapAudit() {
     ' · Período ' + (periodKey === 'l5' ? 'L5' : 'L10') + ' · Média real individual agrupada pela classificação da defesa. ' +
     Number(gapAuditData.legacy_records_without_new_reference || 0) + ' registros antigos sem benchmark da liga.';
 }
+function fetchGapValidationForCurrentAuditFilters() {
+  const market = document.getElementById('hist-market')?.value || 'assists';
+  let dateFrom = '', dateTo = '';
+  if (auditMode === 'daily') {
+    const selected = document.getElementById('audit-selected-date')?.value || '';
+    dateFrom = selected;
+    dateTo = selected;
+  } else if (auditMode === 'range') {
+    dateFrom = document.getElementById('audit-date-from')?.value || '';
+    dateTo = document.getElementById('audit-date-to')?.value || '';
+  }
+  fetchGapValidation(market, dateFrom, dateTo);
+}
+
 async function fetchGapValidation(market, dateFrom, dateTo) {
   const requestId = ++gapValidationRequestId;
   const summaryTable = document.getElementById('gap-summary-table');
@@ -2088,16 +2050,31 @@ async function fetchHistoryValidation() {
     renderSimilarityAnalysis();
 
     const ranking = res.ranking_quality || {};
-    const high = res.score_bands.find(b => b.band === '7+') || {};
-    const low = res.score_bands.find(b => b.band === '<4') || {};
-    document.getElementById('ranking-high-average').innerText = high.actual_average ?? '—';
-    document.getElementById('ranking-high-count').innerText = (high.games ?? 0) + ' registros';
-    document.getElementById('ranking-low-average').innerText = low.actual_average ?? '—';
-    document.getElementById('ranking-low-count').innerText = (low.games ?? 0) + ' registros';
+    const top10 = ranking.top10 || {};
+    const rest = ranking.rest || {};
+    const showMetric = value => value == null ? '—' : numero(value, 2);
+    document.getElementById('ranking-high-average').innerText = showMetric(top10.actual_average);
+    document.getElementById('ranking-high-count').innerText =
+      (top10.records ?? 0) + ' registros · ' + (top10.players ?? 0) + ' jogadores';
+    document.getElementById('ranking-high-residual').innerText =
+      'Resíduo L10: ' + showMetric(top10.l10_residual_average);
+    document.getElementById('ranking-low-average').innerText = showMetric(rest.actual_average);
+    document.getElementById('ranking-low-count').innerText =
+      (rest.records ?? 0) + ' registros · ' + (rest.players ?? 0) + ' jogadores';
+    document.getElementById('ranking-low-residual').innerText =
+      'Resíduo L10: ' + showMetric(rest.l10_residual_average);
     document.getElementById('ranking-separation').innerText =
       ranking.actual_average_difference == null
-        ? 'Diferença entre as faixas: amostra insuficiente.'
-        : 'Diferença: ' + ranking.actual_average_difference + ' unidades (' + ranking.high_vs_low_pct + '% acima da faixa abaixo de 4).';
+        ? 'Diferença de média real: amostra insuficiente.'
+        : 'Top 10 menos demais: ' + (ranking.actual_average_difference > 0 ? '+' : '') +
+          showMetric(ranking.actual_average_difference) + ' unidades na média real.';
+    const residualDifference = ranking.l10_residual_difference;
+    document.getElementById('ranking-sample-status').innerText =
+      'Resíduo L10 (Top 10 menos demais): ' +
+      (residualDifference == null ? 'amostra insuficiente' :
+        (residualDifference > 0 ? '+' : '') + showMetric(residualDifference) +
+        ' unidades · ' + (ranking.distinct_dates ?? 0) + ' datas comparáveis') +
+      ' · Situação da amostra: ' + (ranking.sample_status || 'coletando') + '.';
 
     renderDailyBreakdown(res.daily || []);
     const breakdownPanel = document.getElementById('daily-breakdown-panel');
@@ -2116,8 +2093,6 @@ async function fetchHistoryValidation() {
     document.getElementById('audit-sample-explanation').innerText = 'Falha ao carregar a amostra. Verifique a conexão e tente novamente.';
     document.getElementById('score-bands-table').innerHTML =
       '<tr><td colspan="8" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
-    document.getElementById('similar-profiles-table').innerHTML =
-      '<tr><td colspan="6" class="text-red-400">Não foi possível carregar os dados deste mercado.</td></tr>';
   }
 }
 
