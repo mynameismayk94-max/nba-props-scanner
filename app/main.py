@@ -6327,8 +6327,7 @@ def audit_collection_status(
 
 @app.get("/audit-snapshot-diagnostics")
 def audit_snapshot_diagnostics(
-    date: str = Query(...),
-    authorized: bool = Depends(require_admin_api_key)
+    date: str = Query(...)
 ):
     """Diagnóstico somente de leitura da captura independente para uma data.
 
