@@ -6325,6 +6325,156 @@ def audit_collection_status(
 
 
 
+@app.get("/audit-snapshot-diagnostics")
+def audit_snapshot_diagnostics(
+    date: str = Query(...),
+    authorized: bool = Depends(require_admin_api_key)
+):
+    """Diagnóstico somente de leitura da captura independente para uma data.
+
+    Não consulta ESPN, não dispara coleta e não altera snapshots ou resultados.
+    """
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida. Use YYYY-MM-DD.")
+
+    if not DATABASE_URL:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado.")
+
+    query = """
+        WITH market_keys AS (
+            SELECT market FROM audit_snapshot_runs WHERE selected_date = %s
+            UNION
+            SELECT market FROM audit_snapshots WHERE selected_date = %s
+            UNION
+            SELECT market FROM audit_results WHERE selected_date = %s
+            UNION
+            SELECT market FROM audit_no_results WHERE selected_date = %s
+        ),
+        snapshot_stats AS (
+            SELECT
+                s.market,
+                COUNT(*) AS snapshots,
+                COUNT(DISTINCT s.player_id) AS distinct_players,
+                MIN(s.captured_at) AS first_snapshot_at,
+                MAX(s.captured_at) AS last_snapshot_at,
+                COUNT(*) FILTER (
+                    WHERE r.player_id IS NULL AND nr.player_id IS NULL
+                ) AS pending
+            FROM audit_snapshots s
+            LEFT JOIN audit_results r
+              ON r.selected_date = s.selected_date
+             AND r.market = s.market
+             AND r.player_id = s.player_id
+            LEFT JOIN audit_no_results nr
+              ON nr.selected_date = s.selected_date
+             AND nr.market = s.market
+             AND nr.player_id = s.player_id
+            WHERE s.selected_date = %s
+            GROUP BY s.market
+        ),
+        result_stats AS (
+            SELECT market, COUNT(*) AS completed,
+                   MIN(collected_at) AS first_result_at,
+                   MAX(collected_at) AS last_result_at
+            FROM audit_results
+            WHERE selected_date = %s
+            GROUP BY market
+        ),
+        no_result_stats AS (
+            SELECT market, COUNT(*) AS no_result,
+                   MIN(recorded_at) AS first_no_result_at,
+                   MAX(recorded_at) AS last_no_result_at
+            FROM audit_no_results
+            WHERE selected_date = %s
+            GROUP BY market
+        )
+        SELECT
+            k.market,
+            run.id IS NOT NULL AS manifest_exists,
+            run.eligible_count,
+            run.availability_report_status,
+            run.captured_at AS manifest_captured_at,
+            COALESCE(ss.snapshots, 0) AS snapshots,
+            COALESCE(ss.distinct_players, 0) AS distinct_players,
+            ss.first_snapshot_at,
+            ss.last_snapshot_at,
+            COALESCE(rs.completed, 0) AS completed,
+            rs.first_result_at,
+            rs.last_result_at,
+            COALESCE(ns.no_result, 0) AS no_result,
+            ns.first_no_result_at,
+            ns.last_no_result_at,
+            COALESCE(ss.pending, 0) AS pending
+        FROM market_keys k
+        LEFT JOIN audit_snapshot_runs run
+          ON run.selected_date = %s AND run.market = k.market
+        LEFT JOIN snapshot_stats ss ON ss.market = k.market
+        LEFT JOIN result_stats rs ON rs.market = k.market
+        LEFT JOIN no_result_stats ns ON ns.market = k.market
+        ORDER BY k.market
+    """
+    params = (
+        selected_date, selected_date, selected_date, selected_date,
+        selected_date, selected_date, selected_date, selected_date
+    )
+
+    with get_database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+    markets = []
+    for row in rows:
+        (
+            market, manifest_exists, eligible_count, availability_status,
+            manifest_captured_at, snapshots, distinct_players,
+            first_snapshot_at, last_snapshot_at, completed,
+            first_result_at, last_result_at, no_result,
+            first_no_result_at, last_no_result_at, pending
+        ) = row
+
+        def iso(value):
+            return value.isoformat() if value else None
+
+        markets.append({
+            "market": market,
+            "manifest": {
+                "exists": bool(manifest_exists),
+                "eligible_count": eligible_count,
+                "availability_report_status": availability_status,
+                "captured_at": iso(manifest_captured_at)
+            },
+            "snapshots": {
+                "count": int(snapshots or 0),
+                "distinct_players": int(distinct_players or 0),
+                "first_captured_at": iso(first_snapshot_at),
+                "last_captured_at": iso(last_snapshot_at)
+            },
+            "results": {
+                "completed": int(completed or 0),
+                "first_collected_at": iso(first_result_at),
+                "last_collected_at": iso(last_result_at)
+            },
+            "no_result": {
+                "count": int(no_result or 0),
+                "first_recorded_at": iso(first_no_result_at),
+                "last_recorded_at": iso(last_no_result_at)
+            },
+            "pending": int(pending or 0)
+        })
+
+    return {
+        "status": "ok",
+        "date": selected_date.isoformat(),
+        "read_only": True,
+        "external_data_calls": 0,
+        "markets_found": len(markets),
+        "markets": markets
+    }
+
+
 @app.get("/audit-pending-details")
 def audit_pending_details(
     date: str = Query(...),
