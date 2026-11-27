@@ -6950,25 +6950,25 @@ def validation_history_summary(
             AVG(last10_avg) FILTER (
                 WHERE result_status = 'completed' AND last10_avg IS NOT NULL
             ) AS l10_prediction_average,
-            AVG(last5_avg - actual_value) FILTER (
+            AVG(last5_avg::double precision - actual_value::double precision) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
             ) AS l5_bias,
-            AVG(last10_avg - actual_value) FILTER (
+            AVG(last10_avg::double precision - actual_value::double precision) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
             ) AS l10_bias,
-            SQRT(AVG(POWER(actual_value - last5_avg, 2)) FILTER (
+            SQRT(AVG(POWER(actual_value::double precision - last5_avg::double precision, 2)) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
             )) AS l5_rmse,
-            SQRT(AVG(POWER(actual_value - last10_avg, 2)) FILTER (
+            SQRT(AVG(POWER(actual_value::double precision - last10_avg::double precision, 2)) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
             )) AS l10_rmse,
             PERCENTILE_CONT(0.5) WITHIN GROUP (
-                ORDER BY ABS(actual_value - last5_avg)
+                ORDER BY ABS(actual_value::double precision - last5_avg::double precision)
             ) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
             ) AS l5_medae,
             PERCENTILE_CONT(0.5) WITHIN GROUP (
-                ORDER BY ABS(actual_value - last10_avg)
+                ORDER BY ABS(actual_value::double precision - last10_avg::double precision)
             ) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
             ) AS l10_medae,
@@ -7013,8 +7013,8 @@ def validation_history_summary(
         "market_label": MARKETS[market]["label"],
         "cohort": cohort,
         "period": {
-            "first_date": row[11].isoformat() if row[11] is not None else None,
-            "last_date": row[12].isoformat() if row[12] is not None else None
+            "first_date": row[18].isoformat() if row[18] is not None else None,
+            "last_date": row[19].isoformat() if row[19] is not None else None
         },
         "summary": {
             "snapshots_total": snapshots_total,
