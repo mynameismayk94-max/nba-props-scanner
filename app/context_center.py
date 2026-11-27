@@ -48,6 +48,7 @@ def build_venue_windows(history: dict, venue: str) -> dict:
         positions = {}
         for position in ("G", "F", "C"):
             averages = {}
+            individual_averages = {}
             stat_games = {}
             appearances = {}
             position_games = [
@@ -66,11 +67,16 @@ def build_venue_windows(history: dict, venue: str) -> dict:
                     item.get("stat_players_count", {}).get(stat, 0)
                     for item in position_games
                 )
+                individual_averages[stat] = (
+                    round(sum(values) / appearances[stat], 2)
+                    if values and appearances[stat] > 0 else None
+                )
             player_counts = [item.get("players_count", 0) for item in position_games]
             positions[position] = {
                 "games_analyzed": len(position_games),
                 "players_per_game_avg": round(sum(player_counts) / len(player_counts), 1) if player_counts else 0,
                 "averages": averages,
+                "individual_averages": individual_averages,
                 "stat_games_analyzed": stat_games,
                 "stat_player_appearances": appearances
             }
@@ -340,10 +346,13 @@ def create_context_router(
             games = position_data.get("stat_games_analyzed", {}).get(stat, 0)
             if value is None:
                 continue
+            appearances = position_data.get("stat_player_appearances", {}).get(stat, 0)
             ranking.append({
                 "team": team,
                 "allowed_per_game": value,
+                "allowed_per_player": position_data.get("individual_averages", {}).get(stat),
                 "games_analyzed": games,
+                "player_appearances": appearances,
                 "team_games_window": period.get("team_games_window", int(window[1:])),
                 "venue_games_in_window": period.get("venue_games_in_window"),
                 "players_per_game_avg": position_data.get("players_per_game_avg"),
