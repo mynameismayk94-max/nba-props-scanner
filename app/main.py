@@ -6956,12 +6956,12 @@ def validation_history_summary(
             AVG(last10_avg - actual_value) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
             ) AS l10_bias,
-            SQRT(AVG(POWER(actual_value - last5_avg, 2))) FILTER (
+            SQRT(AVG(POWER(actual_value - last5_avg, 2)) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last5_avg IS NOT NULL
-            ) AS l5_rmse,
-            SQRT(AVG(POWER(actual_value - last10_avg, 2))) FILTER (
+            )) AS l5_rmse,
+            SQRT(AVG(POWER(actual_value - last10_avg, 2)) FILTER (
                 WHERE result_status = 'completed' AND actual_value IS NOT NULL AND last10_avg IS NOT NULL
-            ) AS l10_rmse,
+            )) AS l10_rmse,
             PERCENTILE_CONT(0.5) WITHIN GROUP (
                 ORDER BY ABS(actual_value - last5_avg)
             ) FILTER (
