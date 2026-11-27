@@ -2002,53 +2002,6 @@ async function fetchHistoryValidation() {
       </tr>
     `).join('');
 
-    const similarityAnalyses = res.similarity_analyses || { '6-6.99': res.similarity_analysis || {} };
-    const similarityBandSelect = document.getElementById('similarity-band-select');
-    const renderSimilarityAnalysis = () => {
-      const selectedBand = similarityBandSelect.value;
-      const similarity = similarityAnalyses[selectedBand] || {};
-      const showAverage = value => value == null ? '—' : numero(value, 2);
-      const showCount = (records, players) => (records || 0) + ' registros · ' + (players || 0) + ' jogadores';
-      document.getElementById('similar-target-label').innerText = 'Faixa ' + selectedBand + ' · média real';
-      document.getElementById('similar-target-average').innerText = showAverage(similarity.target_actual_average);
-      document.getElementById('similar-target-count').innerText = showCount(similarity.target_count, similarity.target_players);
-      document.getElementById('similar-peer-average').innerText = showAverage(similarity.similar_actual_average);
-      document.getElementById('similar-peer-count').innerText = showCount(similarity.similar_count, similarity.similar_players);
-      document.getElementById('similar-sample-status').innerText = similarity.sample_status || 'Sem amostra';
-      const difference = similarity.actual_difference;
-      const differencePct = similarity.actual_difference_pct;
-      let differenceText = 'Diferença entre os grupos: dados comparáveis insuficientes.';
-      if (difference != null) {
-        const direction = difference > 0 ? 'acima' : difference < 0 ? 'abaixo' : 'igual';
-        differenceText = 'Diferença: ' + (difference > 0 ? '+' : '') + numero(difference, 2) +
-          ' unidades (' + (differencePct == null ? '—' : (differencePct > 0 ? '+' : '') + numero(differencePct, 1) + '%') +
-          ') na faixa ' + selectedBand + ' em relação aos semelhantes.';
-      }
-      document.getElementById('similar-difference').innerText = differenceText;
-
-      const table = document.getElementById('similar-profiles-table');
-      const cohorts = similarity.cohorts || [];
-      table.innerHTML = cohorts.length
-        ? cohorts.map(group => {
-            const delta = group.actual_difference;
-            const deltaPct = group.actual_difference_pct;
-            const differenceLabel = delta == null ? '—' :
-              (delta > 0 ? '+' : '') + numero(delta, 2) +
-              (deltaPct == null ? '' : ' (' + (deltaPct > 0 ? '+' : '') + numero(deltaPct, 1) + '%)');
-            return '<tr>' +
-              '<td>' + escapeHtml(group.position || '—') + '</td>' +
-              '<td>' + escapeHtml(group.minutes_band || '—') + '</td>' +
-              '<td><b>' + (group.target_records || 0) + ' reg. · ' + (group.target_players || 0) + ' jog.</b><br>' + showAverage(group.target_actual_average) + '</td>' +
-              '<td><b>' + (group.similar_records || 0) + ' reg. · ' + (group.similar_players || 0) + ' jog.</b><br>' + showAverage(group.similar_actual_average) + '</td>' +
-              '<td>' + differenceLabel + '</td>' +
-              '<td>' + escapeHtml(group.sample_status || '—') + '</td>' +
-              '</tr>';
-          }).join('')
-        : '<tr><td colspan="6" class="text-gray-400">Ainda não há pares comparáveis concluídos nesta faixa.</td></tr>';
-    };
-    similarityBandSelect.onchange = renderSimilarityAnalysis;
-    renderSimilarityAnalysis();
-
     const ranking = res.ranking_quality || {};
     const top10 = ranking.top10 || {};
     const rest = ranking.rest || {};
