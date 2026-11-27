@@ -7234,6 +7234,12 @@ def validation_history(
                 "l10_mae": None,
                 "l5_relative_error_pct": None,
                 "l10_relative_error_pct": None,
+                "l5_bias": None,
+                "l10_bias": None,
+                "l5_rmse": None,
+                "l10_rmse": None,
+                "l5_medae": None,
+                "l10_medae": None,
                 "score_actual_pearson": None,
                 "score_actual_spearman": None
             }
@@ -7244,6 +7250,8 @@ def validation_history(
         l10_errors = []
         l5_predictions = []
         l10_predictions = []
+        l5_signed_errors = []
+        l10_signed_errors = []
         l5_window_counts = []
         l10_window_counts = []
         pairs = []
@@ -7279,6 +7287,7 @@ def validation_history(
                 prediction_l5 = float(last5_avg)
                 l5_predictions.append(prediction_l5)
                 l5_errors.append(abs(actual - prediction_l5))
+                l5_signed_errors.append(prediction_l5 - actual)
 
             if last10_avg is not None:
                 try:
@@ -7288,6 +7297,7 @@ def validation_history(
                 prediction_l10 = float(last10_avg)
                 l10_predictions.append(prediction_l10)
                 l10_errors.append(abs(actual - prediction_l10))
+                l10_signed_errors.append(prediction_l10 - actual)
 
             if triage_score is not None:
                 score = float(triage_score)
@@ -7317,6 +7327,33 @@ def validation_history(
         l10_mae = safe_average(l10_errors)
         l5_prediction_average = safe_average(l5_predictions)
         l10_prediction_average = safe_average(l10_predictions)
+
+        # Diagnóstico adicional do erro: direção (MBE), penalização de erros
+        # grandes (RMSE) e erro absoluto mediano (MedAE). Calculado sobre
+        # exatamente as mesmas observações válidas de L5/L10, sem novas
+        # consultas ao banco ou à ESPN.
+        l5_bias = safe_average(l5_signed_errors)
+        l10_bias = safe_average(l10_signed_errors)
+        l5_rmse = (
+            round((sum(error ** 2 for error in l5_errors) / len(l5_errors)) ** 0.5, 2)
+            if l5_errors else None
+        )
+        l10_rmse = (
+            round((sum(error ** 2 for error in l10_errors) / len(l10_errors)) ** 0.5, 2)
+            if l10_errors else None
+        )
+
+        def median(values):
+            if not values:
+                return None
+            ordered = sorted(values)
+            middle = len(ordered) // 2
+            if len(ordered) % 2:
+                return ordered[middle]
+            return (ordered[middle - 1] + ordered[middle]) / 2
+
+        l5_medae = median(l5_errors)
+        l10_medae = median(l10_errors)
 
         # Erro relativo agregado: MAE / média das previsões da mesma amostra.
         l5_relative_error = (
@@ -7349,6 +7386,12 @@ def validation_history(
             "l10_mae": l10_mae,
             "l5_relative_error_pct": l5_relative_error,
             "l10_relative_error_pct": l10_relative_error,
+            "l5_bias": l5_bias,
+            "l10_bias": l10_bias,
+            "l5_rmse": l5_rmse,
+            "l10_rmse": l10_rmse,
+            "l5_medae": l5_medae,
+            "l10_medae": l10_medae,
             "score_actual_pearson": pearson,
             "score_actual_spearman": spearman
         }
