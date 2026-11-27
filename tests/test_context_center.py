@@ -286,6 +286,43 @@ class ContextReadTests(unittest.TestCase):
                 self.assertEqual(result["ranking"][0]["allowed_per_player"], 0.5)
                 self.assertEqual(result["ranking"][0]["player_appearances"], 10)
 
+    def test_legacy_venue_snapshot_calculates_per_appearance_from_saved_games(self):
+        team, payload, captured_at = self.rows[0]
+        payload["venue_windows"]["home"]["L5"]["positions"]["G"].pop(
+            "individual_averages", None
+        )
+        payload["games"] = [
+            {
+                "home_away": "home",
+                "positions": {
+                    "G": {"points": 20.0, "stat_players_count": {"points": 2}}
+                }
+            },
+            {
+                "home_away": "away",
+                "positions": {
+                    "G": {"points": 100.0, "stat_players_count": {"points": 1}}
+                }
+            },
+            {
+                "home_away": "home",
+                "positions": {
+                    "G": {"points": 30.0, "stat_players_count": {"points": 3}}
+                }
+            }
+        ]
+        self.rows[0] = (team, payload, captured_at)
+
+        result = self.ranking_route.endpoint(
+            selected_date="2026-11-13",
+            position="G",
+            stat="points",
+            window="L5",
+            venue="home"
+        )
+        first_team = next(item for item in result["ranking"] if item["team"] == team)
+        self.assertEqual(first_team["allowed_per_player"], 10.0)
+
     def test_invalid_venue_is_rejected(self):
         from fastapi import HTTPException
         with self.assertRaises(HTTPException):
