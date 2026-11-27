@@ -143,6 +143,16 @@ class ContextReadTests(unittest.TestCase):
                             ("points", "assists", "rebounds", "three_pa", "two_pa", "fgm")
                         )
                     },
+                    "individual_averages": {
+                        stat: round(float(index + stat_index + 1) / 2, 2)
+                        for stat_index, stat in enumerate(
+                            ("points", "assists", "rebounds", "three_pa", "two_pa", "fgm")
+                        )
+                    },
+                    "stat_player_appearances": {
+                        stat: 10
+                        for stat in ("points", "assists", "rebounds", "three_pa", "two_pa", "fgm")
+                    },
                     "stat_games_analyzed": {
                         stat: 5 if stat != "fgm" else 4
                         for stat in ("points", "assists", "rebounds", "three_pa", "two_pa", "fgm")
@@ -221,6 +231,11 @@ class ContextReadTests(unittest.TestCase):
                         values = [item["allowed_per_game"] for item in result["ranking"]]
                         self.assertEqual(values, sorted(values))
                         self.assertEqual(result["ranking"][0]["games_analyzed"], 4 if stat == "fgm" else 5)
+                        self.assertEqual(result["ranking"][0]["player_appearances"], 10)
+                        self.assertEqual(
+                            result["ranking"][0]["allowed_per_player"],
+                            round(float(stats.index(stat) + 1) / 2, 2)
+                        )
 
     def test_team_detail_returns_saved_history_for_all_positions(self):
         result = self.detail_route.endpoint(team="TM00", selected_date="2026-11-13")
@@ -266,6 +281,8 @@ class ContextReadTests(unittest.TestCase):
                 self.assertEqual(result["venue"], venue)
                 self.assertEqual(result["teams_available"], 30)
                 self.assertEqual(len(result["ranking"]), 30)
+                self.assertEqual(result["ranking"][0]["allowed_per_player"], 0.5)
+                self.assertEqual(result["ranking"][0]["player_appearances"], 10)
 
     def test_invalid_venue_is_rejected(self):
         from fastapi import HTTPException
