@@ -1,0 +1,65 @@
+name: Central de Contexto NBA — atualização automática
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base:
+        description: "API base URL (staging by default)"
+        required: false
+        default: "https://nba-props-scanner-staging.onrender.com"
+        type: string
+      target_date:
+        description: "Reference date in YYYY-MM-DD (leave empty for today in Sao Paulo)"
+        required: false
+        type: string
+  schedule:
+    # Executa após a rotina principal de auditoria, deixando a base
+    # contextual pronta para uso durante o dia.
+    - cron: "47 9 * * *"
+      timezone: "America/Sao_Paulo"
+
+concurrency:
+  group: context-nba-staging
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Refresh Central de Contexto NBA in staging
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_API_BASE: ${{ inputs.api_base }}
+          INPUT_TARGET_DATE: ${{ inputs.target_date }}
+          STAGING_ADMIN_API_KEY: ${{ secrets.STAGING_ADMIN_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${STAGING_ADMIN_API_KEY:-}" ]; then
+            echo "::error::Secret STAGING_ADMIN_API_KEY não configurado."
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            API_BASE="https://nba-props-scanner-staging.onrender.com"
+          else
+            API_BASE="${INPUT_API_BASE:-https://nba-props-scanner-staging.onrender.com}"
+          fi
+          API_BASE="${API_BASE%/}"
+          TARGET_DATE="${INPUT_TARGET_DATE:-$(TZ=America/Sao_Paulo date +%F)}"
+
+          echo "Central de Contexto NBA — atualização automática"
+          echo "API: $API_BASE"
+          echo "Date: $TARGET_DATE"
+
+          RESPONSE="$(curl --fail --show-error --silent \
+            --retry 3 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            --max-time 1800 \
+            --header "X-Admin-Key: ${STAGING_ADMIN_API_KEY}" \
+            "${API_BASE}/context/defense/refresh?date=${TARGET_DATE}")"
+
+          echo "$RESPONSE"
+          echo "Atualização da Central de Contexto NBA concluída."
