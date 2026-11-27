@@ -347,10 +347,30 @@ def create_context_router(
             if value is None:
                 continue
             appearances = position_data.get("stat_player_appearances", {}).get(stat, 0)
+            individual_average = position_data.get("individual_averages", {}).get(stat)
+            # Compatibilidade com snapshots anteriores à inclusão da média por aparição
+            # nas janelas Casa/Fora: recalcula usando os jogos já persistidos, sem ESPN.
+            if individual_average is None and venue != "all":
+                venue_games = [
+                    game for game in (payload.get("games") or [])[:int(window[1:])]
+                    if game.get("home_away") == venue
+                ]
+                player_total = 0.0
+                player_appearances = 0
+                for game in venue_games:
+                    position_game = (game.get("positions") or {}).get(position, {})
+                    stat_value = position_game.get(stat)
+                    if stat_value is not None:
+                        player_total += stat_value
+                    player_appearances += (
+                        position_game.get("stat_players_count", {}).get(stat, 0)
+                    )
+                if player_appearances > 0:
+                    individual_average = round(player_total / player_appearances, 2)
             ranking.append({
                 "team": team,
                 "allowed_per_game": value,
-                "allowed_per_player": position_data.get("individual_averages", {}).get(stat),
+                "allowed_per_player": individual_average,
                 "games_analyzed": games,
                 "player_appearances": appearances,
                 "team_games_window": period.get("team_games_window", int(window[1:])),
