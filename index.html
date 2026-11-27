@@ -586,8 +586,12 @@
           <span class="block text-[9px] text-gray-400">Spearman</span>
           <strong id="kpi-spearman" class="block text-base text-purple-300">—</strong>
         </div>
+        <div class="rounded-lg bg-gray-900 border border-gray-800 p-2">
+          <span class="block text-[9px] text-gray-400">Superestimações</span>
+          <strong id="kpi-overestimation" class="block text-base text-orange-300">—</strong>
+        </div>
       </div>
-      <p id="audit-error-diagnostic-note" class="text-[9px] text-gray-500">MBE = previsão − resultado: positivo indica tendência de superestimação e negativo de subestimação. RMSE penaliza mais os erros grandes; MedAE representa o erro absoluto mediano. Spearman mede a associação monotônica entre a ordem do Score e a ordem do resultado.</p>
+      <p id="audit-error-diagnostic-note" class="text-[9px] text-gray-500">MBE = previsão − resultado: positivo indica tendência de superestimação e negativo de subestimação. Superestimações = percentual de previsões acima do resultado real. RMSE penaliza mais os erros grandes; MedAE representa o erro absoluto mediano. Spearman mede a associação monotônica entre a ordem do Score e a ordem do resultado.</p>
     </div>
 
     <p id="audit-metric-sample-note" class="text-[9px] text-gray-500 px-1">MAE mede o erro médio absoluto em unidades da estatística; menor é melhor. Erro relativo = MAE dividido pela média prevista. Pearson mede a associação linear entre Score e resultado real (de -1 a +1), não uma taxa de acerto.</p>
@@ -2036,6 +2040,11 @@ async function fetchHistoryValidation() {
     document.getElementById('kpi-l5-medae').innerText = summary.l5_medae == null ? '—' : numero(summary.l5_medae, 2);
     document.getElementById('kpi-l10-medae').innerText = summary.l10_medae == null ? '—' : numero(summary.l10_medae, 2);
     document.getElementById('kpi-spearman').innerText = summary.score_actual_spearman == null ? '—' : numero(summary.score_actual_spearman, 4);
+    document.getElementById('kpi-overestimation').innerText =
+      summary.l5_overestimation_pct == null && summary.l10_overestimation_pct == null
+        ? '—'
+        : 'L5 ' + (summary.l5_overestimation_pct == null ? '—' : numero(summary.l5_overestimation_pct, 1) + '%') +
+          ' · L10 ' + (summary.l10_overestimation_pct == null ? '—' : numero(summary.l10_overestimation_pct, 1) + '%');
 
     const tableBody = document.getElementById('score-bands-table');
     tableBody.innerHTML = res.score_bands.map(b => `
